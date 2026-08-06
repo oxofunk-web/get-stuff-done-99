@@ -1,0 +1,116 @@
+const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
+const FALLBACK_BASE = "https://external-api.kalshi.com/trade-api/v2";
+
+export interface RawMarket {
+  ticker: string;
+  floor_strike?: number;
+  cap_strike?: number;
+  yes_bid?: number;
+  yes_ask?: number;
+  no_bid?: number;
+  no_ask?: number;
+  volume?: number;
+  volume_24h?: number;
+  close_time?: string;
+}
+
+function toDollars(v: number | undefined) {
+  const n = Number(v ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n > 1 ? n / 100 : n;
+}
+
+export function normalizeMarket(mkt: RawMarket) {
+  const yesBid = toDollars(mkt.yes_bid);
+  const yesAsk = toDollars(mkt.yes_ask);
+  const noBid = toDollars(mkt.no_bid);
+  const noAsk = toDollars(mkt.no_ask);
+  const yesMid = (yesBid + yesAsk) / 2 || 0.5;
+  return {
+    ticker: mkt.ticker,
+    strike: mkt.floor_strike ?? mkt.cap_strike ?? null,
+    yesBid,
+    yesAsk,
+    noBid: noBid || Math.max(0, 1 - yesAsk),
+    noAsk: noAsk || Math.max(0, 1 - yesBid),
+    yesMid,
+    spread: Math.max(0, yesAsk - yesBid),
+    vol: mkt.volume_24h ?? mkt.volume ?? 0,
+    closeTime: mkt.close_time ?? null,
+  };
+}
+
+/** Public (unauthenticated) Kalshi read — proxied server-side to dodge CORS. */
+export async function fetchOpenMarket(series: string): Promise<RawMarket | null> {
+  const path = `/markets?series_ticker=${series}&status=open&limit=1`;
+  for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
+    try {
+      const r = await fetch(base + path, { headers: { accept: "application/json" } });
+      if (!r.ok) continue;
+      const j = (await r.json()) as { markets?: RawMarket[] };
+      return j.markets?.[0] ?? null;
+    } catch {
+      // try next base
+    }
+  }
+  return null;
+}
+
+function pemToDer(pem: string) {
+  const b64 = pem
+    .replace(/-----[^-]+-----/g, "")
+    .replace(/\\n/g, "")
+    .replace(/\s+/g, "");
+  const bin = atob(b64);
+  const der = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
+  return der;
+}
+
+async function signHeaders(keyId: string, pem: string, method: string, path: string) {
+  const ts = Date.now().toString();
+  const signPath = "/trade-api/v2" + path.split("?")[0];
+  const msg = new TextEncoder().encode(ts + method.toUpperCase() + signPath);
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pemToDer(pem).buffer as ArrayBuffer,
+    { name: "RSA-PSS", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBuf = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key, msg);
+  let sig = "";
+  const bytes = new Uint8Array(sigBuf);
+  for (let i = 0; i < bytes.length; i++) sig += String.fromCharCode(bytes[i]!);
+  return {
+    "Content-Type": "application/json",
+    "KALSHI-ACCESS-KEY": keyId,
+    "KALSHI-ACCESS-TIMESTAMP": ts,
+    "KALSHI-ACCESS-SIGNATURE": btoa(sig),
+  };
+}
+
+export async function authedKalshi<T>(
+  creds: { keyId: string; pem: string },
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const headers = await signHeaders(creds.keyId, creds.pem, method, path);
+  const res = await fetch(KALSHI_BASE + path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = (await res.json()) as { message?: string; error?: string };
+      detail = j.message ?? j.error ?? "";
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    throw new Error(`Kalshi ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
+  }
+  return (await res.json()) as T;
+}
