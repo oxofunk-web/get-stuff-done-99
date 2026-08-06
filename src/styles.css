@@ -4,6 +4,26 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── KALSHI AUTO 15M BOT — terminal design system ───────────────────── */
+@theme inline {
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui;
+  --color-yes: var(--yes);
+  --color-no: var(--no);
+  --color-gold: var(--gold);
+  --color-blue: var(--blue);
+  --color-wire: var(--wire);
+  --color-dim: var(--dim);
+  --color-hi: var(--hi);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-btc: oklch(0.7523 0.1663 62.59);
+  --color-eth: oklch(0.6247 0.165 270.13);
+  --color-sol: oklch(0.5982 0.2564 298.86);
+  --color-xrp: oklch(0.6407 0.1449 239.22);
+}
+
 /*
  * Design system definition.
  *
