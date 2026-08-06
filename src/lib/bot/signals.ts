@@ -1,6 +1,7 @@
 import { candleInfo } from "./candle";
 import { CLOSE_SECS, GATE_SECS, LAG_PCT, PAIRS, THRESHOLD } from "./constants";
-import type { KalshiMarket, LagState, PairId, Signal, SpotState } from "./types";
+import type { PairId } from "./constants";
+import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
 
 function avg(xs: number[]) {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
