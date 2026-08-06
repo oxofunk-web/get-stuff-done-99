@@ -9,22 +9,31 @@ export interface RawMarket {
   yes_ask?: number;
   no_bid?: number;
   no_ask?: number;
+  yes_bid_dollars?: string;
+  yes_ask_dollars?: string;
+  no_bid_dollars?: string;
+  no_ask_dollars?: string;
   volume?: number;
   volume_24h?: number;
+  volume_24h_fp?: string;
   close_time?: string;
 }
 
-function toDollars(v: number | undefined) {
-  const n = Number(v ?? 0);
+function toDollars(dollars: string | undefined, cents: number | undefined) {
+  if (dollars !== undefined && dollars !== "") {
+    const d = Number(dollars);
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  }
+  const n = Number(cents ?? 0);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return n > 1 ? n / 100 : n;
 }
 
 export function normalizeMarket(mkt: RawMarket) {
-  const yesBid = toDollars(mkt.yes_bid);
-  const yesAsk = toDollars(mkt.yes_ask);
-  const noBid = toDollars(mkt.no_bid);
-  const noAsk = toDollars(mkt.no_ask);
+  const yesBid = toDollars(mkt.yes_bid_dollars, mkt.yes_bid);
+  const yesAsk = toDollars(mkt.yes_ask_dollars, mkt.yes_ask);
+  const noBid = toDollars(mkt.no_bid_dollars, mkt.no_bid);
+  const noAsk = toDollars(mkt.no_ask_dollars, mkt.no_ask);
   const yesMid = (yesBid + yesAsk) / 2 || 0.5;
   return {
     ticker: mkt.ticker,
@@ -35,7 +44,7 @@ export function normalizeMarket(mkt: RawMarket) {
     noAsk: noAsk || Math.max(0, 1 - yesBid),
     yesMid,
     spread: Math.max(0, yesAsk - yesBid),
-    vol: mkt.volume_24h ?? mkt.volume ?? 0,
+    vol: Number(mkt.volume_24h_fp ?? mkt.volume_24h ?? mkt.volume ?? 0) || 0,
     closeTime: mkt.close_time ?? null,
   };
 }
