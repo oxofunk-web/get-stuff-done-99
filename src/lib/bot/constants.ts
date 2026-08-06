@@ -59,3 +59,23 @@ export const WS_MAP: Record<string, PairId> = {
   solusdt: "SOL",
   xrpusdt: "XRP",
 };
+
+/**
+ * Coinbase Exchange feed — an actual BRTI constituent and reachable from US
+ * mobile networks where Binance is geo-blocked. Used as the primary source.
+ */
+export const CB_WS_URL = "wss://ws-feed.exchange.coinbase.com";
+
+export const CB_PRODUCTS = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"] as const;
+
+export const CB_MAP: Record<string, PairId> = {
+  "BTC-USD": "BTC",
+  "ETH-USD": "ETH",
+  "SOL-USD": "SOL",
+  "XRP-USD": "XRP",
+};
+
+/** How long to wait for a first frame before failing over to the next source. */
+export const FEED_TIMEOUT_MS = 5000;
+/** Server-polled REST fallback cadence when both sockets are blocked. */
+export const REST_POLL_MS = 2500;
