@@ -59,6 +59,7 @@ export function Dashboard() {
             markets={bot.markets}
             history={bot.history}
             status={bot.feedStatus}
+            source={bot.feedSource}
           />
           <ClockPanel candle={bot.candle} ticker={ticker} />
           <MarketsPanel markets={bot.markets} ok={bot.marketsOk} mode={bot.mode} />
