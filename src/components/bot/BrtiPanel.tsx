@@ -2,7 +2,7 @@ import { fmtPrice } from "@/lib/bot/candle";
 import { PAIRS, type PairId } from "@/lib/bot/constants";
 import { lagState } from "@/lib/bot/signals";
 import type { KalshiMarket, SpotState } from "@/lib/bot/types";
-import type { FeedStatus } from "@/hooks/useBrtiFeed";
+import type { FeedSource, FeedStatus } from "@/hooks/useBrtiFeed";
 
 const lagCopy = { fire: "⚡ LAG", warn: "DRIFT", ok: "IN SYNC" } as const;
 const lagTone = {
@@ -16,9 +16,16 @@ interface Props {
   markets: Partial<Record<PairId, KalshiMarket>>;
   history: Partial<Record<PairId, number[]>>;
   status: FeedStatus;
+  source: FeedSource;
 }
 
-export function BrtiPanel({ spot, markets, history, status }: Props) {
+const sourceCopy: Record<FeedSource, string> = {
+  coinbase: "COINBASE LIVE",
+  binance: "BINANCE LIVE",
+  server: "SERVER RELAY",
+};
+
+export function BrtiPanel({ spot, markets, history, status, source }: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
@@ -32,7 +39,11 @@ export function BrtiPanel({ spot, markets, history, status }: Props) {
           <span
             className={status === "live" ? "text-yes" : status === "connecting" ? "text-gold" : "text-no"}
           >
-            {status === "live" ? "WEBSOCKET LIVE" : status === "connecting" ? "CONNECTING" : "RECONNECTING"}
+            {status === "live"
+              ? sourceCopy[source]
+              : status === "connecting"
+                ? "CONNECTING"
+                : "RECONNECTING"}
           </span>
         </span>
       </div>
