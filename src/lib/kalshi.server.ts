@@ -97,11 +97,9 @@ export async function authedKalshi<T>(
   body?: unknown,
 ): Promise<T> {
   const headers = await signHeaders(creds.keyId, creds.pem, method, path);
-  const res = await fetch(KALSHI_BASE + path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const init: RequestInit = { method, headers };
+  if (body) init.body = JSON.stringify(body);
+  const res = await fetch(KALSHI_BASE + path, init);
   if (!res.ok) {
     let detail = "";
     try {
