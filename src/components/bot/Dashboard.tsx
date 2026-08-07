@@ -40,7 +40,7 @@ export function Dashboard() {
             </p>
           </div>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap justify-end gap-x-4 gap-y-1">
           {[
             { v: String(bot.sigCount), l: "SIGNALS" },
             { v: String(bot.placedCount), l: "PLACED" },
