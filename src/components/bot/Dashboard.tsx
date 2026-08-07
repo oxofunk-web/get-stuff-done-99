@@ -1,8 +1,10 @@
+import { AiPanel } from "./AiPanel";
 import { BrtiPanel } from "./BrtiPanel";
 import { ClockPanel } from "./ClockPanel";
 import { EnginePanel } from "./EnginePanel";
 import { LogPanel } from "./LogPanel";
 import { MarketsPanel } from "./MarketsPanel";
+import { PnlPanel } from "./PnlPanel";
 import { SignalsPanel } from "./SignalsPanel";
 import { useBot } from "@/hooks/useBot";
 
@@ -38,11 +40,19 @@ export function Dashboard() {
             </p>
           </div>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap justify-end gap-x-4 gap-y-1">
           {[
             { v: String(bot.sigCount), l: "SIGNALS" },
             { v: String(bot.placedCount), l: "PLACED" },
             { v: `$${bot.exposure}`, l: "EXPOSURE" },
+            {
+              v: `${bot.realized + bot.unrealized < 0 ? "-" : "+"}$${Math.abs(bot.realized + bot.unrealized).toFixed(2)}`,
+              l: "P&L",
+            },
+            {
+              v: bot.walletBalance !== null ? `$${bot.walletBalance.toFixed(2)}` : "—",
+              l: "WALLET",
+            },
           ].map((s) => (
             <div key={s.l} className="text-center">
               <div className="font-sans text-[15px] font-extrabold leading-none text-hi">{s.v}</div>
@@ -62,6 +72,17 @@ export function Dashboard() {
             source={bot.feedSource}
           />
           <ClockPanel candle={bot.candle} ticker={ticker} />
+          <PnlPanel
+            mode={bot.mode}
+            portfolio={bot.portfolio}
+            balance={bot.walletBalance}
+            realized={bot.realized}
+            unrealized={bot.unrealized}
+            open={bot.open}
+            wins={bot.wins}
+            losses={bot.losses}
+            onRefresh={() => void bot.refreshPortfolio()}
+          />
           <MarketsPanel markets={bot.markets} ok={bot.marketsOk} mode={bot.mode} />
         </div>
 
@@ -79,6 +100,13 @@ export function Dashboard() {
             lastTrade={bot.lastTrade}
             tradedThisCandle={bot.tradedThisCandle}
             live={bot.live}
+          />
+          <AiPanel
+            ai={bot.ai}
+            aiAssist={bot.aiAssist}
+            onToggleAssist={bot.setAiAssist}
+            onAsk={() => void bot.askAi()}
+            hasSignal={bot.signals.length > 0}
           />
           <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
           <LogPanel log={bot.log} />

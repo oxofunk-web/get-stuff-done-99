@@ -5,7 +5,8 @@ import { candleInfo } from "@/lib/bot/candle";
 import { KALSHI_POLL_MS, PAIRS, type PairId } from "@/lib/bot/constants";
 import { computeSignals } from "@/lib/bot/signals";
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
-import { getLiveStatus, getMarkets, placeOrder } from "@/lib/kalshi.functions";
+import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
+import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
 
 export type Mode = "paper" | "live";
 
@@ -15,12 +16,41 @@ export interface Toast {
   tone: "yes" | "no" | "warn";
 }
 
+export interface OpenPosition {
+  id: string;
+  pair: PairId;
+  dir: "YES" | "NO";
+  count: number;
+  entry: number; // dollars per contract
+  stake: number;
+  candleId: number;
+  paper: boolean;
+}
+
+export interface Portfolio {
+  configured: boolean;
+  balance: number | null;
+  realized: number;
+  exposure: number;
+  positions: { ticker: string; count: number; exposure: number; realized: number }[];
+  error: string | null;
+}
+
+export interface AiState {
+  status: "idle" | "thinking" | "done" | "error";
+  verdict: AiVerdict | null;
+  error: string | null;
+  signalLabel: string | null;
+  at: string | null;
+}
+
 export function useBot() {
   const { spot, status: feedStatus, source: feedSource, tick } = useBrtiFeed();
 
   const [markets, setMarkets] = useState<Partial<Record<PairId, KalshiMarket>>>({});
   const [marketsOk, setMarketsOk] = useState<boolean | null>(null);
   const historyRef = useRef<Partial<Record<PairId, number[]>>>({});
+  const marketsRef = useRef<Partial<Record<PairId, KalshiMarket>>>({});
 
   const [mode, setMode] = useState<Mode>("paper");
   const [botOn, setBotOn] = useState(false);
@@ -36,6 +66,26 @@ export function useBot() {
     configured: false,
     balance: null,
     error: null,
+  });
+  const [portfolio, setPortfolio] = useState<Portfolio>({
+    configured: false,
+    balance: null,
+    realized: 0,
+    exposure: 0,
+    positions: [],
+    error: null,
+  });
+  const [open, setOpen] = useState<OpenPosition[]>([]);
+  const [realizedPaper, setRealizedPaper] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [aiAssist, setAiAssist] = useState(true);
+  const [ai, setAi] = useState<AiState>({
+    status: "idle",
+    verdict: null,
+    error: null,
+    signalLabel: null,
+    at: null,
   });
 
   const [now, setNow] = useState(() => Date.now());
@@ -65,11 +115,35 @@ export function useBot() {
   // Candle rollover resets the one-trade-per-candle lock
   useEffect(() => {
     if (candle.id !== candleRef.current) {
+      const closed = candleRef.current;
       candleRef.current = candle.id;
       tradedRef.current = false;
       setTradedThisCandle(false);
       setTradeStatus({});
       seenSigIds.current = new Set();
+      setAi({ status: "idle", verdict: null, error: null, signalLabel: null, at: null });
+      // Settle every position that belonged to the candle that just closed.
+      setOpen((list) => {
+        const expired = list.filter((p) => p.candleId === closed);
+        if (expired.length) {
+          let pnl = 0;
+          let w = 0;
+          let l = 0;
+          for (const p of expired) {
+            const mid = marketsRef.current[p.pair]?.yesMid ?? 0.5;
+            const finalProb = p.dir === "YES" ? mid : 1 - mid;
+            const won = finalProb >= 0.5;
+            pnl += won ? p.count * (1 - p.entry) : -p.count * p.entry;
+            if (won) w += 1;
+            else l += 1;
+          }
+          setRealizedPaper((r) => r + pnl);
+          setWins((x) => x + w);
+          setLosses((x) => x + l);
+          setExposure((e) => Math.max(0, e - expired.reduce((a, p) => a + p.stake, 0)));
+        }
+        return list.filter((p) => p.candleId !== closed);
+      });
     }
   }, [candle.id]);
 
@@ -89,6 +163,7 @@ export function useBot() {
           historyRef.current[m.pair as PairId] = h;
         }
         setMarkets(next);
+        marketsRef.current = next;
         setMarketsOk(res.ok);
       } catch {
         if (!stop) setMarketsOk(false);
@@ -119,6 +194,23 @@ export function useBot() {
     void refreshLive();
   }, [refreshLive]);
 
+  // Wallet balance + realized P&L from the Kalshi account, once keys exist.
+  const refreshPortfolio = useCallback(async () => {
+    try {
+      const res = await getPortfolio();
+      setPortfolio(res);
+      return res;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPortfolio();
+    const i = setInterval(() => void refreshPortfolio(), 20000);
+    return () => clearInterval(i);
+  }, [refreshPortfolio]);
+
   const signals = useMemo(
     () => computeSignals(spot, markets, historyRef.current, now),
     // `tick` forces recompute as websocket ticks mutate the spot ref
@@ -139,15 +231,74 @@ export function useBot() {
       const m = markets[sig.pair];
       if (!m?.ticker) return;
       firingRef.current = true;
-      tradedRef.current = true;
-      setTradedThisCandle(true);
-      setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "Placing order…" } }));
 
       const priceCents = Math.max(
         1,
         Math.min(99, Math.round((sig.dir === "YES" ? m.yesAsk : m.noAsk) * 100)),
       );
       const count = Math.max(1, Math.floor(betSize / (priceCents / 100)));
+
+      // AI co-pilot review before any money moves.
+      if (aiAssist) {
+        setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "AI reviewing…" } }));
+        setAi({
+          status: "thinking",
+          verdict: null,
+          error: null,
+          signalLabel: `${sig.pair} ${sig.dir} ${sig.conf.toFixed(0)}%`,
+          at: new Date().toLocaleTimeString(),
+        });
+        const res = await reviewSignal({
+          data: {
+            pair: sig.pair,
+            dir: sig.dir,
+            conf: sig.conf,
+            yesMid: sig.yesMid,
+            spread: sig.spread,
+            spotMom: sig.spotMom,
+            kMom: sig.kMom,
+            lagDetected: sig.lagDetected,
+            spot: spot[sig.pair]?.price ?? 0,
+            strike: m.strike,
+            secondsLeft: sig.remain,
+            betSize,
+            reason: sig.reason,
+          },
+        });
+        if (!res.ok) {
+          setAi({
+            status: "error",
+            verdict: null,
+            error: res.error,
+            signalLabel: `${sig.pair} ${sig.dir}`,
+            at: new Date().toLocaleTimeString(),
+          });
+          setTradeStatus((s) => ({ ...s, [sig.id]: { status: "failed", msg: `AI: ${res.error}` } }));
+          notify(`AI review failed: ${res.error}`, "warn");
+          firingRef.current = false;
+          return;
+        }
+        setAi({
+          status: "done",
+          verdict: res.verdict,
+          error: null,
+          signalLabel: `${sig.pair} ${sig.dir} ${sig.conf.toFixed(0)}%`,
+          at: new Date().toLocaleTimeString(),
+        });
+        if (res.verdict.verdict === "skip") {
+          setTradeStatus((s) => ({
+            ...s,
+            [sig.id]: { status: "failed", msg: `AI vetoed — ${res.verdict.rationale}` },
+          }));
+          notify(`AI vetoed ${sig.pair} ${sig.dir}: ${res.verdict.rationale}`, "warn");
+          firingRef.current = false;
+          return;
+        }
+      }
+
+      tradedRef.current = true;
+      setTradedThisCandle(true);
+      setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "Placing order…" } }));
 
       let status: TradeStatus = "placed";
       let msg = "";
@@ -187,19 +338,87 @@ export function useBot() {
       if (status === "placed") {
         setPlacedCount((c) => c + 1);
         setExposure((e) => e + betSize);
+        setOpen((l) => [
+          {
+            id: `${sig.id}-${Date.now()}`,
+            pair: sig.pair,
+            dir: sig.dir,
+            count,
+            entry: priceCents / 100,
+            stake: (count * priceCents) / 100,
+            candleId: candleRef.current,
+            paper: mode === "paper",
+          },
+          ...l,
+        ]);
         setLastTrade({ label: `${sig.pair} ${sig.dir}`, time: new Date().toLocaleTimeString() });
         notify(
           `${sig.pair} ${sig.dir} — ${sig.conf.toFixed(0)}% · $${betSize} ${mode === "paper" ? "(paper)" : "PLACED"}`,
           sig.dir === "YES" ? "yes" : "no",
         );
-        if (mode === "live") void refreshLive();
+        if (mode === "live") {
+          void refreshLive();
+          void refreshPortfolio();
+        }
       } else {
         notify(`Trade failed: ${msg}`, "warn");
       }
       firingRef.current = false;
     },
-    [betSize, markets, mode, notify, refreshLive],
+    [aiAssist, betSize, markets, mode, notify, refreshLive, refreshPortfolio, spot],
   );
+
+  // Mark-to-market on the open book.
+  const unrealized = useMemo(() => {
+    return open.reduce((acc, p) => {
+      const mid = markets[p.pair]?.yesMid ?? p.entry;
+      const mark = p.dir === "YES" ? mid : 1 - mid;
+      return acc + p.count * (mark - p.entry);
+    }, 0);
+  }, [markets, open]);
+
+  const realized = mode === "live" ? portfolio.realized : realizedPaper;
+  const walletBalance = portfolio.balance;
+
+  const askAi = useCallback(async () => {
+    const top = signals[0];
+    if (!top) {
+      notify("No live signal to review yet.", "warn");
+      return;
+    }
+    const m = markets[top.pair];
+    setAi({
+      status: "thinking",
+      verdict: null,
+      error: null,
+      signalLabel: `${top.pair} ${top.dir} ${top.conf.toFixed(0)}%`,
+      at: new Date().toLocaleTimeString(),
+    });
+    const res = await reviewSignal({
+      data: {
+        pair: top.pair,
+        dir: top.dir,
+        conf: top.conf,
+        yesMid: top.yesMid,
+        spread: top.spread,
+        spotMom: top.spotMom,
+        kMom: top.kMom,
+        lagDetected: top.lagDetected,
+        spot: spot[top.pair]?.price ?? 0,
+        strike: m?.strike ?? null,
+        secondsLeft: top.remain,
+        betSize,
+        reason: top.reason,
+      },
+    });
+    setAi({
+      status: res.ok ? "done" : "error",
+      verdict: res.ok ? res.verdict : null,
+      error: res.ok ? null : res.error,
+      signalLabel: `${top.pair} ${top.dir} ${top.conf.toFixed(0)}%`,
+      at: new Date().toLocaleTimeString(),
+    });
+  }, [betSize, markets, notify, signals, spot]);
 
   // Auto-trade: one trade per candle, top signal only
   useEffect(() => {
@@ -269,6 +488,18 @@ export function useBot() {
     tradeStatus,
     tradedThisCandle,
     live,
+    portfolio,
+    walletBalance,
+    realized,
+    unrealized,
+    open,
+    wins,
+    losses,
+    ai,
+    aiAssist,
+    setAiAssist,
+    askAi,
+    refreshPortfolio,
     pairs: PAIRS,
   };
 }

@@ -65,7 +65,31 @@ export async function fetchOpenMarket(series: string): Promise<RawMarket | null>
   return null;
 }
 
+function derLength(n: number) {
+  if (n < 0x80) return [n];
+  const bytes: number[] = [];
+  let v = n;
+  while (v > 0) {
+    bytes.unshift(v & 0xff);
+    v >>= 8;
+  }
+  return [0x80 | bytes.length, ...bytes];
+}
+
+/** Wrap a PKCS#1 RSAPrivateKey DER in a PKCS#8 PrivateKeyInfo. */
+function pkcs1ToPkcs8(pkcs1: Uint8Array) {
+  const algId = [
+    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
+  ];
+  const octet = [0x04, ...derLength(pkcs1.length), ...pkcs1];
+  const version = [0x02, 0x01, 0x00];
+  const bodyLen = version.length + algId.length + octet.length;
+  const out = new Uint8Array([0x30, ...derLength(bodyLen), ...version, ...algId, ...octet]);
+  return out;
+}
+
 function pemToDer(pem: string) {
+  const isPkcs1 = /BEGIN RSA PRIVATE KEY/.test(pem);
   const b64 = pem
     .replace(/-----[^-]+-----/g, "")
     .replace(/\\n/g, "")
@@ -73,7 +97,7 @@ function pemToDer(pem: string) {
   const bin = atob(b64);
   const der = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
-  return der;
+  return isPkcs1 ? pkcs1ToPkcs8(der) : der;
 }
 
 async function signHeaders(keyId: string, pem: string, method: string, path: string) {

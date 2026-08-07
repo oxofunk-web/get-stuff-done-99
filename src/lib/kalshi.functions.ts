@@ -79,3 +79,60 @@ export const placeOrder = createServerFn({ method: "POST" })
       return { ok: false as const, error: e instanceof Error ? e.message : "Order rejected" };
     }
   });
+interface RawPosition {
+  ticker: string;
+  position?: number;
+  market_exposure?: number;
+  realized_pnl?: number;
+  total_traded?: number;
+}
+
+/** Wallet balance + realized/open P&L straight from the Kalshi account. */
+export const getPortfolio = createServerFn({ method: "GET" }).handler(async () => {
+  const keyId = process.env["KALSHI_API_KEY_ID"];
+  const pem = process.env["KALSHI_PRIVATE_KEY"];
+  if (!keyId || !pem) {
+    return {
+      configured: false as const,
+      balance: null as number | null,
+      realized: 0,
+      exposure: 0,
+      positions: [] as { ticker: string; count: number; exposure: number; realized: number }[],
+      error: null as string | null,
+    };
+  }
+  try {
+    const [bal, pos] = await Promise.all([
+      authedKalshi<{ balance: number }>({ keyId, pem }, "GET", "/portfolio/balance"),
+      authedKalshi<{ market_positions?: RawPosition[] }>(
+        { keyId, pem },
+        "GET",
+        "/portfolio/positions?count_filter=position&limit=200",
+      ),
+    ]);
+    const raw = pos.market_positions ?? [];
+    const positions = raw.map((p) => ({
+      ticker: p.ticker,
+      count: p.position ?? 0,
+      exposure: (p.market_exposure ?? 0) / 100,
+      realized: (p.realized_pnl ?? 0) / 100,
+    }));
+    return {
+      configured: true as const,
+      balance: bal.balance / 100,
+      realized: positions.reduce((a, p) => a + p.realized, 0),
+      exposure: positions.reduce((a, p) => a + p.exposure, 0),
+      positions,
+      error: null as string | null,
+    };
+  } catch (e) {
+    return {
+      configured: true as const,
+      balance: null as number | null,
+      realized: 0,
+      exposure: 0,
+      positions: [] as { ticker: string; count: number; exposure: number; realized: number }[],
+      error: e instanceof Error ? e.message : "Kalshi portfolio failed",
+    };
+  }
+});
