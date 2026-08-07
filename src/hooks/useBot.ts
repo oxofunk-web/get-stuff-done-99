@@ -5,7 +5,8 @@ import { candleInfo } from "@/lib/bot/candle";
 import { KALSHI_POLL_MS, PAIRS, type PairId } from "@/lib/bot/constants";
 import { computeSignals } from "@/lib/bot/signals";
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
-import { getLiveStatus, getMarkets, placeOrder } from "@/lib/kalshi.functions";
+import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
+import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
 
 export type Mode = "paper" | "live";
 
@@ -13,6 +14,34 @@ export interface Toast {
   id: number;
   msg: string;
   tone: "yes" | "no" | "warn";
+}
+
+export interface OpenPosition {
+  id: string;
+  pair: PairId;
+  dir: "YES" | "NO";
+  count: number;
+  entry: number; // dollars per contract
+  stake: number;
+  candleId: number;
+  paper: boolean;
+}
+
+export interface Portfolio {
+  configured: boolean;
+  balance: number | null;
+  realized: number;
+  exposure: number;
+  positions: { ticker: string; count: number; exposure: number; realized: number }[];
+  error: string | null;
+}
+
+export interface AiState {
+  status: "idle" | "thinking" | "done" | "error";
+  verdict: AiVerdict | null;
+  error: string | null;
+  signalLabel: string | null;
+  at: string | null;
 }
 
 export function useBot() {
@@ -36,6 +65,26 @@ export function useBot() {
     configured: false,
     balance: null,
     error: null,
+  });
+  const [portfolio, setPortfolio] = useState<Portfolio>({
+    configured: false,
+    balance: null,
+    realized: 0,
+    exposure: 0,
+    positions: [],
+    error: null,
+  });
+  const [open, setOpen] = useState<OpenPosition[]>([]);
+  const [realizedPaper, setRealizedPaper] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [aiAssist, setAiAssist] = useState(true);
+  const [ai, setAi] = useState<AiState>({
+    status: "idle",
+    verdict: null,
+    error: null,
+    signalLabel: null,
+    at: null,
   });
 
   const [now, setNow] = useState(() => Date.now());
@@ -65,11 +114,35 @@ export function useBot() {
   // Candle rollover resets the one-trade-per-candle lock
   useEffect(() => {
     if (candle.id !== candleRef.current) {
+      const closed = candleRef.current;
       candleRef.current = candle.id;
       tradedRef.current = false;
       setTradedThisCandle(false);
       setTradeStatus({});
       seenSigIds.current = new Set();
+      setAi({ status: "idle", verdict: null, error: null, signalLabel: null, at: null });
+      // Settle every position that belonged to the candle that just closed.
+      setOpen((list) => {
+        const expired = list.filter((p) => p.candleId === closed);
+        if (expired.length) {
+          let pnl = 0;
+          let w = 0;
+          let l = 0;
+          for (const p of expired) {
+            const mid = marketsRef.current[p.pair]?.yesMid ?? 0.5;
+            const finalProb = p.dir === "YES" ? mid : 1 - mid;
+            const won = finalProb >= 0.5;
+            pnl += won ? p.count * (1 - p.entry) : -p.count * p.entry;
+            if (won) w += 1;
+            else l += 1;
+          }
+          setRealizedPaper((r) => r + pnl);
+          setWins((x) => x + w);
+          setLosses((x) => x + l);
+          setExposure((e) => Math.max(0, e - expired.reduce((a, p) => a + p.stake, 0)));
+        }
+        return list.filter((p) => p.candleId !== closed);
+      });
     }
   }, [candle.id]);
 
