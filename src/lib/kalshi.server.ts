@@ -136,10 +136,23 @@ export async function authedKalshi<T>(
   if (!res.ok) {
     let detail = "";
     try {
-      const j = (await res.json()) as { message?: string; error?: string };
-      detail = j.message ?? j.error ?? "";
+      const j = (await res.json()) as {
+        message?: string;
+        error?: string | { code?: string; message?: string; details?: string };
+      };
+      const err = j.error;
+      if (typeof err === "string") detail = err;
+      else if (err && typeof err === "object")
+        detail = [err.code, err.details].filter(Boolean).join(" · ");
+      if (!detail && typeof j.message === "string") detail = j.message;
     } catch {
       detail = await res.text().catch(() => "");
+    }
+    if (typeof detail !== "string") detail = String(detail);
+    if (res.status === 401) {
+      throw new Error(
+        `Kalshi rejected the API key (401${detail ? ` — ${detail}` : ""}). The key ID may be revoked or paired with a different private key — generate a new key pair in Kalshi → Account → API Keys and re-save both values.`,
+      );
     }
     throw new Error(`Kalshi ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
   }
