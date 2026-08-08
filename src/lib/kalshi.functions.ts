@@ -23,8 +23,16 @@ export const getLiveStatus = createServerFn({ method: "GET" }).handler(async () 
   const pem = process.env["KALSHI_PRIVATE_KEY"];
   if (!keyId || !pem) return { configured: false, balance: null as number | null, error: null };
   try {
-    const bal = await authedKalshi<{ balance: number }>({ keyId, pem }, "GET", "/portfolio/balance");
-    return { configured: true, balance: bal.balance / 100, error: null as string | null };
+    const bal = await authedKalshi<{ balance?: number; balance_dollars?: string }>(
+      { keyId, pem },
+      "GET",
+      "/portfolio/balance",
+    );
+    return {
+      configured: true,
+      balance: dollars(bal.balance_dollars, bal.balance),
+      error: null as string | null,
+    };
   } catch (e) {
     return {
       configured: true,
@@ -85,6 +93,21 @@ interface RawPosition {
   market_exposure?: number;
   realized_pnl?: number;
   total_traded?: number;
+  position_fp?: string;
+  market_exposure_dollars?: string;
+  realized_pnl_dollars?: string;
+  total_traded_dollars?: string;
+  fees_paid_dollars?: string;
+}
+
+/** Kalshi returns either integer cents or newer `*_dollars` strings. */
+function dollars(dollarStr: string | undefined, cents: number | undefined) {
+  if (dollarStr !== undefined && dollarStr !== "") {
+    const d = Number(dollarStr);
+    if (Number.isFinite(d)) return d;
+  }
+  const c = Number(cents ?? 0);
+  return Number.isFinite(c) ? c / 100 : 0;
 }
 
 /** Wallet balance + realized/open P&L straight from the Kalshi account. */
@@ -103,7 +126,11 @@ export const getPortfolio = createServerFn({ method: "GET" }).handler(async () =
   }
   try {
     const [bal, pos] = await Promise.all([
-      authedKalshi<{ balance: number }>({ keyId, pem }, "GET", "/portfolio/balance"),
+      authedKalshi<{ balance?: number; balance_dollars?: string }>(
+        { keyId, pem },
+        "GET",
+        "/portfolio/balance",
+      ),
       authedKalshi<{ market_positions?: RawPosition[] }>(
         { keyId, pem },
         "GET",
@@ -111,15 +138,18 @@ export const getPortfolio = createServerFn({ method: "GET" }).handler(async () =
       ),
     ]);
     const raw = pos.market_positions ?? [];
-    const positions = raw.map((p) => ({
-      ticker: p.ticker,
-      count: p.position ?? 0,
-      exposure: (p.market_exposure ?? 0) / 100,
-      realized: (p.realized_pnl ?? 0) / 100,
-    }));
+    const positions = raw
+      .map((p) => ({
+        ticker: p.ticker,
+        count: p.position_fp !== undefined ? Number(p.position_fp) : (p.position ?? 0),
+        exposure: dollars(p.market_exposure_dollars, p.market_exposure),
+        realized:
+          dollars(p.realized_pnl_dollars, p.realized_pnl) - dollars(p.fees_paid_dollars, undefined),
+      }))
+      .filter((p) => p.count !== 0 || p.exposure !== 0);
     return {
       configured: true as const,
-      balance: bal.balance / 100,
+      balance: dollars(bal.balance_dollars, bal.balance),
       realized: positions.reduce((a, p) => a + p.realized, 0),
       exposure: positions.reduce((a, p) => a + p.exposure, 0),
       positions,
