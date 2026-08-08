@@ -23,8 +23,16 @@ export const getLiveStatus = createServerFn({ method: "GET" }).handler(async () 
   const pem = process.env["KALSHI_PRIVATE_KEY"];
   if (!keyId || !pem) return { configured: false, balance: null as number | null, error: null };
   try {
-    const bal = await authedKalshi<{ balance: number }>({ keyId, pem }, "GET", "/portfolio/balance");
-    return { configured: true, balance: bal.balance / 100, error: null as string | null };
+    const bal = await authedKalshi<{ balance?: number; balance_dollars?: string }>(
+      { keyId, pem },
+      "GET",
+      "/portfolio/balance",
+    );
+    return {
+      configured: true,
+      balance: dollars(bal.balance_dollars, bal.balance),
+      error: null as string | null,
+    };
   } catch (e) {
     return {
       configured: true,
@@ -118,7 +126,11 @@ export const getPortfolio = createServerFn({ method: "GET" }).handler(async () =
   }
   try {
     const [bal, pos] = await Promise.all([
-      authedKalshi<{ balance: number }>({ keyId, pem }, "GET", "/portfolio/balance"),
+      authedKalshi<{ balance?: number; balance_dollars?: string }>(
+        { keyId, pem },
+        "GET",
+        "/portfolio/balance",
+      ),
       authedKalshi<{ market_positions?: RawPosition[] }>(
         { keyId, pem },
         "GET",
@@ -137,7 +149,7 @@ export const getPortfolio = createServerFn({ method: "GET" }).handler(async () =
       .filter((p) => p.count !== 0 || p.exposure !== 0);
     return {
       configured: true as const,
-      balance: bal.balance / 100,
+      balance: dollars(bal.balance_dollars, bal.balance),
       realized: positions.reduce((a, p) => a + p.realized, 0),
       exposure: positions.reduce((a, p) => a + p.exposure, 0),
       positions,
