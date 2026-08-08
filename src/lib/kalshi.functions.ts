@@ -85,6 +85,21 @@ interface RawPosition {
   market_exposure?: number;
   realized_pnl?: number;
   total_traded?: number;
+  position_fp?: string;
+  market_exposure_dollars?: string;
+  realized_pnl_dollars?: string;
+  total_traded_dollars?: string;
+  fees_paid_dollars?: string;
+}
+
+/** Kalshi returns either integer cents or newer `*_dollars` strings. */
+function dollars(dollarStr: string | undefined, cents: number | undefined) {
+  if (dollarStr !== undefined && dollarStr !== "") {
+    const d = Number(dollarStr);
+    if (Number.isFinite(d)) return d;
+  }
+  const c = Number(cents ?? 0);
+  return Number.isFinite(c) ? c / 100 : 0;
 }
 
 /** Wallet balance + realized/open P&L straight from the Kalshi account. */
