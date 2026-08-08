@@ -58,29 +58,37 @@ export const placeOrder = createServerFn({ method: "POST" })
     if (!keyId || !pem) {
       return { ok: false as const, error: "Live trading keys are not configured." };
     }
+    // Kalshi V2 order API: unified book — `bid` buys YES, `ask` sells YES
+    // (equivalent to buying NO at 100 - price). Price is a dollar string.
+    const yesPriceCents = data.side === "yes" ? data.priceCents : 100 - data.priceCents;
     const body: Record<string, unknown> = {
       ticker: data.ticker,
       client_order_id: crypto.randomUUID(),
-      action: "buy",
-      side: data.side,
-      type: "limit",
+      side: data.side === "yes" ? "bid" : "ask",
+      count: data.count.toFixed(2),
+      price: (yesPriceCents / 100).toFixed(4),
       time_in_force: "fill_or_kill",
-      count: data.count,
+      self_trade_prevention_type: "taker_at_cross",
+      post_only: false,
     };
-    if (data.side === "yes") body["yes_price"] = data.priceCents;
-    else body["no_price"] = data.priceCents;
 
     try {
-      const res = await authedKalshi<{ order?: { order_id?: string; status?: string } }>(
-        { keyId, pem },
-        "POST",
-        "/portfolio/orders",
-        body,
-      );
+      const res = await authedKalshi<{
+        order_id?: string;
+        fill_count?: string;
+        remaining_count?: string;
+        average_fill_price?: string;
+        order?: { order_id?: string; status?: string };
+      }>({ keyId, pem }, "POST", "/portfolio/events/orders", body);
+      const filled = Number(res.fill_count ?? 0);
       return {
         ok: true as const,
-        orderId: res.order?.order_id ?? null,
-        status: res.order?.status ?? "submitted",
+        orderId: res.order_id ?? res.order?.order_id ?? null,
+        status:
+          res.order?.status ??
+          (Number.isFinite(filled) && filled > 0
+            ? `filled ${filled} @ ${res.average_fill_price ?? "?"}`
+            : "unfilled (fill-or-kill canceled)"),
       };
     } catch (e) {
       console.error("Kalshi order failed", e);
