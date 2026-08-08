@@ -126,12 +126,15 @@ export const getPortfolio = createServerFn({ method: "GET" }).handler(async () =
       ),
     ]);
     const raw = pos.market_positions ?? [];
-    const positions = raw.map((p) => ({
-      ticker: p.ticker,
-      count: p.position ?? 0,
-      exposure: (p.market_exposure ?? 0) / 100,
-      realized: (p.realized_pnl ?? 0) / 100,
-    }));
+    const positions = raw
+      .map((p) => ({
+        ticker: p.ticker,
+        count: p.position_fp !== undefined ? Number(p.position_fp) : (p.position ?? 0),
+        exposure: dollars(p.market_exposure_dollars, p.market_exposure),
+        realized:
+          dollars(p.realized_pnl_dollars, p.realized_pnl) - dollars(p.fees_paid_dollars, undefined),
+      }))
+      .filter((p) => p.count !== 0 || p.exposure !== 0);
     return {
       configured: true as const,
       balance: bal.balance / 100,
