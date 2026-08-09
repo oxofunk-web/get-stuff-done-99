@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { PAIRS } from "./bot/constants";
-import { authedKalshi, fetchOpenMarket, normalizeMarket } from "./kalshi.server";
+import { authedKalshi, fetchMarket, fetchOpenMarket, normalizeMarket } from "./kalshi.server";
 
 /** Live YES/NO orderbook for every 15-minute crypto series. Public data. */
 export const getMarkets = createServerFn({ method: "GET" }).handler(async () => {
@@ -58,16 +58,38 @@ export const placeOrder = createServerFn({ method: "POST" })
     if (!keyId || !pem) {
       return { ok: false as const, error: "Live trading keys are not configured." };
     }
-    // Kalshi V2 order API: unified book — `bid` buys YES, `ask` sells YES
-    // (equivalent to buying NO at 100 - price). Price is a dollar string.
-    const yesPriceCents = data.side === "yes" ? data.priceCents : 100 - data.priceCents;
+    // Re-read the book right before sending: quotes from the 8s poll are stale,
+    // and a limit that doesn't cross the top of book gets rejected outright.
+    const fresh = await fetchMarket(data.ticker);
+    const m = fresh ? normalizeMarket(fresh) : null;
+    const restingSize = Number(
+      (data.side === "yes" ? fresh?.yes_ask_size_fp : fresh?.yes_bid_size_fp) ?? 0,
+    );
+
+    const quoteCents = m
+      ? Math.round((data.side === "yes" ? m.yesAsk : m.noAsk) * 100)
+      : data.priceCents;
+    // Pay up to 2¢ through the touch so a taker order actually crosses.
+    const limitCents = Math.min(
+      99,
+      Math.max(1, Math.max(data.priceCents, quoteCents || data.priceCents) + 2),
+    );
+    const count = Math.max(
+      1,
+      restingSize > 0 ? Math.min(data.count, Math.floor(restingSize)) : data.count,
+    );
+
+    // Unified book: `bid` buys YES, `ask` sells YES (== buying NO at 100 - price).
+    const yesPriceCents = data.side === "yes" ? limitCents : 100 - limitCents;
     const body: Record<string, unknown> = {
       ticker: data.ticker,
       client_order_id: crypto.randomUUID(),
       side: data.side === "yes" ? "bid" : "ask",
-      count: data.count.toFixed(2),
+      count: count.toFixed(2),
       price: (yesPriceCents / 100).toFixed(4),
-      time_in_force: "fill_or_kill",
+      // IOC fills whatever rests and cancels the remainder; FOK rejects the
+      // whole order with `fill_or_kill_insufficient_resting_volume`.
+      time_in_force: "immediate_or_cancel",
       self_trade_prevention_type: "taker_at_cross",
       post_only: false,
     };
@@ -77,24 +99,41 @@ export const placeOrder = createServerFn({ method: "POST" })
         order_id?: string;
         fill_count?: string;
         remaining_count?: string;
+        average_fill_price_dollars?: string;
         average_fill_price?: string;
         order?: { order_id?: string; status?: string };
       }>({ keyId, pem }, "POST", "/portfolio/events/orders", body);
       const filled = Number(res.fill_count ?? 0);
+      if (!Number.isFinite(filled) || filled <= 0) {
+        return {
+          ok: false as const,
+          error: `No resting volume at ${limitCents}¢ — nothing filled, order canceled.`,
+        };
+      }
+      const avg = res.average_fill_price_dollars ?? res.average_fill_price;
       return {
         ok: true as const,
         orderId: res.order_id ?? res.order?.order_id ?? null,
-        status:
-          res.order?.status ??
-          (Number.isFinite(filled) && filled > 0
-            ? `filled ${filled} @ ${res.average_fill_price ?? "?"}`
-            : "unfilled (fill-or-kill canceled)"),
+        filled,
+        priceCents: limitCents,
+        status: `filled ${filled}${avg ? ` @ ${(Number(avg) * (Number(avg) <= 1 ? 100 : 1)).toFixed(0)}¢` : ""}`,
       };
     } catch (e) {
       console.error("Kalshi order failed", e);
-      return { ok: false as const, error: e instanceof Error ? e.message : "Order rejected" };
+      return { ok: false as const, error: friendlyOrderError(e) };
     }
   });
+
+function friendlyOrderError(e: unknown) {
+  const raw = e instanceof Error ? e.message : "Order rejected";
+  if (/insufficient_balance/i.test(raw))
+    return "Insufficient Kalshi balance for this bet size — lower the stake or deposit funds.";
+  if (/resting_volume/i.test(raw))
+    return "Not enough resting volume to fill — the book is too thin right now.";
+  if (/market_not_open|not_active|closed/i.test(raw))
+    return "That 15-minute market is no longer accepting orders.";
+  return raw;
+}
 interface RawPosition {
   ticker: string;
   position?: number;

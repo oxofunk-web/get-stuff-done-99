@@ -13,6 +13,8 @@ export interface RawMarket {
   yes_ask_dollars?: string;
   no_bid_dollars?: string;
   no_ask_dollars?: string;
+  yes_bid_size_fp?: string;
+  yes_ask_size_fp?: string;
   volume?: number;
   volume_24h?: number;
   volume_24h_fp?: string;
@@ -58,6 +60,23 @@ export async function fetchOpenMarket(series: string): Promise<RawMarket | null>
       if (!r.ok) continue;
       const j = (await r.json()) as { markets?: RawMarket[] };
       return j.markets?.[0] ?? null;
+    } catch {
+      // try next base
+    }
+  }
+  return null;
+}
+
+/** Fresh single-market snapshot (best bid/ask + resting size at top of book). */
+export async function fetchMarket(ticker: string): Promise<RawMarket | null> {
+  for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
+    try {
+      const r = await fetch(`${base}/markets/${encodeURIComponent(ticker)}`, {
+        headers: { accept: "application/json" },
+      });
+      if (!r.ok) continue;
+      const j = (await r.json()) as { market?: RawMarket };
+      return j.market ?? null;
     } catch {
       // try next base
     }
