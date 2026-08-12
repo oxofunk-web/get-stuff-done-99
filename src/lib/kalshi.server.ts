@@ -1,5 +1,5 @@
-const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
-const FALLBACK_BASE = "https://external-api.kalshi.com/trade-api/v2";
+const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
+const FALLBACK_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
 export interface RawMarket {
   ticker: string;
@@ -176,4 +176,156 @@ export async function authedKalshi<T>(
     throw new Error(`Kalshi ${res.status}${detail ? ` — ${detail.slice(0, 200)}` : ""}`);
   }
   return (await res.json()) as T;
+}
+
+export interface AccountPosition {
+  ticker: string;
+  count: number;
+  exposure: number;
+  realized: number;
+}
+
+interface RawPosition {
+  ticker: string;
+  position?: number;
+  market_exposure?: number;
+  realized_pnl?: number;
+  position_fp?: string;
+  market_exposure_dollars?: string;
+  realized_pnl_dollars?: string;
+  fees_paid_dollars?: string;
+}
+
+function dollars(dollarStr: string | undefined, cents: number | undefined) {
+  if (dollarStr !== undefined && dollarStr !== "") {
+    const amount = Number(dollarStr);
+    if (Number.isFinite(amount)) return amount;
+  }
+  const amount = Number(cents ?? 0);
+  return Number.isFinite(amount) ? amount / 100 : 0;
+}
+
+export async function fetchLiveBalance(creds: { keyId: string; pem: string }) {
+  const balance = await authedKalshi<{ balance?: number; balance_dollars?: string }>(
+    creds,
+    "GET",
+    "/portfolio/balance",
+  );
+  return dollars(balance.balance_dollars, balance.balance);
+}
+
+export async function fetchPortfolioSnapshot(creds: { keyId: string; pem: string }) {
+  const [balance, result] = await Promise.all([
+    fetchLiveBalance(creds),
+    authedKalshi<{ market_positions?: RawPosition[] }>(
+      creds,
+      "GET",
+      "/portfolio/positions?count_filter=position&limit=200",
+    ),
+  ]);
+  const positions: AccountPosition[] = (result.market_positions ?? [])
+    .map((position) => ({
+      ticker: position.ticker,
+      count:
+        position.position_fp !== undefined ? Number(position.position_fp) : (position.position ?? 0),
+      exposure: dollars(position.market_exposure_dollars, position.market_exposure),
+      realized:
+        dollars(position.realized_pnl_dollars, position.realized_pnl) -
+        dollars(position.fees_paid_dollars, undefined),
+    }))
+    .filter((position) => position.count !== 0 || position.exposure !== 0);
+
+  return {
+    balance,
+    positions,
+    realized: positions.reduce((total, position) => total + position.realized, 0),
+    exposure: positions.reduce((total, position) => total + position.exposure, 0),
+  };
+}
+
+function friendlyOrderError(error: unknown) {
+  const raw = error instanceof Error ? error.message : "Order rejected";
+  if (/insufficient_balance/i.test(raw))
+    return "Insufficient Kalshi balance for this bet size — lower the stake or deposit funds.";
+  if (/resting_volume/i.test(raw))
+    return "Not enough resting volume to fill — the book is too thin right now.";
+  if (/market_not_open|not_active|closed/i.test(raw))
+    return "That 15-minute market is no longer accepting orders.";
+  return raw;
+}
+
+interface PlaceLiveOrderInput {
+  ticker: string;
+  side: "yes" | "no";
+  priceCents: number;
+  count: number;
+}
+
+interface CreateOrderResponse {
+  order_id: string;
+  fill_count: string;
+  remaining_count: string;
+  average_fill_price?: string;
+}
+
+/** Places an IOC order and retries once with a fresh quote if the touch moved. */
+export async function placeLiveOrder(
+  creds: { keyId: string; pem: string },
+  input: PlaceLiveOrderInput,
+) {
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const fresh = await fetchMarket(input.ticker);
+      const market = fresh ? normalizeMarket(fresh) : null;
+      const restingSize = Number(
+        (input.side === "yes" ? fresh?.yes_ask_size_fp : fresh?.yes_bid_size_fp) ?? 0,
+      );
+      const quoteCents = market
+        ? Math.round((input.side === "yes" ? market.yesAsk : market.noAsk) * 100)
+        : input.priceCents;
+      const limitCents = Math.min(
+        99,
+        Math.max(1, Math.max(input.priceCents, quoteCents || input.priceCents) + 2 + attempt),
+      );
+      const count = Math.max(
+        1,
+        restingSize > 0 ? Math.min(input.count, Math.floor(restingSize)) : input.count,
+      );
+      const yesPriceCents = input.side === "yes" ? limitCents : 100 - limitCents;
+      const response = await authedKalshi<CreateOrderResponse>(
+        creds,
+        "POST",
+        "/portfolio/events/orders",
+        {
+          ticker: input.ticker,
+          client_order_id: crypto.randomUUID(),
+          side: input.side === "yes" ? "bid" : "ask",
+          count: count.toFixed(2),
+          price: (yesPriceCents / 100).toFixed(4),
+          time_in_force: "immediate_or_cancel",
+          self_trade_prevention_type: "taker_at_cross",
+          post_only: false,
+          exchange_index: -1,
+        },
+      );
+      const filled = Number(response.fill_count);
+      if (Number.isFinite(filled) && filled > 0) {
+        const average = Number(response.average_fill_price);
+        return {
+          ok: true as const,
+          orderId: response.order_id,
+          filled,
+          priceCents: limitCents,
+          status: `filled ${filled}${Number.isFinite(average) ? ` @ ${(average * 100).toFixed(0)}¢` : ""}`,
+        };
+      }
+    }
+    return {
+      ok: false as const,
+      error: "No resting volume at the live price after two attempts — order canceled safely.",
+    };
+  } catch (error) {
+    console.error("Kalshi order failed", error);
+    return { ok: false as const, error: friendlyOrderError(error) };
+  }
 }

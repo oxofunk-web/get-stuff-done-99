@@ -192,7 +192,8 @@ export function useBrtiFeed() {
     };
 
     startCoinbase();
-    const paint = setInterval(() => setTick((t) => t + 1), 700);
+    // A steady one-second heartbeat keeps freshness visible even between ticks.
+    const paint = setInterval(() => setTick((t) => t + 1), 1000);
 
     return () => {
       disposed = true;
