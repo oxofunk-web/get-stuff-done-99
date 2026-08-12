@@ -302,6 +302,8 @@ export function useBot() {
 
       let status: TradeStatus = "placed";
       let msg = "";
+      let filledCount = count;
+      let filledPriceCents = priceCents;
 
       if (mode === "paper") {
         await new Promise((r) => setTimeout(r, 500));
@@ -312,6 +314,8 @@ export function useBot() {
         });
         if (res.ok) {
           msg = `${sig.dir} ×${count} @ ${priceCents}¢ · ${res.status}`;
+          filledCount = res.filled;
+          filledPriceCents = res.priceCents;
         } else {
           status = "failed";
           msg = res.error ?? "Order rejected";
@@ -336,16 +340,17 @@ export function useBot() {
       );
 
       if (status === "placed") {
+        const filledStake = (filledCount * filledPriceCents) / 100;
         setPlacedCount((c) => c + 1);
-        setExposure((e) => e + betSize);
+        setExposure((e) => e + filledStake);
         setOpen((l) => [
           {
             id: `${sig.id}-${Date.now()}`,
             pair: sig.pair,
             dir: sig.dir,
-            count,
-            entry: priceCents / 100,
-            stake: (count * priceCents) / 100,
+            count: filledCount,
+            entry: filledPriceCents / 100,
+            stake: filledStake,
             candleId: candleRef.current,
             paper: mode === "paper",
           },
@@ -361,6 +366,10 @@ export function useBot() {
           void refreshPortfolio();
         }
       } else {
+        // A rejected/canceled IOC moved no money, so allow the bot to retry a
+        // later valid signal in this candle instead of falsely marking it traded.
+        tradedRef.current = false;
+        setTradedThisCandle(false);
         notify(`Trade failed: ${msg}`, "warn");
       }
       firingRef.current = false;

@@ -78,4 +78,4 @@ export const CB_MAP: Record<string, PairId> = {
 /** How long to wait for a first frame before failing over to the next source. */
 export const FEED_TIMEOUT_MS = 5000;
 /** Server-polled REST fallback cadence when both sockets are blocked. */
-export const REST_POLL_MS = 2500;
+export const REST_POLL_MS = 1000;

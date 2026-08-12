@@ -26,6 +26,8 @@ const sourceCopy: Record<FeedSource, string> = {
 };
 
 export function BrtiPanel({ spot, markets, history, status, source }: Props) {
+  const latestTick = Math.max(0, ...Object.values(spot).map((value) => value?.ts ?? 0));
+  const ageSeconds = latestTick ? Math.max(0, Math.floor((Date.now() - latestTick) / 1000)) : null;
   return (
     <section className="panel">
       <div className="panel-head">
@@ -40,7 +42,7 @@ export function BrtiPanel({ spot, markets, history, status, source }: Props) {
             className={status === "live" ? "text-yes" : status === "connecting" ? "text-gold" : "text-no"}
           >
             {status === "live"
-              ? sourceCopy[source]
+              ? `${sourceCopy[source]} · ${ageSeconds ?? "—"}s`
               : status === "connecting"
                 ? "CONNECTING"
                 : "RECONNECTING"}
