@@ -156,14 +156,19 @@ export async function authedKalshi<T>(
     let detail = "";
     try {
       const j = (await res.json()) as {
+        code?: string;
         message?: string;
+        details?: string;
         error?: string | { code?: string; message?: string; details?: string };
       };
-      const err = j.error;
-      if (typeof err === "string") detail = err;
-      else if (err && typeof err === "object")
-        detail = [err.code, err.details].filter(Boolean).join(" · ");
-      if (!detail && typeof j.message === "string") detail = j.message;
+      // Current Kalshi errors are flat; retain nested parsing for older replies.
+      detail = [j.code, j.message, j.details].filter(Boolean).join(" · ");
+      if (!detail) {
+        const err = j.error;
+        if (typeof err === "string") detail = err;
+        else if (err && typeof err === "object")
+          detail = [err.code, err.message, err.details].filter(Boolean).join(" · ");
+      }
     } catch {
       detail = await res.text().catch(() => "");
     }
