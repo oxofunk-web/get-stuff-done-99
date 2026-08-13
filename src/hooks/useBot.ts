@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useBrtiFeed } from "./useBrtiFeed";
 import { candleInfo } from "@/lib/bot/candle";
-import { KALSHI_POLL_MS, PAIRS, type PairId } from "@/lib/bot/constants";
+import {
+  KALSHI_POLL_MS,
+  MAX_TRADES_PER_CANDLE,
+  PAIRS,
+  type PairId,
+} from "@/lib/bot/constants";
 import { computeSignals } from "@/lib/bot/signals";
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
