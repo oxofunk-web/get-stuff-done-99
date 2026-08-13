@@ -1,9 +1,16 @@
 export const GATE_SECS = 480; // trade window opens at the 8:00 mark
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
-export const THRESHOLD = 80; // minimum confidence to fire
+export const THRESHOLD = 86; // minimum confidence to fire
 export const MAX_TRADES_PER_CANDLE = 2; // best two signals per 15m candle
 export const LAG_PCT = 0.0012; // 0.12% BRTI vs Kalshi divergence
 export const KALSHI_POLL_MS = 8000;
+
+/** Quality filters — a signal must clear all of these before it can fire. */
+export const MAX_SPREAD = 0.05; // skip illiquid books wider than 5¢
+export const MIN_YES_MID = 0.12; // skip lottery-ticket longshots
+export const MAX_YES_MID = 0.9; // skip near-certain, no edge left
+export const MIN_SKEW = 0.04; // book must lean at least 4¢ one way
+export const MIN_TICKS = 24; // enough spot history to trust momentum
 
 export type PairId = "BTC" | "ETH" | "SOL" | "XRP";
 
