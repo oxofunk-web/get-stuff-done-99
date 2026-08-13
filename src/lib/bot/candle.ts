@@ -21,7 +21,7 @@ export function candleInfo(now = Date.now()): CandleInfo {
 export type Phase = "warmup" | "approach" | "trade" | "closing";
 
 export function phaseOf(elapsed: number): Phase {
-  if (elapsed < 300) return "warmup";
+  if (elapsed < 360) return "warmup";
   if (elapsed < GATE_SECS) return "approach";
   if (elapsed < CLOSE_SECS) return "trade";
   return "closing";

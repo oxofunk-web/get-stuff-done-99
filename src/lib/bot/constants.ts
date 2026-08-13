@@ -1,4 +1,4 @@
-export const GATE_SECS = 480; // trade window opens at the 8:00 mark
+export const GATE_SECS = 600; // trade window opens at the 10:00 mark (5 min before settle)
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
 export const THRESHOLD = 86; // minimum confidence to fire
 export const MAX_TRADES_PER_CANDLE = 2; // best two signals per 15m candle

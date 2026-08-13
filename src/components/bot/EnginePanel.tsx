@@ -40,7 +40,7 @@ export function EnginePanel({
       }
     : el < GATE_SECS
       ? {
-          text: `🔒 Locked — trade window opens at the 8:00 mark (${mmss(GATE_SECS - el)})`,
+          text: `🔒 Locked — trade window opens at the 10:00 mark (${mmss(GATE_SECS - el)})`,
           tone: "border-wire bg-surface-2 text-muted-foreground",
         }
       : el >= CLOSE_SECS

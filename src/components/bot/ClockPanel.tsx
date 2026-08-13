@@ -9,9 +9,9 @@ const phaseMeta = {
 } as const;
 
 const segs = [
-  { label: "0–5m", sub: "WARM-UP", from: 0, to: 300 },
-  { label: "5–8m", sub: "APPROACH", from: 300, to: 480 },
-  { label: "8–14m", sub: "✅ TRADE", from: 480, to: 840 },
+  { label: "0–6m", sub: "WARM-UP", from: 0, to: 360 },
+  { label: "6–10m", sub: "APPROACH", from: 360, to: 600 },
+  { label: "10–14m", sub: "✅ TRADE", from: 600, to: 840 },
   { label: "14–15m", sub: "CLOSE", from: 840, to: 900 },
 ];
 
