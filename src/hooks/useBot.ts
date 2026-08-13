@@ -453,7 +453,7 @@ export function useBot() {
       const next = !on;
       notify(
         next
-          ? "Auto-trading ON — fires after the 8:00 mark at 80%+"
+          ? "Auto-trading ON — fires after the 8:00 mark at 86%+"
           : "Auto-trading paused",
         next ? "yes" : "warn",
       );

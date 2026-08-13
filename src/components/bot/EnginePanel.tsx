@@ -46,7 +46,7 @@ export function EnginePanel({
       : el >= CLOSE_SECS
         ? { text: "🔴 Closing zone — too late for a new entry", tone: "border-no/30 bg-no/10 text-no" }
         : {
-            text: `🟢 Trade window OPEN — the bot fires the best ${MAX_TRADES_PER_CANDLE} signals at 80%+`,
+            text: `🟢 Trade window OPEN — the bot fires the best ${MAX_TRADES_PER_CANDLE} signals at 86%+`,
             tone: "border-yes/40 bg-yes/10 text-yes",
           };
 
