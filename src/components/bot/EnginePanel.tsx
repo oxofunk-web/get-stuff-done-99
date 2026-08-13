@@ -1,5 +1,5 @@
 import { mmss } from "@/lib/bot/candle";
-import { CLOSE_SECS, GATE_SECS } from "@/lib/bot/constants";
+import { CLOSE_SECS, GATE_SECS, MAX_TRADES_PER_CANDLE } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
 import type { Mode } from "@/hooks/useBot";
 
@@ -34,7 +34,10 @@ export function EnginePanel({
 }: Props) {
   const el = candle.elapsed;
   const gate = tradedThisCandle
-    ? { text: "✅ Trade placed this candle — waiting for the next one", tone: "border-yes/40 bg-yes/10 text-yes" }
+    ? {
+        text: `✅ ${MAX_TRADES_PER_CANDLE} trades placed this candle — waiting for the next one`,
+        tone: "border-yes/40 bg-yes/10 text-yes",
+      }
     : el < GATE_SECS
       ? {
           text: `🔒 Locked — trade window opens at the 10:00 mark (${mmss(GATE_SECS - el)})`,
@@ -43,7 +46,7 @@ export function EnginePanel({
       : el >= CLOSE_SECS
         ? { text: "🔴 Closing zone — too late for a new entry", tone: "border-no/30 bg-no/10 text-no" }
         : {
-            text: "🟢 Trade window OPEN — the bot fires on an 80%+ signal",
+            text: `🟢 Trade window OPEN — the bot fires the best ${MAX_TRADES_PER_CANDLE} signals at 80%+`,
             tone: "border-yes/40 bg-yes/10 text-yes",
           };
 
@@ -139,7 +142,7 @@ export function EnginePanel({
         </div>
 
         <div className="mt-2 grid grid-cols-4 gap-1.5">
-          {[2, 3, 4, 5].map((n) => (
+          {[5, 10, 15, 25].map((n) => (
             <button
               key={n}
               type="button"

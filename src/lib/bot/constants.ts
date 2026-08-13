@@ -1,6 +1,7 @@
 export const GATE_SECS = 600; // trade window opens at the 10:00 mark
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
 export const THRESHOLD = 80; // minimum confidence to fire
+export const MAX_TRADES_PER_CANDLE = 2; // best two signals per 15m candle
 export const LAG_PCT = 0.0012; // 0.12% BRTI vs Kalshi divergence
 export const KALSHI_POLL_MS = 8000;
 

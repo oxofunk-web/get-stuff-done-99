@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useBrtiFeed } from "./useBrtiFeed";
 import { candleInfo } from "@/lib/bot/candle";
-import { KALSHI_POLL_MS, PAIRS, type PairId } from "@/lib/bot/constants";
+import {
+  KALSHI_POLL_MS,
+  MAX_TRADES_PER_CANDLE,
+  PAIRS,
+  type PairId,
+} from "@/lib/bot/constants";
 import { computeSignals } from "@/lib/bot/signals";
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
@@ -54,7 +59,7 @@ export function useBot() {
 
   const [mode, setMode] = useState<Mode>("paper");
   const [botOn, setBotOn] = useState(false);
-  const [betSize, setBetSize] = useState(3);
+  const [betSize, setBetSize] = useState(5);
   const [placedCount, setPlacedCount] = useState(0);
   const [exposure, setExposure] = useState(0);
   const [sigCount, setSigCount] = useState(0);
@@ -91,7 +96,8 @@ export function useBot() {
   const [now, setNow] = useState(() => Date.now());
   const candle = candleInfo(now);
   const candleRef = useRef(candle.id);
-  const tradedRef = useRef(false);
+  const tradesRef = useRef(0);
+  const tradedPairsRef = useRef<Set<string>>(new Set());
   const firingRef = useRef(false);
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
@@ -117,7 +123,8 @@ export function useBot() {
     if (candle.id !== candleRef.current) {
       const closed = candleRef.current;
       candleRef.current = candle.id;
-      tradedRef.current = false;
+      tradesRef.current = 0;
+      tradedPairsRef.current = new Set();
       setTradedThisCandle(false);
       setTradeStatus({});
       seenSigIds.current = new Set();
@@ -296,8 +303,9 @@ export function useBot() {
         }
       }
 
-      tradedRef.current = true;
-      setTradedThisCandle(true);
+      tradesRef.current += 1;
+      tradedPairsRef.current.add(sig.pair);
+      setTradedThisCandle(tradesRef.current >= MAX_TRADES_PER_CANDLE);
       setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "Placing order…" } }));
 
       let status: TradeStatus = "placed";
@@ -368,7 +376,8 @@ export function useBot() {
       } else {
         // A rejected/canceled IOC moved no money, so allow the bot to retry a
         // later valid signal in this candle instead of falsely marking it traded.
-        tradedRef.current = false;
+        tradesRef.current = Math.max(0, tradesRef.current - 1);
+        tradedPairsRef.current.delete(sig.pair);
         setTradedThisCandle(false);
         notify(`Trade failed: ${msg}`, "warn");
       }
@@ -429,12 +438,14 @@ export function useBot() {
     });
   }, [betSize, markets, notify, signals, spot]);
 
-  // Auto-trade: one trade per candle, top signal only
+  // Auto-trade: up to MAX_TRADES_PER_CANDLE per candle, highest-confidence
+  // signals first, one per pair.
   useEffect(() => {
-    if (!botOn || tradedRef.current || firingRef.current) return;
-    const top = signals[0];
-    if (!top) return;
-    void fire(top);
+    if (!botOn || firingRef.current) return;
+    if (tradesRef.current >= MAX_TRADES_PER_CANDLE) return;
+    const next = signals.find((s) => !tradedPairsRef.current.has(s.pair));
+    if (!next) return;
+    void fire(next);
   }, [botOn, fire, signals]);
 
   const toggleBot = useCallback(() => {
