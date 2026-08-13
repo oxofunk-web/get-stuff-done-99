@@ -1,5 +1,16 @@
 import { candleInfo } from "./candle";
-import { CLOSE_SECS, GATE_SECS, LAG_PCT, PAIRS, THRESHOLD } from "./constants";
+import {
+  CLOSE_SECS,
+  GATE_SECS,
+  LAG_PCT,
+  MAX_SPREAD,
+  MAX_YES_MID,
+  MIN_SKEW,
+  MIN_TICKS,
+  MIN_YES_MID,
+  PAIRS,
+  THRESHOLD,
+} from "./constants";
 import type { PairId } from "./constants";
 import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
 
@@ -63,13 +74,20 @@ export function computeSignals(
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
-    if (!s || !km || s.ticks.length < 12) continue;
+    if (!s || !km || s.ticks.length < MIN_TICKS) continue;
+
+    // Liquidity / pricing quality gates.
+    if (km.spread > MAX_SPREAD) continue;
+    if (km.yesMid < MIN_YES_MID || km.yesMid > MAX_YES_MID) continue;
 
     const spotMom = spotMomentum(s);
     const spotMidMom = midMomentum(s);
     const ym = km.yesMid;
     const skew = ym - 0.5;
     const kMom = kalshiMomentum(history[p.id], ym);
+
+    // The book has to actually lean one way — coin-flip mids are noise.
+    if (Math.abs(skew) < MIN_SKEW) continue;
 
     const lagDetected = Math.abs(spotMom) > LAG_PCT && Math.abs(kMom) < 0.008;
     const lagDir: "YES" | "NO" = spotMom > 0 ? "YES" : "NO";
@@ -101,6 +119,19 @@ export function computeSignals(
     else if (Math.abs(skew) > (Math.abs(spotMom) / LAG_PCT) * 0.01)
       dir = skew > 0 ? "YES" : "NO";
     else dir = spotMom > 0 ? "YES" : "NO";
+
+    // Spot momentum must not fight the chosen direction.
+    const momDir = Math.sign(spotMom || spotMidMom);
+    if (momDir !== 0 && ((dir === "YES" && momDir < 0) || (dir === "NO" && momDir > 0))) continue;
+
+    // The book must not be pricing against us either.
+    if ((dir === "YES" && skew < 0) || (dir === "NO" && skew > 0)) continue;
+
+    // Spot has to sit on the right side of the strike for the direction taken.
+    if (km.strike != null && s.price) {
+      if (dir === "YES" && s.price < km.strike) continue;
+      if (dir === "NO" && s.price > km.strike) continue;
+    }
 
     const lagNote = lagDetected
       ? ` BRTI LAG — spot ${spotMom > 0 ? "accelerating up" : "dropping"} (${(spotMom * 100).toFixed(3)}%) while the Kalshi book hasn't moved.`
