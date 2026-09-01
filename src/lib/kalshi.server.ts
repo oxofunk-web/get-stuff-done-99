@@ -1,3 +1,5 @@
+import { mapOrderToBook } from "./bot/order-map";
+
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
 const FALLBACK_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
