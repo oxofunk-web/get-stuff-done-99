@@ -60,25 +60,96 @@ export function lagState(
   return "ok";
 }
 
+export interface SignalTrace {
+  pair: PairId;
+  verdict: "fired" | "rejected";
+  reason: string;
+  detail: Record<string, number | string | boolean | null>;
+}
+
+let debugEnabled =
+  typeof import.meta !== "undefined" && Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
+let lastTrace: SignalTrace[] = [];
+
+/** Turn the per-pair signal trace (and console output) on or off at runtime. */
+export function setSignalDebug(on: boolean) {
+  debugEnabled = on;
+}
+
+export function isSignalDebug() {
+  return debugEnabled;
+}
+
+/** Why each pair fired or was rejected on the most recent computeSignals pass. */
+export function getSignalTrace(): SignalTrace[] {
+  return lastTrace;
+}
+
 export function computeSignals(
   spot: Partial<Record<PairId, SpotState>>,
   markets: Partial<Record<PairId, KalshiMarket>>,
   history: Partial<Record<PairId, number[]>>,
   now = Date.now(),
 ): Signal[] {
+  const trace: SignalTrace[] = [];
+  const note = (
+    pair: PairId,
+    verdict: SignalTrace["verdict"],
+    reason: string,
+    detail: SignalTrace["detail"] = {},
+  ) => {
+    trace.push({ pair, verdict, reason, detail });
+  };
+  const flush = () => {
+    lastTrace = trace;
+    if (debugEnabled && trace.length) {
+      for (const t of trace) {
+        // eslint-disable-next-line no-console
+        console.debug(`[signal:${t.pair}] ${t.verdict} — ${t.reason}`, t.detail);
+      }
+    }
+  };
+
   const c = candleInfo(now);
-  if (c.elapsed < GATE_SECS || c.elapsed >= CLOSE_SECS) return [];
+  if (c.elapsed < GATE_SECS || c.elapsed >= CLOSE_SECS) {
+    for (const p of PAIRS)
+      note(p.id, "rejected", "outside the trade window", {
+        elapsed: c.elapsed,
+        gate: GATE_SECS,
+        close: CLOSE_SECS,
+      });
+    flush();
+    return [];
+  }
 
   const out: Signal[] = [];
 
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
-    if (!s || !km || s.ticks.length < MIN_TICKS) continue;
+    if (!s || !km || s.ticks.length < MIN_TICKS) {
+      note(p.id, "rejected", "not enough live data yet", {
+        hasSpot: Boolean(s),
+        hasMarket: Boolean(km),
+        ticks: s?.ticks.length ?? 0,
+        needTicks: MIN_TICKS,
+      });
+      continue;
+    }
 
     // Liquidity / pricing quality gates.
-    if (km.spread > MAX_SPREAD) continue;
-    if (km.yesMid < MIN_YES_MID || km.yesMid > MAX_YES_MID) continue;
+    if (km.spread > MAX_SPREAD) {
+      note(p.id, "rejected", "book too wide", { spread: km.spread, max: MAX_SPREAD });
+      continue;
+    }
+    if (km.yesMid < MIN_YES_MID || km.yesMid > MAX_YES_MID) {
+      note(p.id, "rejected", "mid outside tradable band", {
+        yesMid: km.yesMid,
+        min: MIN_YES_MID,
+        max: MAX_YES_MID,
+      });
+      continue;
+    }
 
     const spotMom = spotMomentum(s);
     const spotMidMom = midMomentum(s);
@@ -87,7 +158,10 @@ export function computeSignals(
     const kMom = kalshiMomentum(history[p.id], ym);
 
     // The book has to actually lean one way — coin-flip mids are noise.
-    if (Math.abs(skew) < MIN_SKEW) continue;
+    if (Math.abs(skew) < MIN_SKEW) {
+      note(p.id, "rejected", "book too flat", { skew, min: MIN_SKEW });
+      continue;
+    }
 
     const lagDetected = Math.abs(spotMom) > LAG_PCT && Math.abs(kMom) < 0.008;
     const lagDir: "YES" | "NO" = spotMom > 0 ? "YES" : "NO";
@@ -111,7 +185,15 @@ export function computeSignals(
     const strength = raw * agreement * liq * tFac * lagBoost;
     const conf = 50 + Math.min(strength / 0.35, 1) * 49;
 
-    if (conf < THRESHOLD) continue;
+    if (conf < THRESHOLD) {
+      note(p.id, "rejected", "confidence below threshold", {
+        conf: Number(conf.toFixed(1)),
+        threshold: THRESHOLD,
+        agreement,
+        liq,
+      });
+      continue;
+    }
 
     let dir: "YES" | "NO";
     if (lagDetected && Math.abs(spotMom) > LAG_PCT * 1.5) dir = lagDir;
@@ -122,20 +204,40 @@ export function computeSignals(
 
     // Spot momentum must not fight the chosen direction.
     const momDir = Math.sign(spotMom || spotMidMom);
-    if (momDir !== 0 && ((dir === "YES" && momDir < 0) || (dir === "NO" && momDir > 0))) continue;
+    if (momDir !== 0 && ((dir === "YES" && momDir < 0) || (dir === "NO" && momDir > 0))) {
+      note(p.id, "rejected", "spot momentum fights the direction", { dir, spotMom, momDir });
+      continue;
+    }
 
     // The book must not be pricing against us either.
-    if ((dir === "YES" && skew < 0) || (dir === "NO" && skew > 0)) continue;
+    if ((dir === "YES" && skew < 0) || (dir === "NO" && skew > 0)) {
+      note(p.id, "rejected", "book prices against the direction", { dir, skew });
+      continue;
+    }
 
     // Spot has to sit on the right side of the strike for the direction taken.
     if (km.strike != null && s.price) {
-      if (dir === "YES" && s.price < km.strike) continue;
-      if (dir === "NO" && s.price > km.strike) continue;
+      if (dir === "YES" && s.price < km.strike) {
+        note(p.id, "rejected", "spot below strike for a YES", { spot: s.price, strike: km.strike });
+        continue;
+      }
+      if (dir === "NO" && s.price > km.strike) {
+        note(p.id, "rejected", "spot above strike for a NO", { spot: s.price, strike: km.strike });
+        continue;
+      }
     }
 
     const lagNote = lagDetected
       ? ` BRTI LAG — spot ${spotMom > 0 ? "accelerating up" : "dropping"} (${(spotMom * 100).toFixed(3)}%) while the Kalshi book hasn't moved.`
       : "";
+
+    note(p.id, "fired", `${dir} at ${(ym * 100).toFixed(0)}¢`, {
+      conf: Number(conf.toFixed(1)),
+      skew,
+      spotMom,
+      kMom,
+      lagDetected,
+    });
 
     out.push({
       id: `${p.id}-${Math.floor(c.elapsed / 5)}-${dir}`,
@@ -153,5 +255,6 @@ export function computeSignals(
     });
   }
 
+  flush();
   return out.sort((a, b) => b.conf - a.conf);
 }
