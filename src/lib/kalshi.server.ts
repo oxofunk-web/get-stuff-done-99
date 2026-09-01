@@ -1,3 +1,5 @@
+import { mapOrderToBook } from "./bot/order-map";
+
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
 const FALLBACK_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
@@ -296,7 +298,8 @@ export async function placeLiveOrder(
         1,
         restingSize > 0 ? Math.min(input.count, Math.floor(restingSize)) : input.count,
       );
-      const yesPriceCents = input.side === "yes" ? limitCents : 100 - limitCents;
+      // side + price flip are one coupled decision — see order-map.ts
+      const book = mapOrderToBook(input.side, limitCents);
       const response = await authedKalshi<CreateOrderResponse>(
         creds,
         "POST",
@@ -304,9 +307,9 @@ export async function placeLiveOrder(
         {
           ticker: input.ticker,
           client_order_id: crypto.randomUUID(),
-          side: input.side === "yes" ? "bid" : "ask",
+          side: book.side,
           count: count.toFixed(2),
-          price: (yesPriceCents / 100).toFixed(4),
+          price: book.price,
           time_in_force: "immediate_or_cancel",
           self_trade_prevention_type: "taker_at_cross",
           post_only: false,
