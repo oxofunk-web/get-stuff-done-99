@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "backtest": "bun scripts/backtest.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
