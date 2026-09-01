@@ -76,7 +76,7 @@ export function runBacktest(frames: BacktestFrame[], options: BacktestOptions = 
   const spotState: Partial<Record<PairId, SpotState>> = {};
   const history: Partial<Record<PairId, number[]>> = {};
 
-  let candleId = frames.length ? candleInfo(frames[0].ts).id : 0;
+  let candleId = frames.length ? candleInfo(frames[0]!.ts).id : 0;
   let tradesThisCandle = 0;
   let pairsThisCandle = new Set<PairId>();
   let signals = 0;
@@ -203,24 +203,27 @@ export function makeSyntheticFrames(opts: {
   const price: Record<string, number> = {};
   const strike: Record<string, number> = {};
   for (const p of pairs) price[p] = opts.startPrice ?? 60000;
+  const at = (r: Record<string, number>, k: string) => r[k] ?? 0;
 
   const frames: BacktestFrame[] = [];
   for (let c = 0; c < candles; c += 1) {
-    for (const p of pairs) strike[p] = price[p];
+    for (const p of pairs) strike[p] = at(price, p);
     for (let s = 0; s < 900; s += 1) {
       const ts = startTs + c * 900000 + s * 1000;
       const spot: BacktestFrame["spot"] = {};
       const markets: BacktestFrame["markets"] = {};
       for (const p of pairs) {
-        price[p] *= 1 + drift + (rand() - 0.5) * 2 * vol;
-        spot[p] = { price: price[p] };
-        const edge = (price[p] - strike[p]) / strike[p];
+        const next = at(price, p) * (1 + drift + (rand() - 0.5) * 2 * vol);
+        price[p] = next;
+        const k = at(strike, p);
+        spot[p] = { price: next };
+        const edge = (next - k) / k;
         const yesMid = Math.min(0.97, Math.max(0.03, 0.5 + edge * 90));
         const half = 0.01;
         markets[p] = {
           pair: p,
           ticker: `${p}-TEST`,
-          strike: strike[p],
+          strike: k,
           yesBid: Math.max(0.01, yesMid - half),
           yesAsk: Math.min(0.99, yesMid + half),
           noBid: Math.max(0.01, 1 - yesMid - half),
