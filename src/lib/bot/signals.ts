@@ -174,17 +174,23 @@ export function computeSignals(
       continue;
     }
 
+    // Direction the engine leans before any gate runs, so even an early
+    // rejection can be graded later against what the candle actually did.
+    const leanDir: "YES" | "NO" = spotMomentum(s) >= 0 ? "YES" : "NO";
+
     // Liquidity / pricing quality gates.
     if (km.spread > T.maxSpread) {
-      note(p.id, "rejected", "book too wide", { spread: km.spread, max: T.maxSpread });
+      note(p.id, "rejected", "book too wide", { spread: km.spread, max: T.maxSpread }, leanDir);
       continue;
     }
     if (km.yesMid < T.minYesMid || km.yesMid > T.maxYesMid) {
-      note(p.id, "rejected", "mid outside tradable band", {
-        yesMid: km.yesMid,
-        min: T.minYesMid,
-        max: T.maxYesMid,
-      });
+      note(
+        p.id,
+        "rejected",
+        "mid outside tradable band",
+        { yesMid: km.yesMid, min: T.minYesMid, max: T.maxYesMid },
+        leanDir,
+      );
       continue;
     }
 
@@ -200,9 +206,10 @@ export function computeSignals(
 
     // The book has to actually lean one way — coin-flip mids are noise.
     if (Math.abs(skew) < T.minSkew) {
-      note(p.id, "rejected", "book too flat", { skew, min: T.minSkew });
+      note(p.id, "rejected", "book too flat", { skew, min: T.minSkew }, leanDir);
       continue;
     }
+
 
     const lagDetected = Math.abs(spotMom) > LAG_PCT && Math.abs(kMom) < 0.008;
     const lagDir: "YES" | "NO" = spotMom > 0 ? "YES" : "NO";
