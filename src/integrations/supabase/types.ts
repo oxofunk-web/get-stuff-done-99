@@ -56,6 +56,24 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_token: {
+        Row: {
+          created_at: string
+          id: boolean
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          token: string
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          token?: string
+        }
+        Relationships: []
+      }
       market_snapshots: {
         Row: {
           candle_id: number
