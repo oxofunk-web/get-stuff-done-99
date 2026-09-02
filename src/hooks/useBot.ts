@@ -252,6 +252,10 @@ export function useBot() {
     try {
       const res = await getPortfolio();
       setPortfolio(res);
+      // Anchor today's realized P&L the first time we read the account so the
+      // loss cap measures today's damage, not lifetime results.
+      const day = new Date().toDateString();
+      if (dayRef.current.day !== day) dayRef.current = { day, base: res.realized };
       return res;
     } catch {
       return null;
