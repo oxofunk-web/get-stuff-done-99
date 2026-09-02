@@ -47,7 +47,7 @@ export function ServerBotPanel() {
         const res = await fn();
         if ("state" in res && res.state) setState(res.state);
         else if ("enabled" in res) setState(res as ServerBotState);
-        if ("error" in res && res.error === "warmup") {
+        if ("error" in res && res.error === "warmup" && "hoursLeft" in res) {
           setNote(`Live unlocks in ~${res.hoursLeft}h — the server paper-trades until then.`);
         }
       } catch (e) {

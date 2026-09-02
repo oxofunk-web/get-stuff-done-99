@@ -41,7 +41,14 @@ export const updateServerBot = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<ServerBotState> => {
     const db = await admin();
     const cur = await loadSettings(db);
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const patch: {
+      enabled?: boolean;
+      first_enabled_at?: string;
+      bet_size?: number;
+      ev_margin?: number;
+      mode?: "paper" | "live";
+      updated_at: string;
+    } = { updated_at: new Date().toISOString() };
     if (data.enabled !== undefined) {
       patch.enabled = data.enabled;
       // First-ever enable starts the 24h paper warmup clock.
@@ -51,11 +58,9 @@ export const updateServerBot = createServerFn({ method: "POST" })
     }
     if (data.betSize !== undefined) patch.bet_size = data.betSize;
     if (data.evMargin !== undefined) patch.ev_margin = data.evMargin;
-    if (data.mode !== undefined) {
-      patch.mode = data.mode;
-      // Requesting live without a prior confirmation stays paper server-side.
-      if (data.mode === "paper") patch.mode = "paper";
-    }
+    // Requesting live without a prior confirmation still runs paper server-side
+    // until confirmServerLive stamps live_confirmed_at.
+    if (data.mode !== undefined) patch.mode = data.mode;
     await db.from("bot_settings").update(patch).eq("id", true);
     return getServerBotState(db);
   });
