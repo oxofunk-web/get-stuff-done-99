@@ -328,16 +328,23 @@ export function computeSignals(
       ? ` BRTI LAG — spot ${spotMom > 0 ? "accelerating up" : "dropping"} (${(spotMom * 100).toFixed(3)}%) while the Kalshi book hasn't moved.`
       : "";
 
-    note(p.id, "fired", `${dir} at ${(ym * 100).toFixed(0)}¢`, {
-      conf: Number(conf.toFixed(1)),
-      calibrated: Number(calibrated.toFixed(3)),
-      ev: Number(ev.toFixed(3)),
-      skew,
-      spotMom,
-      kMom,
-      sigmaDist: Number(sigmaDist.toFixed(2)),
-      lagDetected,
-    });
+    note(
+      p.id,
+      "fired",
+      `${dir} at ${(ym * 100).toFixed(0)}¢`,
+      {
+        conf: Number(conf.toFixed(1)),
+        calibrated: Number(calibrated.toFixed(3)),
+        ev: Number(ev.toFixed(3)),
+        skew,
+        spotMom,
+        kMom,
+        sigmaDist: Number(sigmaDist.toFixed(2)),
+        lagDetected,
+      },
+      dir,
+    );
+
 
     out.push({
       id: `${p.id}-${Math.floor(c.elapsed / 5)}-${dir}`,
