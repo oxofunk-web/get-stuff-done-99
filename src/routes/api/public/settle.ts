@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { authenticateCronRequest } from "@/integrations/supabase/cron-auth";
+import { authenticateScheduledRequest } from "@/lib/bot/cron-auth.server";
 
 /**
  * Scheduled settlement pass. Grades every closed candle that still has
