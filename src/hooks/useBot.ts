@@ -4,6 +4,7 @@ import { useBrtiFeed } from "./useBrtiFeed";
 import { candleInfo } from "@/lib/bot/candle";
 import {
   KALSHI_POLL_MS,
+  DAILY_LOSS_CAP_DEFAULT,
   MAX_TRADES_PER_CANDLE,
   PAIRS,
   type PairId,
@@ -64,6 +65,10 @@ export function useBot() {
   const [mode, setMode] = useState<Mode>("paper");
   const [botOn, setBotOn] = useState(false);
   const [betSize, setBetSize] = useState(5);
+  const [dailyLossCap, setDailyLossCap] = useState(DAILY_LOSS_CAP_DEFAULT);
+  const [capHit, setCapHit] = useState(false);
+  const dayRef = useRef<{ day: string; base: number }>({ day: "", base: 0 });
+  const armedRef = useRef(false);
   const [placedCount, setPlacedCount] = useState(0);
   const [exposure, setExposure] = useState(0);
   const [sigCount, setSigCount] = useState(0);
@@ -488,15 +493,46 @@ export function useBot() {
   const realized = mode === "live" ? portfolio.realized : realizedPaper;
   const walletBalance = portfolio.balance;
 
+  // Today's real P&L: Kalshi realized since the first read of the day (plus the
+  // live mark on anything still open) in live mode, paper results otherwise.
+  const dayRealized =
+    mode === "live" ? portfolio.realized - dayRef.current.base : realizedPaper;
+  const dayPnl = dayRealized + unrealized;
+
+  // Daily loss cap — hard stop for the rest of the day.
+  useEffect(() => {
+    if (dayPnl > -dailyLossCap) {
+      if (capHit) setCapHit(false);
+      return;
+    }
+    if (capHit) return;
+    setCapHit(true);
+    setBotOn(false);
+    notify(
+      `Daily loss cap hit (-$${dailyLossCap}) — auto-trading stopped for today.`,
+      "no",
+    );
+  }, [capHit, dailyLossCap, dayPnl, notify]);
+
+  // Arm LIVE MONEY at the $5 size as soon as the Kalshi key is verified. The
+  // bot itself still needs BOT STATUS switched on before anything fires.
+  useEffect(() => {
+    if (armedRef.current || !live.configured || mode === "live") return;
+    armedRef.current = true;
+    setBetSize(5);
+    setMode("live");
+    notify("LIVE MONEY armed at $5 per trade — flip BOT STATUS on to trade.", "warn");
+  }, [live.configured, mode, notify]);
+
   // Auto-trade: up to MAX_TRADES_PER_CANDLE per candle, highest-confidence
   // signals first, one per pair.
   useEffect(() => {
-    if (!botOn || firingRef.current) return;
+    if (!botOn || firingRef.current || capHit) return;
     if (tradesRef.current >= MAX_TRADES_PER_CANDLE) return;
     const next = signals.find((s) => !tradedPairsRef.current.has(s.pair));
     if (!next) return;
     void fire(next);
-  }, [botOn, fire, signals]);
+  }, [botOn, capHit, fire, signals]);
 
   const toggleBot = useCallback(() => {
     setBotOn((on) => {
@@ -572,6 +608,10 @@ export function useBot() {
     live,
     portfolio,
     walletBalance,
+    dayPnl,
+    dailyLossCap,
+    setDailyLossCap,
+    capHit,
     realized,
     unrealized,
     open,

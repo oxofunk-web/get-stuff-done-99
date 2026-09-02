@@ -1,5 +1,4 @@
 import { AccuracyPanel } from "./AccuracyPanel";
-import { AiPanel } from "./AiPanel";
 import { BrtiPanel } from "./BrtiPanel";
 import { ClockPanel } from "./ClockPanel";
 import { EnginePanel } from "./EnginePanel";
@@ -80,6 +79,10 @@ export function Dashboard() {
             balance={bot.walletBalance}
             realized={bot.realized}
             unrealized={bot.unrealized}
+            dayPnl={bot.dayPnl}
+            dailyLossCap={bot.dailyLossCap}
+            onDailyLossCap={bot.setDailyLossCap}
+            capHit={bot.capHit}
             open={bot.open}
             wins={bot.wins}
             losses={bot.losses}
@@ -106,13 +109,6 @@ export function Dashboard() {
             onEvMargin={bot.setEvMargin}
           />
           <ServerBotPanel />
-          <AiPanel
-            ai={bot.ai}
-            aiAssist={bot.aiAssist}
-            onToggleAssist={bot.setAiAssist}
-            onAsk={() => void bot.askAi()}
-            hasSignal={bot.signals.length > 0}
-          />
           <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
           <AccuracyPanel
             accuracy={bot.accuracy}
@@ -128,7 +124,7 @@ export function Dashboard() {
         <p className="rounded-md border border-wire bg-surface p-3 text-[9px] leading-relaxed text-muted-foreground">
           ⚠️ <strong className="text-foreground">AUTO-TRADING:</strong> real-time BRTI proxy via
           Binance WebSocket (a constituent exchange), Kalshi REST for the YES/NO orderbook. Trades
-          fire automatically after the 10:00 mark at ≥86% confidence, best two per 15-minute candle. Lag
+          fire automatically after the 10:00 mark at ≥86% confidence, up to one per pair (4 max) per 15-minute candle. Lag
           detection compares BRTI spot momentum against Kalshi price direction — divergence is the
           edge. Paper mode simulates fills on live books; live mode submits real fill-or-kill orders
           signed server-side. Not financial advice. Kalshi is CFTC-regulated.
