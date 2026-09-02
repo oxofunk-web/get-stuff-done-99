@@ -76,7 +76,10 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
               </div>
             </div>
 
-            <div className="mt-2.5 text-[7px] tracking-[0.2em] text-dim">BY CONFIDENCE BAND</div>
+            <div className="mt-2.5 text-[7px] tracking-[0.2em] text-dim">
+              BY CONFIDENCE BAND · {a!.counterfactual} counterfactual samples included
+            </div>
+
             <div className="mt-1 space-y-1">
               {a!.table.map((b) => {
                 const pct = rate(b.wins, b.n);
