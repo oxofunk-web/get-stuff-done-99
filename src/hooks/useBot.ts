@@ -23,7 +23,6 @@ import {
 
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
-import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
 
 
 export type Mode = "paper" | "live";
@@ -52,14 +51,6 @@ export interface Portfolio {
   exposure: number;
   positions: { ticker: string; count: number; exposure: number; realized: number }[];
   error: string | null;
-}
-
-export interface AiState {
-  status: "idle" | "thinking" | "done" | "error";
-  verdict: AiVerdict | null;
-  error: string | null;
-  signalLabel: string | null;
-  at: string | null;
 }
 
 export function useBot() {
@@ -97,14 +88,6 @@ export function useBot() {
   const [realizedPaper, setRealizedPaper] = useState(0);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
-  const [aiAssist, setAiAssist] = useState(true);
-  const [ai, setAi] = useState<AiState>({
-    status: "idle",
-    verdict: null,
-    error: null,
-    signalLabel: null,
-    at: null,
-  });
 
   const [now, setNow] = useState(() => Date.now());
   const candle = candleInfo(now);
@@ -178,7 +161,6 @@ export function useBot() {
       setTradedThisCandle(false);
       setTradeStatus({});
       seenSigIds.current = new Set();
-      setAi({ status: "idle", verdict: null, error: null, signalLabel: null, at: null });
       loggedSigRef.current = new Set();
 
       // Grade the candle that just closed against the settlement spot, then
@@ -386,64 +368,6 @@ export function useBot() {
       );
       const count = Math.max(1, Math.floor(betSize / (priceCents / 100)));
 
-      // AI co-pilot review before any money moves.
-      if (aiAssist) {
-        setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "AI reviewing…" } }));
-        setAi({
-          status: "thinking",
-          verdict: null,
-          error: null,
-          signalLabel: `${sig.pair} ${sig.dir} ${sig.conf.toFixed(0)}%`,
-          at: new Date().toLocaleTimeString(),
-        });
-        const res = await reviewSignal({
-          data: {
-            pair: sig.pair,
-            dir: sig.dir,
-            conf: sig.conf,
-            yesMid: sig.yesMid,
-            spread: sig.spread,
-            spotMom: sig.spotMom,
-            kMom: sig.kMom,
-            lagDetected: sig.lagDetected,
-            spot: spot[sig.pair]?.price ?? 0,
-            strike: m.strike,
-            secondsLeft: sig.remain,
-            betSize,
-            reason: sig.reason,
-          },
-        });
-        if (!res.ok) {
-          setAi({
-            status: "error",
-            verdict: null,
-            error: res.error,
-            signalLabel: `${sig.pair} ${sig.dir}`,
-            at: new Date().toLocaleTimeString(),
-          });
-          setTradeStatus((s) => ({ ...s, [sig.id]: { status: "failed", msg: `AI: ${res.error}` } }));
-          notify(`AI review failed: ${res.error}`, "warn");
-          firingRef.current = false;
-          return;
-        }
-        setAi({
-          status: "done",
-          verdict: res.verdict,
-          error: null,
-          signalLabel: `${sig.pair} ${sig.dir} ${sig.conf.toFixed(0)}%`,
-          at: new Date().toLocaleTimeString(),
-        });
-        if (res.verdict.verdict === "skip") {
-          setTradeStatus((s) => ({
-            ...s,
-            [sig.id]: { status: "failed", msg: `AI vetoed — ${res.verdict.rationale}` },
-          }));
-          notify(`AI vetoed ${sig.pair} ${sig.dir}: ${res.verdict.rationale}`, "warn");
-          firingRef.current = false;
-          return;
-        }
-      }
-
       tradesRef.current += 1;
       tradedPairsRef.current.add(sig.pair);
       setTradedThisCandle(tradesRef.current >= MAX_TRADES_PER_CANDLE);
@@ -545,7 +469,7 @@ export function useBot() {
       }
       firingRef.current = false;
     },
-    [aiAssist, betSize, markets, mode, notify, refreshLive, refreshPortfolio, spot],
+    [betSize, markets, mode, notify, refreshLive, refreshPortfolio],
   );
 
   // Mark-to-market on the open book.
@@ -559,46 +483,6 @@ export function useBot() {
 
   const realized = mode === "live" ? portfolio.realized : realizedPaper;
   const walletBalance = portfolio.balance;
-
-  const askAi = useCallback(async () => {
-    const top = signals[0];
-    if (!top) {
-      notify("No live signal to review yet.", "warn");
-      return;
-    }
-    const m = markets[top.pair];
-    setAi({
-      status: "thinking",
-      verdict: null,
-      error: null,
-      signalLabel: `${top.pair} ${top.dir} ${top.conf.toFixed(0)}%`,
-      at: new Date().toLocaleTimeString(),
-    });
-    const res = await reviewSignal({
-      data: {
-        pair: top.pair,
-        dir: top.dir,
-        conf: top.conf,
-        yesMid: top.yesMid,
-        spread: top.spread,
-        spotMom: top.spotMom,
-        kMom: top.kMom,
-        lagDetected: top.lagDetected,
-        spot: spot[top.pair]?.price ?? 0,
-        strike: m?.strike ?? null,
-        secondsLeft: top.remain,
-        betSize,
-        reason: top.reason,
-      },
-    });
-    setAi({
-      status: res.ok ? "done" : "error",
-      verdict: res.ok ? res.verdict : null,
-      error: res.ok ? null : res.error,
-      signalLabel: `${top.pair} ${top.dir} ${top.conf.toFixed(0)}%`,
-      at: new Date().toLocaleTimeString(),
-    });
-  }, [betSize, markets, notify, signals, spot]);
 
   // Auto-trade: up to MAX_TRADES_PER_CANDLE per candle, highest-confidence
   // signals first, one per pair.
@@ -689,10 +573,6 @@ export function useBot() {
     open,
     wins,
     losses,
-    ai,
-    aiAssist,
-    setAiAssist,
-    askAi,
     refreshPortfolio,
     accuracy,
     rejections,
