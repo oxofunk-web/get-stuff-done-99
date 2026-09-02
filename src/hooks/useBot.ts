@@ -683,6 +683,10 @@ export function useBot() {
     setAiAssist,
     askAi,
     refreshPortfolio,
+    accuracy,
+    refreshAccuracy,
+    evMargin,
+    setEvMargin,
     pairs: PAIRS,
   };
 }
