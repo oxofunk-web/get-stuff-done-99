@@ -16,6 +16,8 @@ interface Props {
   lastTrade: { label: string; time: string } | null;
   tradedThisCandle: boolean;
   live: { configured: boolean; balance: number | null; error: string | null };
+  evMargin: number;
+  onEvMargin: (n: number) => void;
 }
 
 export function EnginePanel({
@@ -31,6 +33,8 @@ export function EnginePanel({
   lastTrade,
   tradedThisCandle,
   live,
+  evMargin,
+  onEvMargin,
 }: Props) {
   const el = candle.elapsed;
   const gate = tradedThisCandle
