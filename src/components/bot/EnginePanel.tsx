@@ -16,6 +16,8 @@ interface Props {
   lastTrade: { label: string; time: string } | null;
   tradedThisCandle: boolean;
   live: { configured: boolean; balance: number | null; error: string | null };
+  evMargin: number;
+  onEvMargin: (n: number) => void;
 }
 
 export function EnginePanel({
@@ -31,6 +33,8 @@ export function EnginePanel({
   lastTrade,
   tradedThisCandle,
   live,
+  evMargin,
+  onEvMargin,
 }: Props) {
   const el = candle.elapsed;
   const gate = tradedThisCandle
@@ -158,7 +162,32 @@ export function EnginePanel({
           ))}
         </div>
 
+        <div className="mt-2 rounded-md border border-wire bg-surface-2 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] tracking-[0.2em] text-muted-foreground">
+              MIN VALUE PER $1 RISKED
+            </span>
+            <span className="font-sans text-[12px] font-extrabold text-gold tabular-nums">
+              +{(evMargin * 100).toFixed(0)}%
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={40}
+            step={2}
+            value={Math.round(evMargin * 100)}
+            aria-label="Minimum expected value per dollar risked"
+            onChange={(e) => onEvMargin(Number(e.target.value) / 100)}
+            className="mt-2 w-full accent-[var(--gold)]"
+          />
+          <p className="mt-1 text-[8px] leading-relaxed text-dim">
+            Higher = fewer, better-priced trades. Blocks expensive contracts with little left to win.
+          </p>
+        </div>
+
         <div className={`mt-2 rounded-md border px-3 py-2 text-[10px] ${gate.tone}`}>{gate.text}</div>
+
 
         {live.error ? (
           <div className="mt-2 rounded-md border border-no/30 bg-no/10 px-3 py-2 text-[9px] text-no">

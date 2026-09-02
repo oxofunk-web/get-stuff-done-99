@@ -39,7 +39,18 @@ export interface Signal {
   spotMom: number;
   kMom: number;
   lagDetected: boolean;
+  /** Calibrated win probability (0-1) after mapping conf onto real history. */
+  calibrated: number;
+  /** Price we expect to pay per contract, including half the spread. */
+  entry: number;
+  /** Expected value per dollar risked at that entry. */
+  ev: number;
+  /** Distance from spot to strike in standard deviations of recent movement. */
+  sigmaDist: number;
+  /** Book lean: yesMid - 0.5. */
+  skew: number;
   reason: string;
+
   elapsed: number;
   remain: number;
 }

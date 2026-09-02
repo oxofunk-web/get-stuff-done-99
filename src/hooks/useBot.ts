@@ -8,10 +8,20 @@ import {
   PAIRS,
   type PairId,
 } from "@/lib/bot/constants";
-import { computeSignals } from "@/lib/bot/signals";
+import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
+import { getTuning, setTuning } from "@/lib/bot/tuning";
+import {
+  getAccuracy,
+  recordSignals,
+  recordSnapshots,
+  recordTrade,
+  settleCandle,
+  type AccuracyStats,
+} from "@/lib/bot/telemetry.functions";
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
 import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
+
 
 export type Mode = "paper" | "live";
 
@@ -102,6 +112,37 @@ export function useBot() {
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
 
+  // ---- telemetry / accuracy -------------------------------------------------
+  const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
+  const [evMargin, setEvMarginState] = useState(getTuning().evMargin);
+  const spotRef = useRef(spot);
+  spotRef.current = spot;
+  const loggedSigRef = useRef<Set<string>>(new Set());
+
+  const setEvMargin = useCallback((v: number) => {
+    setEvMarginState(v);
+    setTuning({ evMargin: v });
+  }, []);
+
+  const refreshAccuracy = useCallback(async () => {
+    try {
+      const res = await getAccuracy();
+      setAccuracy(res);
+      if (res.ok) setCalibration(res.table);
+      return res;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAccuracy();
+    const i = setInterval(() => void refreshAccuracy(), 120000);
+    return () => clearInterval(i);
+  }, [refreshAccuracy]);
+
+
+
   const notify = useCallback((msg: string, tone: Toast["tone"] = "yes") => {
     setToast({ id: Date.now(), msg, tone });
   }, []);
@@ -129,7 +170,21 @@ export function useBot() {
       setTradeStatus({});
       seenSigIds.current = new Set();
       setAi({ status: "idle", verdict: null, error: null, signalLabel: null, at: null });
+      loggedSigRef.current = new Set();
+
+      // Grade the candle that just closed against the settlement spot, then
+      // pull the refreshed accuracy so calibration keeps learning.
+      const finals = PAIRS.map((p) => ({ pair: p.id, spot: spotRef.current[p.id]?.price ?? 0 })).filter(
+        (f) => f.spot > 0,
+      );
+      if (finals.length) {
+        void settleCandle({ data: { candleId: closed, finals } })
+          .then(() => refreshAccuracy())
+          .catch(() => undefined);
+      }
+
       // Settle every position that belonged to the candle that just closed.
+
       setOpen((list) => {
         const expired = list.filter((p) => p.candleId === closed);
         if (expired.length) {
@@ -152,7 +207,7 @@ export function useBot() {
         return list.filter((p) => p.candleId !== closed);
       });
     }
-  }, [candle.id]);
+  }, [candle.id, refreshAccuracy]);
 
   // Kalshi orderbook polling (through the server, so no CORS and no key in the browser)
   useEffect(() => {
@@ -232,6 +287,83 @@ export function useBot() {
     fresh.forEach((s) => seenSigIds.current.add(s.id));
     setSigCount((c) => c + fresh.length);
   }, [signals]);
+
+  // Market tape recorder — one batched write every 5s, not one per tick.
+  useEffect(() => {
+    const push = () => {
+      const c = candleInfo(Date.now());
+      const rows = PAIRS.map((p) => {
+        const s = spotRef.current[p.id];
+        const m = marketsRef.current[p.id];
+        if (!s?.price) return null;
+        return {
+          candle_id: c.id,
+          seconds_in: c.elapsed,
+          pair: p.id as string,
+          ticker: m?.ticker ?? null,
+          spot: s.price,
+          strike: m?.strike ?? null,
+          yes_bid: m?.yesBid ?? null,
+          yes_ask: m?.yesAsk ?? null,
+          yes_mid: m?.yesMid ?? null,
+          spread: m?.spread ?? null,
+          vol: m?.vol ?? null,
+        };
+      }).filter((r): r is NonNullable<typeof r> => r !== null);
+      if (rows.length) void recordSnapshots({ data: { rows } }).catch(() => undefined);
+    };
+    push();
+    const i = setInterval(push, 5000);
+    return () => clearInterval(i);
+  }, []);
+
+  // Signal recorder — every decision, fired or rejected, once per 5s slot.
+  const signalsRef = useRef(signals);
+  signalsRef.current = signals;
+  useEffect(() => {
+    const push = () => {
+      const c = candleInfo(Date.now());
+      const slot = Math.floor(c.elapsed / 5) * 5;
+      const trace = getSignalTrace();
+      const fired = new Map(signalsRef.current.map((s) => [s.pair, s]));
+      const rows = trace
+        .filter((t) => {
+          const key = `${c.id}-${t.pair}-${t.verdict}-${slot}`;
+          if (loggedSigRef.current.has(key)) return false;
+          loggedSigRef.current.add(key);
+          return true;
+        })
+        .map((t) => {
+          const s = fired.get(t.pair);
+          const m = marketsRef.current[t.pair];
+          return {
+            candle_id: c.id,
+            seconds_in: slot,
+            pair: t.pair as string,
+            verdict: t.verdict,
+            reason: t.reason,
+            dir: s?.dir ?? null,
+            conf: s?.conf ?? null,
+            calibrated: s?.calibrated ?? null,
+            entry_price: s?.entry ?? null,
+            ev: s?.ev ?? null,
+            yes_mid: m?.yesMid ?? null,
+            spread: m?.spread ?? null,
+            skew: s?.skew ?? null,
+            spot_mom: s?.spotMom ?? null,
+            k_mom: s?.kMom ?? null,
+            sigma_dist: s?.sigmaDist ?? null,
+            spot: spotRef.current[t.pair]?.price ?? null,
+            strike: m?.strike ?? null,
+          };
+        });
+      if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);
+    };
+    const i = setInterval(push, 5000);
+    return () => clearInterval(i);
+  }, []);
+
+
 
   const fire = useCallback(
     async (sig: Signal) => {
@@ -346,6 +478,27 @@ export function useBot() {
           ...l,
         ].slice(0, 30),
       );
+
+      void recordTrade({
+        data: {
+          row: {
+            candle_id: candleRef.current,
+            pair: sig.pair,
+            dir: sig.dir,
+            mode,
+            conf: sig.conf,
+            calibrated: sig.calibrated,
+            contracts: filledCount,
+            entry_price: filledPriceCents / 100,
+            stake: (filledCount * filledPriceCents) / 100,
+            status,
+            msg,
+            order_id: null,
+          },
+        },
+      }).catch(() => undefined);
+
+
 
       if (status === "placed") {
         const filledStake = (filledCount * filledPriceCents) / 100;
@@ -532,6 +685,10 @@ export function useBot() {
     setAiAssist,
     askAi,
     refreshPortfolio,
+    accuracy,
+    refreshAccuracy,
+    evMargin,
+    setEvMargin,
     pairs: PAIRS,
   };
 }
