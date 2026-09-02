@@ -357,7 +357,8 @@ export function useBot() {
             strike: m?.strike ?? null,
           };
         });
-      if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);
+      console.log('[sigrec]', trace.length, rows.length);
+      if (rows.length) void recordSignals({ data: { rows } }).catch((e) => console.log('[sigrec-err]', e));
     };
     const i = setInterval(push, 5000);
     return () => clearInterval(i);
