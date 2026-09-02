@@ -362,9 +362,13 @@ export async function runServerBotTick() {
   }
 
   const c3 = candleInfo();
-  if (c3.elapsed < GATE_SECS || c3.elapsed >= CLOSE_SECS || !signals.length) {
-    await heartbeat(`watching · ${signals.length} signal(s) · outside trade window`);
-    return { ok: true, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg: "outside window" };
+  const inWindow = c3.elapsed >= GATE_SECS && c3.elapsed < CLOSE_SECS;
+  if (!inWindow || !signals.length) {
+    const msg = inWindow
+      ? "in window · no signal passed the gates"
+      : "watching · outside trade window";
+    await heartbeat(msg);
+    return { ok: true, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg };
   }
 
   const effMode = effectiveMode(settings);
