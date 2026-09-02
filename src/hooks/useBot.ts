@@ -695,7 +695,9 @@ export function useBot() {
     askAi,
     refreshPortfolio,
     accuracy,
+    rejections,
     refreshAccuracy,
+
     evMargin,
     setEvMargin,
     pairs: PAIRS,
