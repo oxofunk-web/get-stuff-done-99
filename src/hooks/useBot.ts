@@ -102,6 +102,37 @@ export function useBot() {
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
 
+  // ---- telemetry / accuracy -------------------------------------------------
+  const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
+  const [evMargin, setEvMarginState] = useState(getTuning().evMargin);
+  const spotRef = useRef(spot);
+  spotRef.current = spot;
+  const loggedSigRef = useRef<Set<string>>(new Set());
+
+  const setEvMargin = useCallback((v: number) => {
+    setEvMarginState(v);
+    setTuning({ evMargin: v });
+  }, []);
+
+  const refreshAccuracy = useCallback(async () => {
+    try {
+      const res = await getAccuracy();
+      setAccuracy(res);
+      if (res.ok) setCalibration(res.table);
+      return res;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAccuracy();
+    const i = setInterval(() => void refreshAccuracy(), 120000);
+    return () => clearInterval(i);
+  }, [refreshAccuracy]);
+
+
+
   const notify = useCallback((msg: string, tone: Toast["tone"] = "yes") => {
     setToast({ id: Date.now(), msg, tone });
   }, []);
