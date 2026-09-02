@@ -12,12 +12,15 @@ import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signal
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
+  getRejectionReport,
   recordSignals,
   recordSnapshots,
   recordTrade,
   settleCandle,
   type AccuracyStats,
+  type RejectionRow,
 } from "@/lib/bot/telemetry.functions";
+
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
 import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
