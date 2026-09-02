@@ -112,7 +112,12 @@ export function Dashboard() {
             hasSignal={bot.signals.length > 0}
           />
           <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
-          <AccuracyPanel accuracy={bot.accuracy} onRefresh={() => void bot.refreshAccuracy()} />
+          <AccuracyPanel
+            accuracy={bot.accuracy}
+            rejections={bot.rejections}
+            onRefresh={() => void bot.refreshAccuracy()}
+          />
+
           <LogPanel log={bot.log} />
         </div>
       </main>
