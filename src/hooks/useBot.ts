@@ -170,7 +170,21 @@ export function useBot() {
       setTradeStatus({});
       seenSigIds.current = new Set();
       setAi({ status: "idle", verdict: null, error: null, signalLabel: null, at: null });
+      loggedSigRef.current = new Set();
+
+      // Grade the candle that just closed against the settlement spot, then
+      // pull the refreshed accuracy so calibration keeps learning.
+      const finals = PAIRS.map((p) => ({ pair: p.id, spot: spotRef.current[p.id]?.price ?? 0 })).filter(
+        (f) => f.spot > 0,
+      );
+      if (finals.length) {
+        void settleCandle({ data: { candleId: closed, finals } })
+          .then(() => refreshAccuracy())
+          .catch(() => undefined);
+      }
+
       // Settle every position that belonged to the candle that just closed.
+
       setOpen((list) => {
         const expired = list.filter((p) => p.candleId === closed);
         if (expired.length) {
