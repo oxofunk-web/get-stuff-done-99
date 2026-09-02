@@ -176,6 +176,8 @@ export interface AccuracyStats {
   total: number;
   wins: number;
   winRate: number;
+  /** Settled rejected signals graded as counterfactuals — calibration fuel. */
+  counterfactual: number;
   table: CalibrationTable;
   byPair: { pair: string; n: number; wins: number }[];
   byMinute: { minute: number; n: number; wins: number }[];
@@ -183,13 +185,19 @@ export interface AccuracyStats {
   error?: string;
 }
 
-/** Real, settled accuracy — the source for both the panel and calibration. */
+/**
+ * Real, settled accuracy. Headline numbers are the trades the engine actually
+ * fired; the calibration table spans fired *and* counterfactual rejections, so
+ * the confidence bands fill up in hours instead of weeks and the probability
+ * stays honest across the whole score range.
+ */
 export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): Promise<AccuracyStats> => {
   const empty: AccuracyStats = {
     ok: false,
     total: 0,
     wins: 0,
     winRate: 0,
+    counterfactual: 0,
     table: emptyTable(),
     byPair: [],
     byMinute: [],
@@ -199,20 +207,21 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const db = await admin();
     const { data, error } = await db
       .from("signal_log")
-      .select("ts, pair, dir, conf, seconds_in, outcome")
-      .eq("verdict", "fired")
+      .select("ts, pair, dir, conf, seconds_in, outcome, verdict")
       .not("outcome", "is", null)
       .order("ts", { ascending: false })
-      .limit(5000);
+      .limit(20000);
     if (error) return { ...empty, error: error.message };
 
-    const rows = (data ?? []) as {
+    const all = (data ?? []) as {
       ts: string;
       pair: string;
       dir: string;
       conf: number | null;
       seconds_in: number | null;
       outcome: string;
+      verdict: string;
+
     }[];
 
     const table = emptyTable();
