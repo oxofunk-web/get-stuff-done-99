@@ -130,9 +130,11 @@ export function computeSignals(
     verdict: SignalTrace["verdict"],
     reason: string,
     detail: SignalTrace["detail"] = {},
+    dir: SignalTrace["dir"] = null,
   ) => {
-    trace.push({ pair, verdict, reason, detail });
+    trace.push({ pair, verdict, reason, dir, detail });
   };
+
   const flush = () => {
     lastTrace = trace;
     if (debugEnabled && trace.length) {
