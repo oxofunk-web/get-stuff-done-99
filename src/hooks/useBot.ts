@@ -464,25 +464,37 @@ export function useBot() {
   const switchMode = useCallback(
     async (next: Mode) => {
       if (next === "live") {
-        const st = await refreshLive();
+        // Never let a flaky status check strand the user in paper mode: fall
+        // back to the last known live state if the refresh itself fails.
+        let st = live;
+        try {
+          st = await refreshLive();
+        } catch (e) {
+          notify(
+            `Could not re-check Kalshi (${e instanceof Error ? e.message : "network error"}) — using last known status.`,
+            "warn",
+          );
+        }
         if (!st.configured) {
           notify("Live mode needs your Kalshi API key on the server first.", "warn");
           return;
         }
-        if (st.error) {
-          notify(`Kalshi auth error: ${st.error}`, "warn");
-          return;
-        }
         setBotOn(false);
         setMode("live");
-        notify("LIVE mode armed — real money orders. Bot switched off.", "warn");
+        notify(
+          st.error
+            ? `LIVE mode armed, but Kalshi reported: ${st.error}`
+            : "LIVE mode armed — real money orders. Bot switched off.",
+          "warn",
+        );
         return;
       }
       setMode("paper");
       notify("Paper mode — simulated fills on live market data.", "yes");
     },
-    [notify, refreshLive],
+    [live, notify, refreshLive],
   );
+
 
   return {
     spot,

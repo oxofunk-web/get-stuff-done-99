@@ -117,7 +117,7 @@ export function Dashboard() {
         <p className="rounded-md border border-wire bg-surface p-3 text-[9px] leading-relaxed text-muted-foreground">
           ⚠️ <strong className="text-foreground">AUTO-TRADING:</strong> real-time BRTI proxy via
           Binance WebSocket (a constituent exchange), Kalshi REST for the YES/NO orderbook. Trades
-          fire automatically after the 8:00 mark at ≥86% confidence, best two per 15-minute candle. Lag
+          fire automatically after the 10:00 mark at ≥86% confidence, best two per 15-minute candle. Lag
           detection compares BRTI spot momentum against Kalshi price direction — divergence is the
           edge. Paper mode simulates fills on live books; live mode submits real fill-or-kill orders
           signed server-side. Not financial advice. Kalshi is CFTC-regulated.

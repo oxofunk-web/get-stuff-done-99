@@ -120,7 +120,7 @@ function EmptyState({ candle }: { candle: CandleInfo }) {
   const { elapsed, remain } = candle;
   const state =
     elapsed < GATE_SECS
-      ? { icon: "🔒", txt: "Trade window opens at the 8:00 mark", sub: "Monitoring BRTI & Kalshi in background" }
+      ? { icon: "🔒", txt: "Trade window opens at the 10:00 mark", sub: "Monitoring BRTI & Kalshi in background" }
       : elapsed >= CLOSE_SECS
         ? { icon: "⌛", txt: "Closing zone — no new entries", sub: `Next candle in ${mmss(remain)}` }
         : { icon: "🔍", txt: `Scanning — no ${THRESHOLD}%+ signal yet`, sub: "BRTI & Kalshi updating in real time" };
