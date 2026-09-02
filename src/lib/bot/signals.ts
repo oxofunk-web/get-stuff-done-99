@@ -184,6 +184,10 @@ export function computeSignals(
     const ym = km.yesMid;
     const skew = ym - 0.5;
     const kMom = kalshiMomentum(history[p.id], ym);
+    const { sigma, sigmaDist } = volStats(s, km.strike, c.remain);
+    // Volatility-normalized momentum: a 0.1% move on XRP and on BTC are not
+    // the same event, so score the move in units of that pair's own noise.
+    const momZ = sigma > 0 ? spotMom / (sigma * 3) : spotMom / LAG_PCT;
 
     // The book has to actually lean one way — coin-flip mids are noise.
     if (Math.abs(skew) < T.minSkew) {
@@ -207,9 +211,12 @@ export function computeSignals(
 
     const lagBoost = lagDetected ? 1.3 : 1.0;
     const raw =
-      Math.abs(skew) * 0.45 +
-      (Math.abs(spotMom) / LAG_PCT) * 0.35 +
-      (Math.abs(kMom) / 0.008) * 0.2;
+      Math.abs(skew) * 0.4 +
+      Math.min(Math.abs(momZ), 2) * 0.2 +
+      (Math.abs(kMom) / 0.008) * 0.15 +
+      // Cushion: spot already a standard deviation clear of the strike is the
+      // single strongest predictor for a short-dated binary.
+      Math.min(Math.abs(sigmaDist) / 1.5, 1) * 0.25;
     const strength = raw * agreement * liq * tFac * lagBoost;
     const conf = 50 + Math.min(strength / 0.35, 1) * 49;
 
@@ -219,6 +226,7 @@ export function computeSignals(
         threshold: T.threshold,
         agreement,
         liq,
+        sigmaDist: Number(sigmaDist.toFixed(2)),
       });
       continue;
     }
@@ -255,15 +263,46 @@ export function computeSignals(
       }
     }
 
+    // Cushion gate: too close to the strike relative to how much this pair can
+    // still move is a coin flip no matter how confident the score looks.
+    if (km.strike != null && sigma > 0 && Math.abs(sigmaDist) < T.minSigmaDist) {
+      note(p.id, "rejected", "spot too close to the strike to be safe", {
+        sigmaDist: Number(sigmaDist.toFixed(2)),
+        min: T.minSigmaDist,
+      });
+      continue;
+    }
+
+    // Price the trade honestly: calibrated probability vs. what we actually pay.
+    const entry = Math.min(
+      0.99,
+      Math.max(0.01, (dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2)),
+    );
+    const calibrated = calibrate(conf, calibration);
+    const ev = evPerDollar(calibrated, entry);
+
+    if (ev < T.evMargin) {
+      note(p.id, "rejected", "not enough value at this price", {
+        entry: Number(entry.toFixed(2)),
+        calibrated: Number(calibrated.toFixed(3)),
+        ev: Number(ev.toFixed(3)),
+        need: T.evMargin,
+      });
+      continue;
+    }
+
     const lagNote = lagDetected
       ? ` BRTI LAG — spot ${spotMom > 0 ? "accelerating up" : "dropping"} (${(spotMom * 100).toFixed(3)}%) while the Kalshi book hasn't moved.`
       : "";
 
     note(p.id, "fired", `${dir} at ${(ym * 100).toFixed(0)}¢`, {
       conf: Number(conf.toFixed(1)),
+      calibrated: Number(calibrated.toFixed(3)),
+      ev: Number(ev.toFixed(3)),
       skew,
       spotMom,
       kMom,
+      sigmaDist: Number(sigmaDist.toFixed(2)),
       lagDetected,
     });
 
@@ -277,7 +316,12 @@ export function computeSignals(
       spotMom,
       kMom,
       lagDetected,
-      reason: `Betting ${dir} at ${(ym * 100).toFixed(0)}¢ · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}% · Kalshi Δ${kMom >= 0 ? "+" : ""}${(kMom * 100).toFixed(2)}¢.${lagNote}`,
+      calibrated,
+      entry,
+      ev,
+      sigmaDist,
+      skew,
+      reason: `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · edge ${(ev * 100).toFixed(0)}% per $ · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
       elapsed: c.elapsed,
       remain: c.remain,
     });
@@ -286,11 +330,6 @@ export function computeSignals(
   flush();
   // Rank by expected value per dollar risked, not raw confidence: paying 80¢
   // for an 88% shot is worse than paying 45¢ for the same read.
-  const ev = (s: Signal) => {
-    const entry = s.dir === "YES" ? s.yesMid + s.spread / 2 : 1 - s.yesMid + s.spread / 2;
-    const price = Math.min(0.99, Math.max(0.01, entry));
-    const p = Math.min(0.99, Math.max(0.01, s.conf / 100));
-    return (p * (1 - price) - (1 - p) * price) / price;
-  };
-  return out.sort((a, b) => ev(b) - ev(a) || b.conf - a.conf);
+  return out.sort((a, b) => b.ev - a.ev || b.conf - a.conf);
 }
+
