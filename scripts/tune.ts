@@ -38,14 +38,24 @@ interface Candle {
 }
 
 async function fetchCandles(product: string): Promise<Candle[]> {
-  const end = Math.floor(Date.now() / 1000);
-  const start = end - HOURS * 3600;
-  const url = `https://api.exchange.coinbase.com/products/${product}/candles?granularity=60&start=${start}&end=${end}`;
-  const r = await fetch(url, { headers: { accept: "application/json" } });
-  if (!r.ok) throw new Error(`${product} ${r.status}`);
-  const rows = (await r.json()) as number[][];
-  return rows
-    .map((row) => ({ ts: row[0]! * 1000, close: row[4]! }))
+  const endSec = Math.floor(Date.now() / 1000);
+  const startSec = endSec - HOURS * 3600;
+  const out: Candle[] = [];
+  // Coinbase caps a candle request at 300 buckets and wants ISO timestamps.
+  for (let from = startSec; from < endSec; from += 300 * 60) {
+    const to = Math.min(endSec, from + 300 * 60);
+    const url =
+      `https://api.exchange.coinbase.com/products/${product}/candles` +
+      `?granularity=60&start=${new Date(from * 1000).toISOString()}&end=${new Date(to * 1000).toISOString()}`;
+    const r = await fetch(url, { headers: { accept: "application/json", "user-agent": "kalshi-bot-tuner" } });
+    if (!r.ok) throw new Error(`${product} ${r.status} ${(await r.text()).slice(0, 120)}`);
+    const rows = (await r.json()) as number[][];
+    for (const row of rows) out.push({ ts: row[0]! * 1000, close: row[4]! });
+    await new Promise((res) => setTimeout(res, 250));
+  }
+  const seen = new Set<number>();
+  return out
+    .filter((c) => (seen.has(c.ts) ? false : (seen.add(c.ts), true)))
     .sort((a, b) => a.ts - b.ts);
 }
 
@@ -110,6 +120,10 @@ for (const product of CB_PRODUCTS) {
   } catch (e) {
     console.warn(`skip ${product}:`, e instanceof Error ? e.message : e);
   }
+}
+if (!Object.keys(series).length) {
+  console.error("no candle data available");
+  process.exit(1);
 }
 const frames = buildFrames(series);
 console.log(`frames=${frames.length} pairs=${Object.keys(series).join(",")} hours=${HOURS}`);
