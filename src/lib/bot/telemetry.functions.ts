@@ -98,82 +98,86 @@ export const recordTrade = createServerFn({ method: "POST" })
   });
 
 /**
- * Mark every unsettled signal and trade of a closed candle win/loss by
- * comparing the settlement spot against the strike. Idempotent: only rows with
- * a null outcome are touched.
+ * Fast-path grading for the candle that just closed, called by the live client
+ * at rollover. The scheduled `/api/public/settle` pass is the safety net when
+ * no tab is open; both share the same idempotent core.
  */
 export const settleCandle = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z
       .object({
         candleId: z.number(),
-        finals: z.array(z.object({ pair: z.string(), spot: z.number() })).max(12),
+        finals: z.array(z.object({ pair: z.string(), spot: z.number() })).max(12).default([]),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const db = await admin();
-    const finals = new Map(data.finals.map((f) => [f.pair, f.spot]));
-    const at = new Date().toISOString();
-
-    const { data: sigs, error } = await db
-      .from("signal_log")
-      .select("id, pair, dir, strike, entry_price")
-      .eq("candle_id", data.candleId)
-      .is("outcome", null);
-    if (error) return { ok: false, settled: 0, error: error.message };
-
-    let settled = 0;
-    for (const s of sigs ?? []) {
-      const spot = finals.get(s.pair as string);
-      if (spot == null || s.strike == null || !s.dir) continue;
-      const yesWon = spot >= (s.strike as number);
-      const won = s.dir === "YES" ? yesWon : !yesWon;
-      await db
-        .from("signal_log")
-        .update({ outcome: won ? "win" : "loss", settled_spot: spot, settled_at: at })
-        .eq("id", s.id as string);
-      settled += 1;
-    }
-
-    const { data: trades } = await db
-      .from("trade_log")
-      .select("id, pair, dir, contracts, entry_price")
-      .eq("candle_id", data.candleId)
-      .is("outcome", null)
-      .eq("status", "placed");
-    for (const t of trades ?? []) {
-      const spot = finals.get(t.pair as string);
-      if (spot == null) continue;
-      const { data: sig } = await db
-        .from("signal_log")
-        .select("strike")
-        .eq("candle_id", data.candleId)
-        .eq("pair", t.pair as string)
-        .not("strike", "is", null)
-        .limit(1)
-        .maybeSingle();
-      const strike = sig?.strike as number | null | undefined;
-      if (strike == null) continue;
-      const yesWon = spot >= strike;
-      const won = t.dir === "YES" ? yesWon : !yesWon;
-      const count = (t.contracts as number) ?? 0;
-      const entry = (t.entry_price as number) ?? 0;
-      const pnl = won ? count * (1 - entry) : -count * entry;
-      await db
-        .from("trade_log")
-        .update({ outcome: won ? "win" : "loss", pnl, settled_at: at })
-        .eq("id", t.id as string);
-    }
-
-    return { ok: true, settled };
+    const { settleOne } = await import("./settle.server");
+    return settleOne(data.candleId, data.finals);
   });
+
+/** Backfill pass usable from the app, same core as the scheduled route. */
+export const settleBacklog = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ maxCandles: z.number().min(1).max(48).default(12) }).parse(d))
+  .handler(async ({ data }) => {
+    const { settlePending } = await import("./settle.server");
+    return settlePending(data.maxCandles);
+  });
+
+export interface RejectionRow {
+  reason: string;
+  n: number;
+  settled: number;
+  wins: number;
+  winRate: number;
+}
+
+/**
+ * What the filters are throwing away. Every rejected signal now records the
+ * direction it would have taken, so each rejection reason gets a real
+ * counterfactual win rate: a reason that blocks winners is a filter to loosen.
+ */
+export const getRejectionReport = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ ok: boolean; rows: RejectionRow[]; error?: string }> => {
+    try {
+      const db = await admin();
+      const { data, error } = await db
+        .from("signal_log")
+        .select("reason, outcome")
+        .eq("verdict", "rejected")
+        .order("ts", { ascending: false })
+        .limit(20000);
+      if (error) return { ok: false, rows: [], error: error.message };
+
+      const map = new Map<string, RejectionRow>();
+      for (const r of (data ?? []) as { reason: string | null; outcome: string | null }[]) {
+        const reason = r.reason ?? "unknown";
+        const row = map.get(reason) ?? { reason, n: 0, settled: 0, wins: 0, winRate: 0 };
+        row.n += 1;
+        if (r.outcome) {
+          row.settled += 1;
+          if (r.outcome === "win") row.wins += 1;
+        }
+        map.set(reason, row);
+      }
+      const rows = [...map.values()]
+        .map((r) => ({ ...r, winRate: r.settled ? (r.wins / r.settled) * 100 : 0 }))
+        .sort((a, b) => b.n - a.n);
+      return { ok: true, rows };
+    } catch (e) {
+      return { ok: false, rows: [], error: e instanceof Error ? e.message : "unavailable" };
+    }
+  },
+);
+
 
 export interface AccuracyStats {
   ok: boolean;
   total: number;
   wins: number;
   winRate: number;
+  /** Settled rejected signals graded as counterfactuals — calibration fuel. */
+  counterfactual: number;
   table: CalibrationTable;
   byPair: { pair: string; n: number; wins: number }[];
   byMinute: { minute: number; n: number; wins: number }[];
@@ -181,13 +185,19 @@ export interface AccuracyStats {
   error?: string;
 }
 
-/** Real, settled accuracy — the source for both the panel and calibration. */
+/**
+ * Real, settled accuracy. Headline numbers are the trades the engine actually
+ * fired; the calibration table spans fired *and* counterfactual rejections, so
+ * the confidence bands fill up in hours instead of weeks and the probability
+ * stays honest across the whole score range.
+ */
 export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): Promise<AccuracyStats> => {
   const empty: AccuracyStats = {
     ok: false,
     total: 0,
     wins: 0,
     winRate: 0,
+    counterfactual: 0,
     table: emptyTable(),
     byPair: [],
     byMinute: [],
@@ -197,36 +207,42 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const db = await admin();
     const { data, error } = await db
       .from("signal_log")
-      .select("ts, pair, dir, conf, seconds_in, outcome")
-      .eq("verdict", "fired")
+      .select("ts, pair, dir, conf, seconds_in, outcome, verdict")
       .not("outcome", "is", null)
       .order("ts", { ascending: false })
-      .limit(5000);
+      .limit(20000);
     if (error) return { ...empty, error: error.message };
 
-    const rows = (data ?? []) as {
+    const all = (data ?? []) as {
       ts: string;
       pair: string;
       dir: string;
       conf: number | null;
       seconds_in: number | null;
       outcome: string;
+      verdict: string;
+
     }[];
 
+    // Calibration spans every settled decision; the headline win rate is the
+    // trades that were actually taken.
+    const rows = all.filter((r) => r.verdict === "fired");
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
     let wins = 0;
 
-    for (const r of rows) {
+    for (const r of all) {
       const won = r.outcome === "win";
-      if (won) wins += 1;
       const conf = r.conf ?? 0;
       const band = table.find((b) => conf >= b.lo && conf < b.hi);
       if (band) {
         band.n += 1;
         if (won) band.wins += 1;
       }
+      if (r.verdict !== "fired") continue;
+      if (won) wins += 1;
+
       const p = pairMap.get(r.pair) ?? { n: 0, wins: 0 };
       p.n += 1;
       if (won) p.wins += 1;
@@ -244,6 +260,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       total: rows.length,
       wins,
       winRate: rows.length ? (wins / rows.length) * 100 : 0,
+      counterfactual: all.length - rows.length,
       table,
       byPair: [...pairMap.entries()].map(([pair, v]) => ({ pair, ...v })).sort((a, b) => b.n - a.n),
       byMinute: [...minMap.entries()]
@@ -257,6 +274,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
         outcome: r.outcome,
       })),
     };
+
   } catch (e) {
     return { ...empty, error: e instanceof Error ? e.message : "telemetry unavailable" };
   }

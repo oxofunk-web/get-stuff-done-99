@@ -12,12 +12,15 @@ import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signal
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
+  getRejectionReport,
   recordSignals,
   recordSnapshots,
   recordTrade,
   settleCandle,
   type AccuracyStats,
+  type RejectionRow,
 } from "@/lib/bot/telemetry.functions";
+
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
 import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
@@ -114,6 +117,7 @@ export function useBot() {
 
   // ---- telemetry / accuracy -------------------------------------------------
   const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
+  const [rejections, setRejections] = useState<RejectionRow[]>([]);
   const [evMargin, setEvMarginState] = useState(getTuning().evMargin);
   const spotRef = useRef(spot);
   spotRef.current = spot;
@@ -129,11 +133,16 @@ export function useBot() {
       const res = await getAccuracy();
       setAccuracy(res);
       if (res.ok) setCalibration(res.table);
+      // What the filters threw away, and whether those rejections were right.
+      void getRejectionReport()
+        .then((r) => setRejections(r.ok ? r.rows : []))
+        .catch(() => undefined);
       return res;
     } catch {
       return null;
     }
   }, []);
+
 
   useEffect(() => {
     void refreshAccuracy();
@@ -342,7 +351,7 @@ export function useBot() {
             pair: t.pair as string,
             verdict: t.verdict,
             reason: t.reason,
-            dir: s?.dir ?? null,
+            dir: s?.dir ?? t.dir ?? null,
             conf: s?.conf ?? null,
             calibrated: s?.calibrated ?? null,
             entry_price: s?.entry ?? null,
@@ -686,7 +695,9 @@ export function useBot() {
     askAi,
     refreshPortfolio,
     accuracy,
+    rejections,
     refreshAccuracy,
+
     evMargin,
     setEvMargin,
     pairs: PAIRS,

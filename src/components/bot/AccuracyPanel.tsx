@@ -1,8 +1,9 @@
 import { bandLabel, MIN_SAMPLES } from "@/lib/bot/calibration";
-import type { AccuracyStats } from "@/lib/bot/telemetry.functions";
+import type { AccuracyStats, RejectionRow } from "@/lib/bot/telemetry.functions";
 
 interface Props {
   accuracy: AccuracyStats | null;
+  rejections: RejectionRow[];
   onRefresh: () => void;
 }
 
@@ -17,9 +18,10 @@ function toneFor(pct: number, n: number) {
   return "text-no";
 }
 
-export function AccuracyPanel({ accuracy, onRefresh }: Props) {
+export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
   const a = accuracy;
-  const has = Boolean(a?.ok && a.total > 0);
+  const has = Boolean(a?.ok && (a.total > 0 || a.counterfactual > 0));
+
 
   return (
     <section className="panel">
@@ -74,7 +76,10 @@ export function AccuracyPanel({ accuracy, onRefresh }: Props) {
               </div>
             </div>
 
-            <div className="mt-2.5 text-[7px] tracking-[0.2em] text-dim">BY CONFIDENCE BAND</div>
+            <div className="mt-2.5 text-[7px] tracking-[0.2em] text-dim">
+              BY CONFIDENCE BAND · {a!.counterfactual} counterfactual samples included
+            </div>
+
             <div className="mt-1 space-y-1">
               {a!.table.map((b) => {
                 const pct = rate(b.wins, b.n);
@@ -154,6 +159,28 @@ export function AccuracyPanel({ accuracy, onRefresh }: Props) {
                 </div>
               </div>
             ) : null}
+
+            {rejections.length ? (
+              <div className="mt-3">
+                <div className="text-[7px] tracking-[0.2em] text-dim">
+                  WHAT THE FILTERS BLOCKED · win% is what those trades would have done
+                </div>
+                <div className="mt-1 space-y-0.5">
+                  {rejections.slice(0, 8).map((r) => (
+                    <div key={r.reason} className="flex items-baseline justify-between gap-2 text-[9px]">
+                      <span className="truncate text-muted-foreground">{r.reason}</span>
+                      <span className="shrink-0 tabular-nums text-dim">
+                        {r.n}×{" "}
+                        <span className={toneFor(r.winRate, r.settled)}>
+                          {r.settled ? `${r.winRate.toFixed(0)}% of ${r.settled}` : "unsettled"}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
           </>
         )}
       </div>
