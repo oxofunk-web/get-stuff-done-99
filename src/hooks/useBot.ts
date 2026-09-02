@@ -342,7 +342,7 @@ export function useBot() {
             pair: t.pair as string,
             verdict: t.verdict,
             reason: t.reason,
-            dir: s?.dir ?? null,
+            dir: s?.dir ?? t.dir ?? null,
             conf: s?.conf ?? null,
             calibrated: s?.calibrated ?? null,
             entry_price: s?.entry ?? null,
