@@ -224,20 +224,25 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
 
     }[];
 
+    // Calibration spans every settled decision; the headline win rate is the
+    // trades that were actually taken.
+    const rows = all.filter((r) => r.verdict === "fired");
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
     let wins = 0;
 
-    for (const r of rows) {
+    for (const r of all) {
       const won = r.outcome === "win";
-      if (won) wins += 1;
       const conf = r.conf ?? 0;
       const band = table.find((b) => conf >= b.lo && conf < b.hi);
       if (band) {
         band.n += 1;
         if (won) band.wins += 1;
       }
+      if (r.verdict !== "fired") continue;
+      if (won) wins += 1;
+
       const p = pairMap.get(r.pair) ?? { n: 0, wins: 0 };
       p.n += 1;
       if (won) p.wins += 1;
@@ -255,6 +260,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       total: rows.length,
       wins,
       winRate: rows.length ? (wins / rows.length) * 100 : 0,
+      counterfactual: all.length - rows.length,
       table,
       byPair: [...pairMap.entries()].map(([pair, v]) => ({ pair, ...v })).sort((a, b) => b.n - a.n),
       byMinute: [...minMap.entries()]
@@ -268,6 +274,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
         outcome: r.outcome,
       })),
     };
+
   } catch (e) {
     return { ...empty, error: e instanceof Error ? e.message : "telemetry unavailable" };
   }
