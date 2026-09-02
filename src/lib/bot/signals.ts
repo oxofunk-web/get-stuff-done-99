@@ -236,45 +236,52 @@ export function computeSignals(
     const strength = raw * agreement * liq * tFac * lagBoost;
     const conf = 50 + Math.min(strength / 0.35, 1) * 49;
 
-    if (conf < T.threshold) {
-      note(p.id, "rejected", "confidence below threshold", {
-        conf: Number(conf.toFixed(1)),
-        threshold: T.threshold,
-        agreement,
-        liq,
-        sigmaDist: Number(sigmaDist.toFixed(2)),
-      });
-      continue;
-    }
-
+    // Direction is resolved before the gates so every rejection below records
+    // the trade it would have been.
     let dir: "YES" | "NO";
     if (lagDetected && Math.abs(spotMom) > LAG_PCT * 1.5) dir = lagDir;
     else if (sDir === skDir) dir = sDir > 0 ? "YES" : "NO";
-    else if (Math.abs(skew) > (Math.abs(spotMom) / LAG_PCT) * 0.01)
-      dir = skew > 0 ? "YES" : "NO";
+    else if (Math.abs(skew) > (Math.abs(spotMom) / LAG_PCT) * 0.01) dir = skew > 0 ? "YES" : "NO";
     else dir = spotMom > 0 ? "YES" : "NO";
+
+    if (conf < T.threshold) {
+      note(
+        p.id,
+        "rejected",
+        "confidence below threshold",
+        {
+          conf: Number(conf.toFixed(1)),
+          threshold: T.threshold,
+          agreement,
+          liq,
+          sigmaDist: Number(sigmaDist.toFixed(2)),
+        },
+        dir,
+      );
+      continue;
+    }
 
     // Spot momentum must not fight the chosen direction.
     const momDir = Math.sign(spotMom || spotMidMom);
     if (momDir !== 0 && ((dir === "YES" && momDir < 0) || (dir === "NO" && momDir > 0))) {
-      note(p.id, "rejected", "spot momentum fights the direction", { dir, spotMom, momDir });
+      note(p.id, "rejected", "spot momentum fights the direction", { dir, spotMom, momDir }, dir);
       continue;
     }
 
     // The book must not be pricing against us either.
     if ((dir === "YES" && skew < 0) || (dir === "NO" && skew > 0)) {
-      note(p.id, "rejected", "book prices against the direction", { dir, skew });
+      note(p.id, "rejected", "book prices against the direction", { dir, skew }, dir);
       continue;
     }
 
     // Spot has to sit on the right side of the strike for the direction taken.
     if (km.strike != null && s.price) {
       if (dir === "YES" && s.price < km.strike) {
-        note(p.id, "rejected", "spot below strike for a YES", { spot: s.price, strike: km.strike });
+        note(p.id, "rejected", "spot below strike for a YES", { spot: s.price, strike: km.strike }, dir);
         continue;
       }
       if (dir === "NO" && s.price > km.strike) {
-        note(p.id, "rejected", "spot above strike for a NO", { spot: s.price, strike: km.strike });
+        note(p.id, "rejected", "spot above strike for a NO", { spot: s.price, strike: km.strike }, dir);
         continue;
       }
     }
@@ -282,10 +289,13 @@ export function computeSignals(
     // Cushion gate: too close to the strike relative to how much this pair can
     // still move is a coin flip no matter how confident the score looks.
     if (km.strike != null && sigma > 0 && Math.abs(sigmaDist) < T.minSigmaDist) {
-      note(p.id, "rejected", "spot too close to the strike to be safe", {
-        sigmaDist: Number(sigmaDist.toFixed(2)),
-        min: T.minSigmaDist,
-      });
+      note(
+        p.id,
+        "rejected",
+        "spot too close to the strike to be safe",
+        { sigmaDist: Number(sigmaDist.toFixed(2)), min: T.minSigmaDist },
+        dir,
+      );
       continue;
     }
 
@@ -298,14 +308,21 @@ export function computeSignals(
     const ev = evPerDollar(calibrated, entry);
 
     if (ev < T.evMargin) {
-      note(p.id, "rejected", "not enough value at this price", {
-        entry: Number(entry.toFixed(2)),
-        calibrated: Number(calibrated.toFixed(3)),
-        ev: Number(ev.toFixed(3)),
-        need: T.evMargin,
-      });
+      note(
+        p.id,
+        "rejected",
+        "not enough value at this price",
+        {
+          entry: Number(entry.toFixed(2)),
+          calibrated: Number(calibrated.toFixed(3)),
+          ev: Number(ev.toFixed(3)),
+          need: T.evMargin,
+        },
+        dir,
+      );
       continue;
     }
+
 
     const lagNote = lagDetected
       ? ` BRTI LAG — spot ${spotMom > 0 ? "accelerating up" : "dropping"} (${(spotMom * 100).toFixed(3)}%) while the Kalshi book hasn't moved.`
