@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_settings: {
+        Row: {
+          bet_size: number
+          enabled: boolean
+          ev_margin: number
+          first_enabled_at: string | null
+          id: boolean
+          last_tick_at: string | null
+          last_tick_msg: string | null
+          live_confirmed_at: string | null
+          max_trades: number
+          mode: string
+          updated_at: string
+        }
+        Insert: {
+          bet_size?: number
+          enabled?: boolean
+          ev_margin?: number
+          first_enabled_at?: string | null
+          id?: boolean
+          last_tick_at?: string | null
+          last_tick_msg?: string | null
+          live_confirmed_at?: string | null
+          max_trades?: number
+          mode?: string
+          updated_at?: string
+        }
+        Update: {
+          bet_size?: number
+          enabled?: boolean
+          ev_margin?: number
+          first_enabled_at?: string | null
+          id?: boolean
+          last_tick_at?: string | null
+          last_tick_msg?: string | null
+          live_confirmed_at?: string | null
+          max_trades?: number
+          mode?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cron_token: {
+        Row: {
+          created_at: string
+          id: boolean
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          token: string
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          token?: string
+        }
+        Relationships: []
+      }
       market_snapshots: {
         Row: {
           candle_id: number
@@ -156,6 +216,7 @@ export type Database = {
           pair: string
           pnl: number | null
           settled_at: string | null
+          source: string
           stake: number | null
           status: string
           ts: string
@@ -175,6 +236,7 @@ export type Database = {
           pair: string
           pnl?: number | null
           settled_at?: string | null
+          source?: string
           stake?: number | null
           status: string
           ts?: string
@@ -194,6 +256,7 @@ export type Database = {
           pair?: string
           pnl?: number | null
           settled_at?: string | null
+          source?: string
           stake?: number | null
           status?: string
           ts?: string

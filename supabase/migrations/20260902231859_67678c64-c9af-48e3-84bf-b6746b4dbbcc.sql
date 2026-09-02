@@ -1,0 +1,1 @@
+CREATE POLICY "Service role only" ON public.cron_token FOR ALL TO service_role USING (true) WITH CHECK (true);

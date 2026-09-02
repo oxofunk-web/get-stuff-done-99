@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { authenticateCronRequest } from "@/integrations/supabase/cron-auth";
+import { authenticateScheduledRequest } from "@/lib/bot/cron-auth.server";
 
 /**
  * Scheduled settlement pass. Grades every closed candle that still has
@@ -15,10 +15,8 @@ export const Route = createFileRoute("/api/public/settle")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (process.env["LOVABLE_CRON_SECRET"]) {
-          const denied = await authenticateCronRequest(request);
-          if (denied) return denied;
-        }
+        const denied = await authenticateScheduledRequest(request);
+        if (denied) return denied;
         const { settlePending } = await import("@/lib/bot/settle.server");
         const result = await settlePending(12);
         return Response.json(result, { status: result.ok ? 200 : 500 });

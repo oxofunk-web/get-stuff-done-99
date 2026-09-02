@@ -6,6 +6,7 @@ import { EnginePanel } from "./EnginePanel";
 import { LogPanel } from "./LogPanel";
 import { MarketsPanel } from "./MarketsPanel";
 import { PnlPanel } from "./PnlPanel";
+import { ServerBotPanel } from "./ServerBotPanel";
 import { SignalsPanel } from "./SignalsPanel";
 import { useBot } from "@/hooks/useBot";
 
@@ -104,6 +105,7 @@ export function Dashboard() {
             evMargin={bot.evMargin}
             onEvMargin={bot.setEvMargin}
           />
+          <ServerBotPanel />
           <AiPanel
             ai={bot.ai}
             aiAssist={bot.aiAssist}
