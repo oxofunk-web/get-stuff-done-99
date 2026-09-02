@@ -1,3 +1,4 @@
+import { AccuracyPanel } from "./AccuracyPanel";
 import { AiPanel } from "./AiPanel";
 import { BrtiPanel } from "./BrtiPanel";
 import { ClockPanel } from "./ClockPanel";
@@ -100,6 +101,8 @@ export function Dashboard() {
             lastTrade={bot.lastTrade}
             tradedThisCandle={bot.tradedThisCandle}
             live={bot.live}
+            evMargin={bot.evMargin}
+            onEvMargin={bot.setEvMargin}
           />
           <AiPanel
             ai={bot.ai}
@@ -109,6 +112,7 @@ export function Dashboard() {
             hasSignal={bot.signals.length > 0}
           />
           <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
+          <AccuracyPanel accuracy={bot.accuracy} onRefresh={() => void bot.refreshAccuracy()} />
           <LogPanel log={bot.log} />
         </div>
       </main>
