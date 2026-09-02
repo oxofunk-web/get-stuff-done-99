@@ -17,10 +17,8 @@ export const Route = createFileRoute("/api/public/bot-tick")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (process.env["LOVABLE_CRON_SECRET"]) {
-          const denied = await authenticateCronRequest(request);
-          if (denied) return denied;
-        }
+        const denied = await authenticateScheduledRequest(request);
+        if (denied) return denied;
         const { runServerBotTick } = await import("@/lib/bot/server-engine.server");
         const result = await runServerBotTick();
         return Response.json(result, { status: result.ok ? 200 : 500 });
