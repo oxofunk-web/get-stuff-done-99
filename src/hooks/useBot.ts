@@ -4,6 +4,7 @@ import { useBrtiFeed } from "./useBrtiFeed";
 import { candleInfo } from "@/lib/bot/candle";
 import {
   KALSHI_POLL_MS,
+  DAILY_LOSS_CAP_DEFAULT,
   MAX_TRADES_PER_CANDLE,
   PAIRS,
   type PairId,
@@ -23,7 +24,6 @@ import {
 
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
-import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
 
 
 export type Mode = "paper" | "live";
@@ -54,14 +54,6 @@ export interface Portfolio {
   error: string | null;
 }
 
-export interface AiState {
-  status: "idle" | "thinking" | "done" | "error";
-  verdict: AiVerdict | null;
-  error: string | null;
-  signalLabel: string | null;
-  at: string | null;
-}
-
 export function useBot() {
   const { spot, status: feedStatus, source: feedSource, tick } = useBrtiFeed();
 
@@ -73,6 +65,10 @@ export function useBot() {
   const [mode, setMode] = useState<Mode>("paper");
   const [botOn, setBotOn] = useState(false);
   const [betSize, setBetSize] = useState(5);
+  const [dailyLossCap, setDailyLossCap] = useState(DAILY_LOSS_CAP_DEFAULT);
+  const [capHit, setCapHit] = useState(false);
+  const dayRef = useRef<{ day: string; base: number }>({ day: "", base: 0 });
+  const armedRef = useRef(false);
   const [placedCount, setPlacedCount] = useState(0);
   const [exposure, setExposure] = useState(0);
   const [sigCount, setSigCount] = useState(0);
@@ -97,14 +93,6 @@ export function useBot() {
   const [realizedPaper, setRealizedPaper] = useState(0);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
-  const [aiAssist, setAiAssist] = useState(true);
-  const [ai, setAi] = useState<AiState>({
-    status: "idle",
-    verdict: null,
-    error: null,
-    signalLabel: null,
-    at: null,
-  });
 
   const [now, setNow] = useState(() => Date.now());
   const candle = candleInfo(now);
@@ -178,7 +166,6 @@ export function useBot() {
       setTradedThisCandle(false);
       setTradeStatus({});
       seenSigIds.current = new Set();
-      setAi({ status: "idle", verdict: null, error: null, signalLabel: null, at: null });
       loggedSigRef.current = new Set();
 
       // Grade the candle that just closed against the settlement spot, then
@@ -270,6 +257,10 @@ export function useBot() {
     try {
       const res = await getPortfolio();
       setPortfolio(res);
+      // Anchor today's realized P&L the first time we read the account so the
+      // loss cap measures today's damage, not lifetime results.
+      const day = new Date().toDateString();
+      if (dayRef.current.day !== day) dayRef.current = { day, base: res.realized };
       return res;
     } catch {
       return null;
@@ -386,64 +377,6 @@ export function useBot() {
       );
       const count = Math.max(1, Math.floor(betSize / (priceCents / 100)));
 
-      // AI co-pilot review before any money moves.
-      if (aiAssist) {
-        setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "AI reviewing…" } }));
-        setAi({
-          status: "thinking",
-          verdict: null,
-          error: null,
-          signalLabel: `${sig.pair} ${sig.dir} ${sig.conf.toFixed(0)}%`,
-          at: new Date().toLocaleTimeString(),
-        });
-        const res = await reviewSignal({
-          data: {
-            pair: sig.pair,
-            dir: sig.dir,
-            conf: sig.conf,
-            yesMid: sig.yesMid,
-            spread: sig.spread,
-            spotMom: sig.spotMom,
-            kMom: sig.kMom,
-            lagDetected: sig.lagDetected,
-            spot: spot[sig.pair]?.price ?? 0,
-            strike: m.strike,
-            secondsLeft: sig.remain,
-            betSize,
-            reason: sig.reason,
-          },
-        });
-        if (!res.ok) {
-          setAi({
-            status: "error",
-            verdict: null,
-            error: res.error,
-            signalLabel: `${sig.pair} ${sig.dir}`,
-            at: new Date().toLocaleTimeString(),
-          });
-          setTradeStatus((s) => ({ ...s, [sig.id]: { status: "failed", msg: `AI: ${res.error}` } }));
-          notify(`AI review failed: ${res.error}`, "warn");
-          firingRef.current = false;
-          return;
-        }
-        setAi({
-          status: "done",
-          verdict: res.verdict,
-          error: null,
-          signalLabel: `${sig.pair} ${sig.dir} ${sig.conf.toFixed(0)}%`,
-          at: new Date().toLocaleTimeString(),
-        });
-        if (res.verdict.verdict === "skip") {
-          setTradeStatus((s) => ({
-            ...s,
-            [sig.id]: { status: "failed", msg: `AI vetoed — ${res.verdict.rationale}` },
-          }));
-          notify(`AI vetoed ${sig.pair} ${sig.dir}: ${res.verdict.rationale}`, "warn");
-          firingRef.current = false;
-          return;
-        }
-      }
-
       tradesRef.current += 1;
       tradedPairsRef.current.add(sig.pair);
       setTradedThisCandle(tradesRef.current >= MAX_TRADES_PER_CANDLE);
@@ -545,7 +478,7 @@ export function useBot() {
       }
       firingRef.current = false;
     },
-    [aiAssist, betSize, markets, mode, notify, refreshLive, refreshPortfolio, spot],
+    [betSize, markets, mode, notify, refreshLive, refreshPortfolio],
   );
 
   // Mark-to-market on the open book.
@@ -560,55 +493,46 @@ export function useBot() {
   const realized = mode === "live" ? portfolio.realized : realizedPaper;
   const walletBalance = portfolio.balance;
 
-  const askAi = useCallback(async () => {
-    const top = signals[0];
-    if (!top) {
-      notify("No live signal to review yet.", "warn");
+  // Today's real P&L: Kalshi realized since the first read of the day (plus the
+  // live mark on anything still open) in live mode, paper results otherwise.
+  const dayRealized =
+    mode === "live" ? portfolio.realized - dayRef.current.base : realizedPaper;
+  const dayPnl = dayRealized + unrealized;
+
+  // Daily loss cap — hard stop for the rest of the day.
+  useEffect(() => {
+    if (dayPnl > -dailyLossCap) {
+      if (capHit) setCapHit(false);
       return;
     }
-    const m = markets[top.pair];
-    setAi({
-      status: "thinking",
-      verdict: null,
-      error: null,
-      signalLabel: `${top.pair} ${top.dir} ${top.conf.toFixed(0)}%`,
-      at: new Date().toLocaleTimeString(),
-    });
-    const res = await reviewSignal({
-      data: {
-        pair: top.pair,
-        dir: top.dir,
-        conf: top.conf,
-        yesMid: top.yesMid,
-        spread: top.spread,
-        spotMom: top.spotMom,
-        kMom: top.kMom,
-        lagDetected: top.lagDetected,
-        spot: spot[top.pair]?.price ?? 0,
-        strike: m?.strike ?? null,
-        secondsLeft: top.remain,
-        betSize,
-        reason: top.reason,
-      },
-    });
-    setAi({
-      status: res.ok ? "done" : "error",
-      verdict: res.ok ? res.verdict : null,
-      error: res.ok ? null : res.error,
-      signalLabel: `${top.pair} ${top.dir} ${top.conf.toFixed(0)}%`,
-      at: new Date().toLocaleTimeString(),
-    });
-  }, [betSize, markets, notify, signals, spot]);
+    if (capHit) return;
+    setCapHit(true);
+    setBotOn(false);
+    notify(
+      `Daily loss cap hit (-$${dailyLossCap}) — auto-trading stopped for today.`,
+      "no",
+    );
+  }, [capHit, dailyLossCap, dayPnl, notify]);
+
+  // Arm LIVE MONEY at the $5 size as soon as the Kalshi key is verified. The
+  // bot itself still needs BOT STATUS switched on before anything fires.
+  useEffect(() => {
+    if (armedRef.current || !live.configured || mode === "live") return;
+    armedRef.current = true;
+    setBetSize(5);
+    setMode("live");
+    notify("LIVE MONEY armed at $5 per trade — flip BOT STATUS on to trade.", "warn");
+  }, [live.configured, mode, notify]);
 
   // Auto-trade: up to MAX_TRADES_PER_CANDLE per candle, highest-confidence
   // signals first, one per pair.
   useEffect(() => {
-    if (!botOn || firingRef.current) return;
+    if (!botOn || firingRef.current || capHit) return;
     if (tradesRef.current >= MAX_TRADES_PER_CANDLE) return;
     const next = signals.find((s) => !tradedPairsRef.current.has(s.pair));
     if (!next) return;
     void fire(next);
-  }, [botOn, fire, signals]);
+  }, [botOn, capHit, fire, signals]);
 
   const toggleBot = useCallback(() => {
     setBotOn((on) => {
@@ -684,15 +608,15 @@ export function useBot() {
     live,
     portfolio,
     walletBalance,
+    dayPnl,
+    dailyLossCap,
+    setDailyLossCap,
+    capHit,
     realized,
     unrealized,
     open,
     wins,
     losses,
-    ai,
-    aiAssist,
-    setAiAssist,
-    askAi,
     refreshPortfolio,
     accuracy,
     rejections,

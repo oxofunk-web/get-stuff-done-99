@@ -7,6 +7,10 @@ interface Props {
   balance: number | null;
   realized: number;
   unrealized: number;
+  dayPnl: number;
+  dailyLossCap: number;
+  onDailyLossCap: (n: number) => void;
+  capHit: boolean;
   open: OpenPosition[];
   wins: number;
   losses: number;
@@ -27,6 +31,10 @@ export function PnlPanel({
   balance,
   realized,
   unrealized,
+  dayPnl,
+  dailyLossCap,
+  onDailyLossCap,
+  capHit,
   open,
   wins,
   losses,
@@ -76,6 +84,52 @@ export function PnlPanel({
               <div className="text-[8px] text-muted-foreground">{c.sub}</div>
             </div>
           ))}
+        </div>
+
+        <div
+          className={`mt-2 rounded-md border px-3 py-2.5 ${
+            capHit ? "border-no/60 bg-no/10" : "border-wire bg-surface-2"
+          }`}
+        >
+          <div className="flex items-baseline justify-between">
+            <span className="text-[7px] tracking-[0.25em] text-dim">
+              TODAY&apos;S REAL P&amp;L {mode === "live" ? "· KALSHI" : "· PAPER"}
+            </span>
+            <span className={`font-sans text-[18px] font-extrabold tabular-nums ${tone(dayPnl)}`}>
+              {money(dayPnl)}
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3">
+            <div
+              className="h-full rounded-full bg-no transition-all"
+              style={{
+                width: `${Math.min(100, Math.max(0, (-dayPnl / dailyLossCap) * 100))}%`,
+              }}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="text-[8px] text-muted-foreground">
+              {capHit
+                ? `Daily loss cap hit — trading stopped for today.`
+                : `Daily loss cap $${dailyLossCap}`}
+            </span>
+            <span className="flex gap-1">
+              {[10, 20, 30, 50].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => onDailyLossCap(n)}
+                  className={`rounded border px-1.5 py-px text-[8px] tabular-nums ${
+                    dailyLossCap === n
+                      ? "border-gold/60 bg-gold/10 font-bold text-gold"
+                      : "border-wire text-dim hover:border-dim"
+                  }`}
+                >
+                  ${n}
+                </button>
+              ))}
+            </span>
+          </div>
         </div>
 
         <div className="mt-2 flex items-center justify-between rounded-md border border-wire bg-surface-2 px-3 py-2 text-[9px] tracking-widest text-muted-foreground">
