@@ -1,8 +1,44 @@
+import { calibrate, evPerDollar, returnSigma, type CalibrationTable } from "./calibration";
 import { candleInfo } from "./candle";
 import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
 import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
+
+/**
+ * Live calibration table, refreshed from settled history. Until enough real
+ * outcomes exist this stays empty and confidence is used raw.
+ */
+let calibration: CalibrationTable | undefined;
+
+export function setCalibration(table: CalibrationTable | undefined) {
+  calibration = table;
+}
+
+export function getCalibration() {
+  return calibration;
+}
+
+/**
+ * Per-tick return volatility of the recent spot tape, and how far spot sits
+ * from the strike measured in expected standard deviations between now and
+ * settlement. For a 15-minute binary this matters far more than a raw percent.
+ */
+export function volStats(spot: SpotState | undefined, strike: number | null, remainSecs: number) {
+  if (!spot || spot.ticks.length < 6) return { sigma: 0, sigmaDist: 0 };
+  const window = spot.ticks.slice(-60);
+  const sigma = returnSigma(window.map((t) => t.price));
+  if (!sigma || strike == null || !spot.price) return { sigma, sigmaDist: 0 };
+  const first = window[0]!;
+  const last = window[window.length - 1]!;
+  const spanMs = Math.max(1, last.ts - first.ts);
+  const dt = spanMs / Math.max(1, window.length - 1);
+  const stepsLeft = Math.max(1, (remainSecs * 1000) / dt);
+  const horizonSigma = sigma * Math.sqrt(stepsLeft);
+  if (!horizonSigma) return { sigma, sigmaDist: 0 };
+  return { sigma, sigmaDist: (spot.price - strike) / (spot.price * horizonSigma) };
+}
+
 
 function avg(xs: number[]) {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
