@@ -1,16 +1,6 @@
 import { candleInfo } from "./candle";
-import {
-  CLOSE_SECS,
-  GATE_SECS,
-  LAG_PCT,
-  MAX_SPREAD,
-  MAX_YES_MID,
-  MIN_SKEW,
-  MIN_TICKS,
-  MIN_YES_MID,
-  PAIRS,
-  THRESHOLD,
-} from "./constants";
+import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
+import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
 import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
 
@@ -110,13 +100,15 @@ export function computeSignals(
     }
   };
 
+  const T = getTuning();
+  const { gateSecs: GATE, closeSecs: CLOSE } = T;
   const c = candleInfo(now);
-  if (c.elapsed < GATE_SECS || c.elapsed >= CLOSE_SECS) {
+  if (c.elapsed < GATE || c.elapsed >= CLOSE) {
     for (const p of PAIRS)
       note(p.id, "rejected", "outside the trade window", {
         elapsed: c.elapsed,
-        gate: GATE_SECS,
-        close: CLOSE_SECS,
+        gate: GATE,
+        close: CLOSE,
       });
     flush();
     return [];
@@ -127,26 +119,26 @@ export function computeSignals(
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
-    if (!s || !km || s.ticks.length < MIN_TICKS) {
+    if (!s || !km || s.ticks.length < T.minTicks) {
       note(p.id, "rejected", "not enough live data yet", {
         hasSpot: Boolean(s),
         hasMarket: Boolean(km),
         ticks: s?.ticks.length ?? 0,
-        needTicks: MIN_TICKS,
+        needTicks: T.minTicks,
       });
       continue;
     }
 
     // Liquidity / pricing quality gates.
-    if (km.spread > MAX_SPREAD) {
-      note(p.id, "rejected", "book too wide", { spread: km.spread, max: MAX_SPREAD });
+    if (km.spread > T.maxSpread) {
+      note(p.id, "rejected", "book too wide", { spread: km.spread, max: T.maxSpread });
       continue;
     }
-    if (km.yesMid < MIN_YES_MID || km.yesMid > MAX_YES_MID) {
+    if (km.yesMid < T.minYesMid || km.yesMid > T.maxYesMid) {
       note(p.id, "rejected", "mid outside tradable band", {
         yesMid: km.yesMid,
-        min: MIN_YES_MID,
-        max: MAX_YES_MID,
+        min: T.minYesMid,
+        max: T.maxYesMid,
       });
       continue;
     }
@@ -158,8 +150,8 @@ export function computeSignals(
     const kMom = kalshiMomentum(history[p.id], ym);
 
     // The book has to actually lean one way — coin-flip mids are noise.
-    if (Math.abs(skew) < MIN_SKEW) {
-      note(p.id, "rejected", "book too flat", { skew, min: MIN_SKEW });
+    if (Math.abs(skew) < T.minSkew) {
+      note(p.id, "rejected", "book too flat", { skew, min: T.minSkew });
       continue;
     }
 
@@ -168,7 +160,7 @@ export function computeSignals(
 
     const liq = km.spread < 0.02 ? 1.05 : km.spread < 0.04 ? 0.9 : km.spread < 0.06 ? 0.75 : 0.55;
 
-    const minuteIn = (c.elapsed - GATE_SECS) / 60;
+    const minuteIn = (c.elapsed - GATE) / 60;
     const tFac = minuteIn < 2 ? 1.0 : minuteIn < 3 ? 0.88 : 0.72;
 
     const sDir = Math.sign(spotMom || spotMidMom);
@@ -185,10 +177,10 @@ export function computeSignals(
     const strength = raw * agreement * liq * tFac * lagBoost;
     const conf = 50 + Math.min(strength / 0.35, 1) * 49;
 
-    if (conf < THRESHOLD) {
+    if (conf < T.threshold) {
       note(p.id, "rejected", "confidence below threshold", {
         conf: Number(conf.toFixed(1)),
-        threshold: THRESHOLD,
+        threshold: T.threshold,
         agreement,
         liq,
       });
@@ -256,5 +248,13 @@ export function computeSignals(
   }
 
   flush();
-  return out.sort((a, b) => b.conf - a.conf);
+  // Rank by expected value per dollar risked, not raw confidence: paying 80¢
+  // for an 88% shot is worse than paying 45¢ for the same read.
+  const ev = (s: Signal) => {
+    const entry = s.dir === "YES" ? s.yesMid + s.spread / 2 : 1 - s.yesMid + s.spread / 2;
+    const price = Math.min(0.99, Math.max(0.01, entry));
+    const p = Math.min(0.99, Math.max(0.01, s.conf / 100));
+    return (p * (1 - price) - (1 - p) * price) / price;
+  };
+  return out.sort((a, b) => ev(b) - ev(a) || b.conf - a.conf);
 }
