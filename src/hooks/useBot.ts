@@ -8,10 +8,20 @@ import {
   PAIRS,
   type PairId,
 } from "@/lib/bot/constants";
-import { computeSignals } from "@/lib/bot/signals";
+import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
+import { getTuning, setTuning } from "@/lib/bot/tuning";
+import {
+  getAccuracy,
+  recordSignals,
+  recordSnapshots,
+  recordTrade,
+  settleCandle,
+  type AccuracyStats,
+} from "@/lib/bot/telemetry.functions";
 import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
 import { reviewSignal, type AiVerdict } from "@/lib/ai.functions";
+
 
 export type Mode = "paper" | "live";
 
