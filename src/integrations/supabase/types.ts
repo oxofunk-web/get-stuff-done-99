@@ -14,7 +14,192 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      market_snapshots: {
+        Row: {
+          candle_id: number
+          id: number
+          pair: string
+          seconds_in: number
+          spot: number
+          spread: number | null
+          strike: number | null
+          ticker: string | null
+          ts: string
+          vol: number | null
+          yes_ask: number | null
+          yes_bid: number | null
+          yes_mid: number | null
+        }
+        Insert: {
+          candle_id: number
+          id?: number
+          pair: string
+          seconds_in: number
+          spot: number
+          spread?: number | null
+          strike?: number | null
+          ticker?: string | null
+          ts?: string
+          vol?: number | null
+          yes_ask?: number | null
+          yes_bid?: number | null
+          yes_mid?: number | null
+        }
+        Update: {
+          candle_id?: number
+          id?: number
+          pair?: string
+          seconds_in?: number
+          spot?: number
+          spread?: number | null
+          strike?: number | null
+          ticker?: string | null
+          ts?: string
+          vol?: number | null
+          yes_ask?: number | null
+          yes_bid?: number | null
+          yes_mid?: number | null
+        }
+        Relationships: []
+      }
+      signal_log: {
+        Row: {
+          calibrated: number | null
+          candle_id: number
+          conf: number | null
+          dir: string | null
+          entry_price: number | null
+          ev: number | null
+          id: string
+          k_mom: number | null
+          outcome: string | null
+          pair: string
+          reason: string | null
+          seconds_in: number
+          settled_at: string | null
+          settled_spot: number | null
+          sigma_dist: number | null
+          skew: number | null
+          spot: number | null
+          spot_mom: number | null
+          spread: number | null
+          strike: number | null
+          ts: string
+          verdict: string
+          yes_mid: number | null
+        }
+        Insert: {
+          calibrated?: number | null
+          candle_id: number
+          conf?: number | null
+          dir?: string | null
+          entry_price?: number | null
+          ev?: number | null
+          id?: string
+          k_mom?: number | null
+          outcome?: string | null
+          pair: string
+          reason?: string | null
+          seconds_in: number
+          settled_at?: string | null
+          settled_spot?: number | null
+          sigma_dist?: number | null
+          skew?: number | null
+          spot?: number | null
+          spot_mom?: number | null
+          spread?: number | null
+          strike?: number | null
+          ts?: string
+          verdict: string
+          yes_mid?: number | null
+        }
+        Update: {
+          calibrated?: number | null
+          candle_id?: number
+          conf?: number | null
+          dir?: string | null
+          entry_price?: number | null
+          ev?: number | null
+          id?: string
+          k_mom?: number | null
+          outcome?: string | null
+          pair?: string
+          reason?: string | null
+          seconds_in?: number
+          settled_at?: string | null
+          settled_spot?: number | null
+          sigma_dist?: number | null
+          skew?: number | null
+          spot?: number | null
+          spot_mom?: number | null
+          spread?: number | null
+          strike?: number | null
+          ts?: string
+          verdict?: string
+          yes_mid?: number | null
+        }
+        Relationships: []
+      }
+      trade_log: {
+        Row: {
+          calibrated: number | null
+          candle_id: number
+          conf: number | null
+          contracts: number | null
+          dir: string
+          entry_price: number | null
+          id: string
+          mode: string
+          msg: string | null
+          order_id: string | null
+          outcome: string | null
+          pair: string
+          pnl: number | null
+          settled_at: string | null
+          stake: number | null
+          status: string
+          ts: string
+        }
+        Insert: {
+          calibrated?: number | null
+          candle_id: number
+          conf?: number | null
+          contracts?: number | null
+          dir: string
+          entry_price?: number | null
+          id?: string
+          mode: string
+          msg?: string | null
+          order_id?: string | null
+          outcome?: string | null
+          pair: string
+          pnl?: number | null
+          settled_at?: string | null
+          stake?: number | null
+          status: string
+          ts?: string
+        }
+        Update: {
+          calibrated?: number | null
+          candle_id?: number
+          conf?: number | null
+          contracts?: number | null
+          dir?: string
+          entry_price?: number | null
+          id?: string
+          mode?: string
+          msg?: string | null
+          order_id?: string | null
+          outcome?: string | null
+          pair?: string
+          pnl?: number | null
+          settled_at?: string | null
+          stake?: number | null
+          status?: string
+          ts?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
