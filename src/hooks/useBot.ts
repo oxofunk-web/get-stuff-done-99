@@ -207,7 +207,7 @@ export function useBot() {
         return list.filter((p) => p.candleId !== closed);
       });
     }
-  }, [candle.id]);
+  }, [candle.id, refreshAccuracy]);
 
   // Kalshi orderbook polling (through the server, so no CORS and no key in the browser)
   useEffect(() => {
