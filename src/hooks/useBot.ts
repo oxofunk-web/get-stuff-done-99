@@ -288,6 +288,81 @@ export function useBot() {
     setSigCount((c) => c + fresh.length);
   }, [signals]);
 
+  // Market tape recorder — one batched write every 5s, not one per tick.
+  useEffect(() => {
+    const push = () => {
+      const c = candleInfo(Date.now());
+      const rows = PAIRS.map((p) => {
+        const s = spotRef.current[p.id];
+        const m = marketsRef.current[p.id];
+        if (!s?.price) return null;
+        return {
+          candle_id: c.id,
+          seconds_in: c.elapsed,
+          pair: p.id as string,
+          ticker: m?.ticker ?? null,
+          spot: s.price,
+          strike: m?.strike ?? null,
+          yes_bid: m?.yesBid ?? null,
+          yes_ask: m?.yesAsk ?? null,
+          yes_mid: m?.yesMid ?? null,
+          spread: m?.spread ?? null,
+          vol: m?.vol ?? null,
+        };
+      }).filter((r): r is NonNullable<typeof r> => r !== null);
+      if (rows.length) void recordSnapshots({ data: { rows } }).catch(() => undefined);
+    };
+    push();
+    const i = setInterval(push, 5000);
+    return () => clearInterval(i);
+  }, []);
+
+  // Signal recorder — every decision, fired or rejected, once per 5s slot.
+  useEffect(() => {
+    const push = () => {
+      const c = candleInfo(Date.now());
+      const slot = Math.floor(c.elapsed / 5) * 5;
+      const trace = getSignalTrace();
+      const fired = new Map(signals.map((s) => [s.pair, s]));
+      const rows = trace
+        .filter((t) => {
+          const key = `${c.id}-${t.pair}-${t.verdict}-${slot}`;
+          if (loggedSigRef.current.has(key)) return false;
+          loggedSigRef.current.add(key);
+          return true;
+        })
+        .map((t) => {
+          const s = fired.get(t.pair);
+          const m = marketsRef.current[t.pair];
+          return {
+            candle_id: c.id,
+            seconds_in: slot,
+            pair: t.pair as string,
+            verdict: t.verdict,
+            reason: t.reason,
+            dir: s?.dir ?? null,
+            conf: s?.conf ?? null,
+            calibrated: s?.calibrated ?? null,
+            entry_price: s?.entry ?? null,
+            ev: s?.ev ?? null,
+            yes_mid: m?.yesMid ?? null,
+            spread: m?.spread ?? null,
+            skew: s?.skew ?? null,
+            spot_mom: s?.spotMom ?? null,
+            k_mom: s?.kMom ?? null,
+            sigma_dist: s?.sigmaDist ?? null,
+            spot: spotRef.current[t.pair]?.price ?? null,
+            strike: m?.strike ?? null,
+          };
+        });
+      if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);
+    };
+    const i = setInterval(push, 5000);
+    return () => clearInterval(i);
+  }, [signals]);
+
+
+
   const fire = useCallback(
     async (sig: Signal) => {
       const m = markets[sig.pair];
