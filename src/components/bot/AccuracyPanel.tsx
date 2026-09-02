@@ -1,8 +1,9 @@
 import { bandLabel, MIN_SAMPLES } from "@/lib/bot/calibration";
-import type { AccuracyStats } from "@/lib/bot/telemetry.functions";
+import type { AccuracyStats, RejectionRow } from "@/lib/bot/telemetry.functions";
 
 interface Props {
   accuracy: AccuracyStats | null;
+  rejections: RejectionRow[];
   onRefresh: () => void;
 }
 
@@ -17,9 +18,10 @@ function toneFor(pct: number, n: number) {
   return "text-no";
 }
 
-export function AccuracyPanel({ accuracy, onRefresh }: Props) {
+export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
   const a = accuracy;
-  const has = Boolean(a?.ok && a.total > 0);
+  const has = Boolean(a?.ok && (a.total > 0 || a.counterfactual > 0));
+
 
   return (
     <section className="panel">
