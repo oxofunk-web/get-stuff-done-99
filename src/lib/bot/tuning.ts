@@ -7,6 +7,8 @@ import {
   MIN_TICKS,
   MIN_YES_MID,
   THRESHOLD,
+  EV_MARGIN,
+  MIN_SIGMA_DIST,
 } from "./constants";
 
 /**
@@ -23,6 +25,10 @@ export interface Tuning {
   minTicks: number;
   gateSecs: number;
   closeSecs: number;
+  /** Minimum expected value per dollar risked before a signal may fire. */
+  evMargin: number;
+  /** Minimum cushion between spot and strike, in standard deviations. */
+  minSigmaDist: number;
 }
 
 const defaults: Tuning = {
@@ -34,6 +40,8 @@ const defaults: Tuning = {
   minTicks: MIN_TICKS,
   gateSecs: GATE_SECS,
   closeSecs: CLOSE_SECS,
+  evMargin: EV_MARGIN,
+  minSigmaDist: MIN_SIGMA_DIST,
 };
 
 let current: Tuning = { ...defaults };

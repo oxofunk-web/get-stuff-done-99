@@ -11,6 +11,10 @@ export const MIN_YES_MID = 0.12; // skip lottery-ticket longshots
 export const MAX_YES_MID = 0.9; // skip near-certain, no edge left
 export const MIN_SKEW = 0.04; // book must lean at least 4¢ one way
 export const MIN_TICKS = 24; // enough spot history to trust momentum
+/** Minimum expected value per dollar risked — kills "95% read at 92¢" trades. */
+export const EV_MARGIN = 0.08;
+/** Minimum cushion between spot and strike, in standard deviations of movement. */
+export const MIN_SIGMA_DIST = 0.35;
 
 export type PairId = "BTC" | "ETH" | "SOL" | "XRP";
 
