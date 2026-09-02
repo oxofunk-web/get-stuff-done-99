@@ -90,8 +90,15 @@ export interface SignalTrace {
   pair: PairId;
   verdict: "fired" | "rejected";
   reason: string;
+  /**
+   * The direction the engine would have taken. Recorded on rejections too, so
+   * a rejected signal can be graded as a counterfactual instead of being
+   * thrown away.
+   */
+  dir: "YES" | "NO" | null;
   detail: Record<string, number | string | boolean | null>;
 }
+
 
 let debugEnabled =
   typeof import.meta !== "undefined" && Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
