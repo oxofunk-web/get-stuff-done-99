@@ -3,10 +3,16 @@
 ## Short answer
 Not today. The bot currently lives in the browser. When you lock your phone or put the browser tab in the background, iOS/Android throttle JavaScript timers and usually disconnect WebSockets, so signals stop firing and orders cannot be submitted. The only reliable way to trade while away is to move the decision engine and order placement to the server.
 
-## Goal
-Run the signal engine and order placement on the backend, controlled by your saved settings, so trades continue even when your phone screen is off.
+## Non-negotiable: nothing about your current trading changes
+- The client-side bot, signals, thresholds, EV margin, and order flow stay exactly as they are.
+- No changes to `computeSignals`, `placeOrder`, or the paper/live switches you already use.
+- The new server bot is **off by default** and only runs if you explicitly enable it.
+- Your existing “doing gigs right now” setup keeps working in the foreground exactly as it does now.
 
-## What will change
+## Goal
+Add an optional server-side runner that can trade even when your phone screen is off, controlled by saved settings, while leaving the current dashboard bot untouched.
+
+## What will change (all additive)
 1. A new `bot_settings` table stores your per-user preferences: mode (paper/live), bet size, EV margin, max trades per candle, and an on/off switch.
 2. A server-side loop polls Coinbase/Binance REST and Kalshi order books every few seconds.
 3. The existing `computeSignals` logic is reused server-side to score each pair.
