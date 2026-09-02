@@ -114,6 +114,7 @@ export function useBot() {
 
   // ---- telemetry / accuracy -------------------------------------------------
   const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
+  const [rejections, setRejections] = useState<RejectionRow[]>([]);
   const [evMargin, setEvMarginState] = useState(getTuning().evMargin);
   const spotRef = useRef(spot);
   spotRef.current = spot;
@@ -129,11 +130,16 @@ export function useBot() {
       const res = await getAccuracy();
       setAccuracy(res);
       if (res.ok) setCalibration(res.table);
+      // What the filters threw away, and whether those rejections were right.
+      void getRejectionReport()
+        .then((r) => setRejections(r.ok ? r.rows : []))
+        .catch(() => undefined);
       return res;
     } catch {
       return null;
     }
   }, []);
+
 
   useEffect(() => {
     void refreshAccuracy();
