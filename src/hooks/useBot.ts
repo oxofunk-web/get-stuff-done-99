@@ -477,6 +477,27 @@ export function useBot() {
         ].slice(0, 30),
       );
 
+      void recordTrade({
+        data: {
+          row: {
+            candle_id: candleRef.current,
+            pair: sig.pair,
+            dir: sig.dir,
+            mode,
+            conf: sig.conf,
+            calibrated: sig.calibrated,
+            contracts: filledCount,
+            entry_price: filledPriceCents / 100,
+            stake: (filledCount * filledPriceCents) / 100,
+            status,
+            msg,
+            order_id: null,
+          },
+        },
+      }).catch(() => undefined);
+
+
+
       if (status === "placed") {
         const filledStake = (filledCount * filledPriceCents) / 100;
         setPlacedCount((c) => c + 1);
