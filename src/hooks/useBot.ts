@@ -318,12 +318,14 @@ export function useBot() {
   }, []);
 
   // Signal recorder — every decision, fired or rejected, once per 5s slot.
+  const signalsRef = useRef(signals);
+  signalsRef.current = signals;
   useEffect(() => {
     const push = () => {
       const c = candleInfo(Date.now());
       const slot = Math.floor(c.elapsed / 5) * 5;
       const trace = getSignalTrace();
-      const fired = new Map(signals.map((s) => [s.pair, s]));
+      const fired = new Map(signalsRef.current.map((s) => [s.pair, s]));
       const rows = trace
         .filter((t) => {
           const key = `${c.id}-${t.pair}-${t.verdict}-${slot}`;
@@ -359,7 +361,7 @@ export function useBot() {
     };
     const i = setInterval(push, 5000);
     return () => clearInterval(i);
-  }, [signals]);
+  }, []);
 
 
 
