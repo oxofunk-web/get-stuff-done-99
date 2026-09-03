@@ -268,7 +268,7 @@ interface PlaceLiveOrderInput {
   priceCents: number;
   count: number;
   /** Hard slippage ceiling. Defaults to scored price + MAX_SLIPPAGE_CENTS. */
-  maxPriceCents?: number;
+  maxPriceCents?: number | undefined;
 }
 
 interface CreateOrderResponse {
