@@ -17,6 +17,8 @@ import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
 import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
+import { rankSignals, setPairEdge } from "./ranking";
+import type { PairEdgeRow } from "./telemetry.functions";
 import { resetTuning, setTuning } from "./tuning";
 import { fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
@@ -200,17 +202,39 @@ async function loadCalibration(db: Db) {
   const pairTable: PairCalibration = {};
   const { data } = await db
     .from("signal_log")
-    .select("pair, conf, outcome")
+    .select("pair, conf, outcome, verdict, entry_price")
     .not("outcome", "is", null)
     .not("conf", "is", null)
     .limit(20000);
-  for (const r of (data ?? []) as { pair: string; conf: number; outcome: string }[]) {
+  const edge = new Map<string, PairEdgeRow>();
+  for (const r of (data ?? []) as {
+    pair: string;
+    conf: number;
+    outcome: string;
+    verdict: string;
+    entry_price: number | null;
+  }[]) {
     const won = r.outcome === "win";
     const band = table.find((b) => r.conf >= b.lo && r.conf < b.hi);
     if (band) {
       band.n += 1;
       if (won) band.wins += 1;
     }
+    const e =
+      edge.get(r.pair) ??
+      { pair: r.pair, n: 0, wins: 0, fired: 0, firedWins: 0, avgEntry: 0, pnl: 0, trades: 0 };
+    e.n += 1;
+    if (won) e.wins += 1;
+    if (r.verdict === "fired") {
+      e.fired += 1;
+      if (won) e.firedWins += 1;
+      if (r.entry_price != null && r.entry_price > 0) {
+        // Running mean of entry price = the breakeven win rate this pair pays.
+        e.avgEntry = e.avgEntry + (r.entry_price - e.avgEntry) / e.fired;
+      }
+    }
+    edge.set(r.pair, e);
+
     const pt = (pairTable[r.pair] ??= emptyTable());
     const pband = pt.find((b) => r.conf >= b.lo && r.conf < b.hi);
     if (pband) {
@@ -218,7 +242,7 @@ async function loadCalibration(db: Db) {
       if (won) pband.wins += 1;
     }
   }
-  return { table, pairTable };
+  return { table, pairTable, pairEdge: [...edge.values()] };
 }
 
 interface SnapshotInsert {
@@ -327,9 +351,11 @@ export async function runServerBotTick() {
   setTuning({ evMargin: settings.ev_margin });
   const cal = await loadCalibration(db);
   setCalibration(cal.table, cal.pairTable);
+  setPairEdge(cal.pairEdge);
 
   const now = Date.now();
-  const signals = computeSignals(spot, markets, history, now);
+  // Best-edge-first, so the per-candle cap spends on the pairs that actually win.
+  const signals = rankSignals(computeSignals(spot, markets, history, now));
   const trace = getSignalTrace();
 
   // Record every decision so settlement + calibration keep learning even with
