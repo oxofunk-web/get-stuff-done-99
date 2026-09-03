@@ -17,6 +17,7 @@ export type Database = {
       bot_settings: {
         Row: {
           bet_size: number
+          daily_loss_cap: number
           enabled: boolean
           ev_margin: number
           first_enabled_at: string | null
@@ -30,6 +31,7 @@ export type Database = {
         }
         Insert: {
           bet_size?: number
+          daily_loss_cap?: number
           enabled?: boolean
           ev_margin?: number
           first_enabled_at?: string | null
@@ -43,6 +45,7 @@ export type Database = {
         }
         Update: {
           bet_size?: number
+          daily_loss_cap?: number
           enabled?: boolean
           ev_margin?: number
           first_enabled_at?: string | null

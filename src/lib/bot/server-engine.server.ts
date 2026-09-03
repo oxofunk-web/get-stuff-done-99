@@ -15,7 +15,15 @@
  */
 import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
-import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
+import {
+  CLOSE_SECS,
+  DAILY_LOSS_CAP_DEFAULT,
+  GATE_SECS,
+  MAX_SLIPPAGE_CENTS,
+  MIN_RESTING_DEPTH,
+  PAIRS,
+  type PairId,
+} from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
 import { dropVetoed, rankSignals, setPairEdge } from "./ranking";
 import type { PairEdgeRow } from "./telemetry.functions";
@@ -46,6 +54,7 @@ export interface ServerBotRow {
   live_confirmed_at: string | null;
   last_tick_at: string | null;
   last_tick_msg: string | null;
+  daily_loss_cap: number;
 }
 
 type Db = Awaited<ReturnType<typeof admin>>;
@@ -71,6 +80,7 @@ export async function loadSettings(db: Db): Promise<ServerBotRow> {
     live_confirmed_at: null,
     last_tick_at: null,
     last_tick_msg: null,
+    daily_loss_cap: DAILY_LOSS_CAP_DEFAULT,
   };
   const { data: inserted } = await db
     .from("bot_settings")
@@ -102,6 +112,7 @@ export interface ServerBotState {
   betSize: number;
   evMargin: number;
   maxTrades: number;
+  dailyLossCap: number;
   warmupHoursLeft: number;
   liveConfirmed: boolean;
   lastTickAt: string | null;
@@ -135,6 +146,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     betSize: s.bet_size,
     evMargin: s.ev_margin,
     maxTrades: s.max_trades,
+    dailyLossCap: s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT,
     warmupHoursLeft: Math.round((warmupMsLeft(s) / 3600000) * 10) / 10,
     liveConfirmed: Boolean(s.live_confirmed_at),
     lastTickAt: s.last_tick_at,
@@ -412,6 +424,28 @@ export async function runServerBotTick() {
   }
 
   const effMode = effectiveMode(settings);
+
+  // Same daily loss cap the dashboard enforces: once today's settled live P&L
+  // is past it, the server stops for the day too, so both halves of the bot
+  // agree about whether trading is allowed.
+  const cap = settings.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT;
+  if (effMode === "live") {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { data: dayRows } = await db
+      .from("trade_log")
+      .select("pnl")
+      .eq("mode", "live")
+      .gte("ts", dayStart.toISOString())
+      .not("pnl", "is", null);
+    const dayPnl = ((dayRows ?? []) as { pnl: number }[]).reduce((a, r) => a + r.pnl, 0);
+    if (dayPnl <= -cap) {
+      const msg = `day stopped — loss cap $${cap.toFixed(0)} reached (${dayPnl.toFixed(2)} today)`;
+      await heartbeat(msg);
+      return { ok: true, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg };
+    }
+  }
+
   const { data: existing } = await db
     .from("trade_log")
     .select("pair")
@@ -451,7 +485,7 @@ export async function runServerBotTick() {
     const priceCents = Math.max(1, Math.min(99, Math.round(sig.entry * 100)));
     // Skip pairs with nothing resting at the touch; shrink to available size.
     const depth = restingDepth(m, sig.dir);
-    if (depth <= 0) continue;
+    if (depth < MIN_RESTING_DEPTH) continue;
     const count = Math.max(1, Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, sig.entry))));
     let status = "placed";
     let msg = "";

@@ -9,9 +9,10 @@ import {
   PAIRS,
   type PairId,
   MAX_SLIPPAGE_CENTS,
+  MIN_RESTING_DEPTH,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
-import { dropVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
+import { dropVetoed, pairVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
 import { restingDepth } from "@/lib/bot/order-map";
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
@@ -105,6 +106,8 @@ export function useBot() {
   const firingRef = useRef(false);
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
+  /** Pairs skipped for this candle (empty book) — not counted against the cap. */
+  const skippedPairsRef = useRef<Set<string>>(new Set());
   const [maxTrades, setMaxTrades] = useState(MAX_TRADES_PER_CANDLE);
 
   // ---- telemetry / accuracy -------------------------------------------------
@@ -175,6 +178,7 @@ export function useBot() {
       setTradeStatus({});
       seenSigIds.current = new Set();
       loggedSigRef.current = new Set();
+      skippedPairsRef.current = new Set();
 
       // Grade the candle that just closed against the settlement spot, then
       // pull the refreshed accuracy so calibration keeps learning.
@@ -288,6 +292,29 @@ export function useBot() {
     [markets, now, tick],
   );
 
+  // Why each pair is idle right now — so "no signals" reads as "here's what
+  // every pair is waiting for" instead of a blank panel.
+  const pairStatus = useMemo(() => {
+    const trace = getSignalTrace();
+    const skipped = skippedPairsRef.current;
+    return PAIRS.map((p) => {
+      const t = trace.find((x) => x.pair === p.id);
+      const paused = pairVetoed(p.id);
+      return {
+        pair: p.id,
+        verdict: t?.verdict ?? "rejected",
+        reason: paused
+          ? "paused — losing record, cooling down"
+          : skipped.has(p.id)
+            ? "skipped this candle — book was empty"
+            : (t?.reason ?? "waiting for data"),
+        paused,
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signals, now]);
+
   // Count brand-new signals
   useEffect(() => {
     const fresh = signals.filter((s) => !seenSigIds.current.has(s.id));
@@ -386,6 +413,21 @@ export function useBot() {
       // Shrink to what's actually resting at the touch — thin books used to
       // eat 69 failed orders asking for size that was never there.
       const depth = restingDepth(m, sig.dir);
+      // Empty/near-empty book: skip the pair for this candle instead of burning
+      // a cap slot and logging another failed order. Marking it skipped stops
+      // the selector from re-firing the same signal every tick.
+      if (mode === "live" && depth < MIN_RESTING_DEPTH) {
+        skippedPairsRef.current.add(sig.pair);
+        setTradeStatus((s) => ({
+          ...s,
+          [sig.id]: {
+            status: "failed",
+            msg: `Skipped — only ${depth} contract(s) resting at the touch (needs ${MIN_RESTING_DEPTH}).`,
+          },
+        }));
+        firingRef.current = false;
+        return;
+      }
       const count = Math.max(1, Math.min(depth > 0 ? depth : 1, Math.floor(betSize / (priceCents / 100))));
 
       tradesRef.current += 1;
@@ -536,6 +578,15 @@ export function useBot() {
     );
   }, [capHit, dailyLossCap, dayPnl, notify]);
 
+  // Manual "start a fresh day": re-anchor today's P&L to the wallet as it
+  // stands now so the cap stops blocking, without touching the cap value.
+  const resetDay = useCallback(() => {
+    dayRef.current = { day: new Date().toDateString(), base: portfolio.realized };
+    setRealizedPaper(0);
+    setCapHit(false);
+    notify("Day reset — loss cap cleared. Flip BOT STATUS on to resume.", "warn");
+  }, [notify, portfolio.realized]);
+
   // Arm LIVE MONEY at the $5 size as soon as the Kalshi key is verified. The
   // bot itself still needs BOT STATUS switched on before anything fires.
   useEffect(() => {
@@ -551,7 +602,9 @@ export function useBot() {
   useEffect(() => {
     if (!botOn || firingRef.current || capHit) return;
     if (tradesRef.current >= maxTrades) return;
-    const next = rankSignals(dropVetoed(signals)).find((s) => !tradedPairsRef.current.has(s.pair));
+    const next = rankSignals(dropVetoed(signals)).find(
+      (s) => !tradedPairsRef.current.has(s.pair) && !skippedPairsRef.current.has(s.pair),
+    );
     if (!next) return;
     void fire(next);
   }, [botOn, capHit, fire, maxTrades, signals]);
@@ -636,6 +689,8 @@ export function useBot() {
     dailyLossCap,
     setDailyLossCap,
     capHit,
+    resetDay,
+    pairStatus,
     realized,
     unrealized,
     open,

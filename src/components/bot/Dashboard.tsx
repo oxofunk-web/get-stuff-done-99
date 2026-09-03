@@ -30,6 +30,27 @@ export function Dashboard() {
         </div>
       ) : null}
 
+      {bot.capHit ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-no/40 bg-no/15 px-3.5 py-2.5">
+          <div>
+            <div className="font-sans text-[12px] font-extrabold text-no">
+              DAY STOPPED — loss cap -${bot.dailyLossCap} reached
+            </div>
+            <div className="text-[9px] text-muted-foreground">
+              Today {bot.dayPnl < 0 ? "-" : "+"}${Math.abs(bot.dayPnl).toFixed(2)} · auto-trading is
+              off until you reset the day or it rolls over at midnight.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={bot.resetDay}
+            className="rounded-md border border-no/60 bg-no/20 px-3 py-1.5 font-sans text-[10px] font-bold tracking-widest text-no"
+          >
+            RESET DAY
+          </button>
+        </div>
+      ) : null}
+
       <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-wire bg-background/95 px-3.5 py-2.5 backdrop-blur">
         <div className="flex items-center gap-2">
           <span
@@ -110,9 +131,18 @@ export function Dashboard() {
             live={bot.live}
             evMargin={bot.evMargin}
             onEvMargin={bot.setEvMargin}
+            dayPnl={bot.dayPnl}
+            dailyLossCap={bot.dailyLossCap}
+            capHit={bot.capHit}
+            onResetDay={bot.resetDay}
           />
           <ServerBotPanel />
-          <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
+          <SignalsPanel
+            signals={bot.signals}
+            candle={bot.candle}
+            tradeStatus={bot.tradeStatus}
+            pairStatus={bot.pairStatus}
+          />
           <PairEdgePanel accuracy={bot.accuracy} betSize={bot.betSize} />
           <AccuracyPanel
             accuracy={bot.accuracy}

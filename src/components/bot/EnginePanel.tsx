@@ -20,6 +20,10 @@ interface Props {
   live: { configured: boolean; balance: number | null; error: string | null };
   evMargin: number;
   onEvMargin: (n: number) => void;
+  dayPnl: number;
+  dailyLossCap: number;
+  capHit: boolean;
+  onResetDay: () => void;
 }
 
 export function EnginePanel({
@@ -39,6 +43,10 @@ export function EnginePanel({
   live,
   evMargin,
   onEvMargin,
+  dayPnl,
+  dailyLossCap,
+  capHit,
+  onResetDay,
 }: Props) {
   const el = candle.elapsed;
   const gate = tradedThisCandle
@@ -208,6 +216,36 @@ export function EnginePanel({
           <p className="mt-1 text-[8px] leading-relaxed text-dim">
             Higher = fewer, better-priced trades. Blocks expensive contracts with little left to win.
           </p>
+        </div>
+
+        <div
+          className={`mt-2 rounded-md border px-3 py-2 ${
+            capHit ? "border-no/50 bg-no/10" : "border-wire bg-surface-2"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] tracking-[0.2em] text-muted-foreground">TODAY / CAP</span>
+            <span
+              className={`font-sans text-[12px] font-extrabold tabular-nums ${
+                dayPnl < 0 ? "text-no" : "text-yes"
+              }`}
+            >
+              {dayPnl < 0 ? "-" : "+"}${Math.abs(dayPnl).toFixed(2)} / -${dailyLossCap}
+            </span>
+          </div>
+          {capHit ? (
+            <button
+              type="button"
+              onClick={onResetDay}
+              className="mt-2 w-full rounded-md border border-no/60 bg-no/20 py-1.5 font-sans text-[10px] font-bold tracking-widest text-no"
+            >
+              RESET DAY — RESUME TRADING
+            </button>
+          ) : (
+            <p className="mt-1 text-[8px] leading-relaxed text-dim">
+              Auto-trading stops for the day once today&apos;s loss reaches the cap.
+            </p>
+          )}
         </div>
 
         <div className={`mt-2 rounded-md border px-3 py-2 text-[10px] ${gate.tone}`}>{gate.text}</div>

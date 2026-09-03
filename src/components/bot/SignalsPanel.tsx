@@ -3,13 +3,21 @@ import { CLOSE_SECS, GATE_SECS, PAIRS, THRESHOLD } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
 import type { Signal, TradeStatus } from "@/lib/bot/types";
 
+export interface PairStatusRow {
+  pair: string;
+  verdict: string;
+  reason: string;
+  paused: boolean;
+}
+
 interface Props {
   signals: Signal[];
   candle: CandleInfo;
   tradeStatus: Record<string, { status: TradeStatus; msg: string }>;
+  pairStatus?: PairStatusRow[] | undefined;
 }
 
-export function SignalsPanel({ signals, candle, tradeStatus }: Props) {
+export function SignalsPanel({ signals, candle, tradeStatus, pairStatus }: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
@@ -23,7 +31,10 @@ export function SignalsPanel({ signals, candle, tradeStatus }: Props) {
 
       <div className="max-h-[420px] space-y-2 overflow-y-auto p-2.5">
         {signals.length === 0 ? (
-          <EmptyState candle={candle} />
+          <>
+            <EmptyState candle={candle} />
+            <PairStatusList rows={pairStatus} />
+          </>
         ) : (
           signals.map((s) => {
             const pair = PAIRS.find((p) => p.id === s.pair)!;
@@ -130,6 +141,34 @@ function EmptyState({ candle }: { candle: CandleInfo }) {
       <div className="text-2xl">{state.icon}</div>
       <div className="mt-2 text-[11px] text-foreground">{state.txt}</div>
       <div className="mt-1 text-[9px] text-dim">{state.sub}</div>
+    </div>
+  );
+}
+/** Per-pair "what are you waiting for" strip, shown when nothing has fired. */
+function PairStatusList({ rows }: { rows?: PairStatusRow[] | undefined }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="overflow-hidden rounded-md border border-wire">
+      <div className="border-b border-wire bg-surface-2 px-2 py-1 text-[7px] tracking-[0.2em] text-dim">
+        WHY EACH PAIR IS IDLE
+      </div>
+      <ul>
+        {rows.map((r) => (
+          <li
+            key={r.pair}
+            className="flex items-start justify-between gap-2 border-b border-wire/60 px-2 py-1.5 last:border-0"
+          >
+            <span className="font-sans text-[10px] font-extrabold text-foreground">{r.pair}</span>
+            <span
+              className={`text-right text-[9px] leading-snug ${
+                r.paused ? "text-no" : "text-muted-foreground"
+              }`}
+            >
+              {r.reason}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
