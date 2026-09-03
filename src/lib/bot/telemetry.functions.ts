@@ -171,6 +171,22 @@ export const getRejectionReport = createServerFn({ method: "GET" }).handler(
 );
 
 
+/** Per-pair economics: what a trade risks and what the pair actually returns. */
+export interface PairEdgeRow {
+  pair: string;
+  /** Settled decisions used for the win rate (fired + counterfactuals). */
+  n: number;
+  wins: number;
+  /** Settled trades actually fired on this pair. */
+  fired: number;
+  firedWins: number;
+  /** Average entry price paid, 0-1. */
+  avgEntry: number;
+  /** Realized dollar P&L booked on this pair. */
+  pnl: number;
+  trades: number;
+}
+
 export interface AccuracyStats {
   ok: boolean;
   total: number;
@@ -179,6 +195,9 @@ export interface AccuracyStats {
   /** Settled rejected signals graded as counterfactuals — calibration fuel. */
   counterfactual: number;
   table: CalibrationTable;
+  /** Confidence bands split per pair — feeds per-pair calibration. */
+  pairTable: PairCalibration;
+  pairEdge: PairEdgeRow[];
   byPair: { pair: string; n: number; wins: number }[];
   byMinute: { minute: number; n: number; wins: number }[];
   recent: { ts: string; pair: string; dir: string; conf: number; outcome: string }[];
