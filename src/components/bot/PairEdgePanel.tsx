@@ -118,10 +118,13 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
         <div className="mt-2 rounded border border-wire bg-surface-2 p-2 text-[8px] leading-relaxed text-dim">
           RISK/TRADE is the dollars at stake if the contract settles wrong (contracts × entry).
           NEEDS is the win rate the average entry price implies. ACTUAL is the settled rate of the
-          trades this pair actually fired. The bot blends each pair&apos;s own record — fired trades
-          plus graded near-misses — into its probability, and ranks each candle&apos;s candidates by
-          value plus this measured edge, so the trade slots go to the pairs with the best real record.
+          trades this pair actually fired. Candidates are ranked by value plus each pair&apos;s
+          measured edge — weighted up once the pair has real settled history — minus a penalty for
+          expensive entries, so the trade slots go to high win rate, low breakeven pairs. A pair with
+          {" "}{VETO_MIN_TRADES}+ settled trades and negative P&amp;L is PAUSED, and gets one probe
+          candle every {COOLDOWN_CANDLES} candles ({cooldownLeft > 0 ? `${cooldownLeft} to go` : "probe candle now"}).
         </div>
+
       </div>
     </section>
   );
