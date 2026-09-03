@@ -317,7 +317,7 @@ export function computeSignals(
       0.99,
       Math.max(0.01, (dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2)),
     );
-    const calibrated = calibrate(conf, calibration);
+    const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
     const ev = evPerDollar(calibrated, entry);
 
     if (ev < T.evMargin) {
