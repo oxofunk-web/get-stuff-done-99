@@ -20,6 +20,10 @@ interface Props {
   live: { configured: boolean; balance: number | null; error: string | null };
   evMargin: number;
   onEvMargin: (n: number) => void;
+  dayPnl: number;
+  dailyLossCap: number;
+  capHit: boolean;
+  onResetDay: () => void;
 }
 
 export function EnginePanel({
@@ -39,6 +43,10 @@ export function EnginePanel({
   live,
   evMargin,
   onEvMargin,
+  dayPnl,
+  dailyLossCap,
+  capHit,
+  onResetDay,
 }: Props) {
   const el = candle.elapsed;
   const gate = tradedThisCandle
