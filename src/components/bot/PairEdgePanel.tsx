@@ -1,5 +1,5 @@
 import { PAIRS } from "@/lib/bot/constants";
-import { VETO_MIN_TRADES } from "@/lib/bot/ranking";
+import { COOLDOWN_CANDLES, VETO_MIN_TRADES, pairVetoed, pauseCandlesLeft } from "@/lib/bot/ranking";
 import type { AccuracyStats } from "@/lib/bot/telemetry.functions";
 
 /** Below this many settled samples a pair is still "learning", not judged. */
@@ -22,7 +22,9 @@ function money(n: number) {
  * negative edge has to be cheaper before it clears the EV gate.
  */
 export function PairEdgePanel({ accuracy, betSize }: Props) {
+  const cooldownLeft = pauseCandlesLeft();
   const rows = PAIRS.map((p) => {
+
     const e = accuracy?.pairEdge.find((r) => r.pair === p.id);
     // Compare like with like: the win rate of trades actually fired against the
     // breakeven of the prices those trades paid.
@@ -39,8 +41,9 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
     const trades = e?.trades ?? 0;
     const pnl = e?.pnl ?? 0;
     // Same rule the engines enforce: enough settled trades + losing record =
-    // the bot refuses to buy this pair until its record recovers.
-    const paused = trades >= VETO_MIN_TRADES && pnl < 0;
+    // paused, with a probe candle every cooldown cycle.
+    const paused = e ? pairVetoed(p.id, { [p.id]: e }) : false;
+
     return {
       pair: p.id,
       n,
@@ -118,10 +121,13 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
         <div className="mt-2 rounded border border-wire bg-surface-2 p-2 text-[8px] leading-relaxed text-dim">
           RISK/TRADE is the dollars at stake if the contract settles wrong (contracts × entry).
           NEEDS is the win rate the average entry price implies. ACTUAL is the settled rate of the
-          trades this pair actually fired. The bot blends each pair&apos;s own record — fired trades
-          plus graded near-misses — into its probability, and ranks each candle&apos;s candidates by
-          value plus this measured edge, so the trade slots go to the pairs with the best real record.
+          trades this pair actually fired. Candidates are ranked by value plus each pair&apos;s
+          measured edge — weighted up once the pair has real settled history — minus a penalty for
+          expensive entries, so the trade slots go to high win rate, low breakeven pairs. A pair with
+          {" "}{VETO_MIN_TRADES}+ settled trades and negative P&amp;L is PAUSED, and gets one probe
+          candle every {COOLDOWN_CANDLES} candles ({cooldownLeft > 0 ? `${cooldownLeft} to go` : "probe candle now"}).
         </div>
+
       </div>
     </section>
   );
