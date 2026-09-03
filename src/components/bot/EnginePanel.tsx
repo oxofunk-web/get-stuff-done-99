@@ -1,5 +1,5 @@
 import { mmss } from "@/lib/bot/candle";
-import { CLOSE_SECS, GATE_SECS, MAX_TRADES_PER_CANDLE } from "@/lib/bot/constants";
+import { CLOSE_SECS, GATE_SECS } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
 import type { Mode } from "@/hooks/useBot";
 
@@ -11,6 +11,8 @@ interface Props {
   onToggle: () => void;
   betSize: number;
   onBetSize: (n: number) => void;
+  maxTrades: number;
+  onMaxTrades: (n: number) => void;
   placedCount: number;
   exposure: number;
   lastTrade: { label: string; time: string } | null;
@@ -28,6 +30,8 @@ export function EnginePanel({
   onToggle,
   betSize,
   onBetSize,
+  maxTrades,
+  onMaxTrades,
   placedCount,
   exposure,
   lastTrade,
@@ -39,7 +43,7 @@ export function EnginePanel({
   const el = candle.elapsed;
   const gate = tradedThisCandle
     ? {
-        text: `✅ ${MAX_TRADES_PER_CANDLE} trades placed this candle — waiting for the next one`,
+        text: `✅ ${maxTrades} trades placed this candle — waiting for the next one`,
         tone: "border-yes/40 bg-yes/10 text-yes",
       }
     : el < GATE_SECS
@@ -50,7 +54,7 @@ export function EnginePanel({
       : el >= CLOSE_SECS
         ? { text: "🔴 Closing zone — too late for a new entry", tone: "border-no/30 bg-no/10 text-no" }
         : {
-            text: `🟢 Trade window OPEN — the bot fires the best ${MAX_TRADES_PER_CANDLE} signals at 86%+`,
+            text: `🟢 Trade window OPEN — the bot fires the best ${maxTrades} signals at 86%+`,
             tone: "border-yes/40 bg-yes/10 text-yes",
           };
 
@@ -160,6 +164,26 @@ export function EnginePanel({
               ${n}
             </button>
           ))}
+        </div>
+
+        <div className="mt-2">
+          <div className="mb-1 text-[7px] tracking-[0.2em] text-dim">MAX TRADES / CANDLE</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {[2, 3, 4].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onMaxTrades(n)}
+                className={`rounded-md border py-1.5 text-[11px] transition-colors ${
+                  maxTrades === n
+                    ? "border-yes/60 bg-yes/10 font-bold text-yes"
+                    : "border-wire text-muted-foreground hover:border-dim"
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-2 rounded-md border border-wire bg-surface-2 px-3 py-2">

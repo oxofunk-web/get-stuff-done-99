@@ -102,6 +102,7 @@ export function useBot() {
   const firingRef = useRef(false);
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
+  const [maxTrades, setMaxTrades] = useState(MAX_TRADES_PER_CANDLE);
 
   // ---- telemetry / accuracy -------------------------------------------------
   const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
@@ -379,7 +380,7 @@ export function useBot() {
 
       tradesRef.current += 1;
       tradedPairsRef.current.add(sig.pair);
-      setTradedThisCandle(tradesRef.current >= MAX_TRADES_PER_CANDLE);
+      setTradedThisCandle(tradesRef.current >= maxTrades);
       setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "Placing order…" } }));
 
       let status: TradeStatus = "placed";
@@ -478,7 +479,7 @@ export function useBot() {
       }
       firingRef.current = false;
     },
-    [betSize, markets, mode, notify, refreshLive, refreshPortfolio],
+    [betSize, markets, maxTrades, mode, notify, refreshLive, refreshPortfolio],
   );
 
   // Mark-to-market on the open book.
@@ -524,15 +525,15 @@ export function useBot() {
     notify("LIVE MONEY armed at $5 per trade — flip BOT STATUS on to trade.", "warn");
   }, [live.configured, mode, notify]);
 
-  // Auto-trade: up to MAX_TRADES_PER_CANDLE per candle, highest-confidence
+  // Auto-trade: up to `maxTrades` per candle, highest-confidence
   // signals first, one per pair.
   useEffect(() => {
     if (!botOn || firingRef.current || capHit) return;
-    if (tradesRef.current >= MAX_TRADES_PER_CANDLE) return;
+    if (tradesRef.current >= maxTrades) return;
     const next = signals.find((s) => !tradedPairsRef.current.has(s.pair));
     if (!next) return;
     void fire(next);
-  }, [botOn, capHit, fire, signals]);
+  }, [botOn, capHit, fire, maxTrades, signals]);
 
   const toggleBot = useCallback(() => {
     setBotOn((on) => {
@@ -597,6 +598,8 @@ export function useBot() {
     toggleBot,
     betSize,
     setBetSize,
+    maxTrades,
+    setMaxTrades,
     placedCount,
     exposure,
     sigCount,

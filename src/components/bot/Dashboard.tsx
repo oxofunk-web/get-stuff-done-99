@@ -100,6 +100,8 @@ export function Dashboard() {
             onToggle={bot.toggleBot}
             betSize={bot.betSize}
             onBetSize={bot.setBetSize}
+            maxTrades={bot.maxTrades}
+            onMaxTrades={bot.setMaxTrades}
             placedCount={bot.placedCount}
             exposure={bot.exposure}
             lastTrade={bot.lastTrade}
