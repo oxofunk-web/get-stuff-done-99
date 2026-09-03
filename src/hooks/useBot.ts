@@ -470,11 +470,9 @@ export function useBot() {
           void refreshPortfolio();
         }
       } else {
-        // A rejected/canceled IOC moved no money, so allow the bot to retry a
-        // later valid signal in this candle instead of falsely marking it traded.
-        tradesRef.current = Math.max(0, tradesRef.current - 1);
-        tradedPairsRef.current.delete(sig.pair);
-        setTradedThisCandle(false);
+        // Do NOT roll the counters back. Un-marking the pair here used to make
+        // the next tick re-fire the same order 4-7x/second, each attempt
+        // crossing harder until it filled far above the scored price.
         notify(`Trade failed: ${msg}`, "warn");
       }
       firingRef.current = false;
