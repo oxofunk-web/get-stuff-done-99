@@ -176,6 +176,12 @@ export function useBot() {
     [notify],
   );
 
+  // Keep the client-side signal display on the same EV gate the server
+  // enforces, so what the panel calls a signal is what the runner would fire.
+  useEffect(() => {
+    if (server) setTuning({ evMargin: server.evMargin });
+  }, [server]);
+
   const mode: Mode = server?.effectiveMode ?? "paper";
   const botOn = server?.enabled ?? false;
   const betSize = server?.betSize ?? 5;
