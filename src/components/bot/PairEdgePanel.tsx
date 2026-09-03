@@ -34,7 +34,7 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
     const judged = n >= MIN_JUDGE && avgEntry > 0;
     return {
       pair: p.id,
-      label: p.label ?? p.id,
+      
       n,
       winRate,
       breakeven,
