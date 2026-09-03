@@ -421,6 +421,27 @@ export async function runServerBotTick() {
   const tradedPairs = new Set(((existing ?? []) as { pair: string }[]).map((r) => r.pair));
   let remaining = Math.max(0, settings.max_trades - tradedPairs.size);
 
+  // Live mode: don't fire at all when the wallet can't cover the bet — those
+  // attempts used to pile up as failed orders every tick.
+  if (effMode === "live" && remaining > 0) {
+    const keyId = process.env["KALSHI_API_KEY_ID"];
+    const pem = process.env["KALSHI_PRIVATE_KEY"];
+    if (!keyId || !pem) {
+      await heartbeat("live requested but server keys are missing");
+      return { ok: false, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg: "no live keys" };
+    }
+    try {
+      const balance = await fetchLiveBalance({ keyId, pem });
+      if (balance < settings.bet_size) {
+        const msg = `waiting for funds — wallet $${balance.toFixed(2)} below $${settings.bet_size} bet size`;
+        await heartbeat(msg);
+        return { ok: true, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg };
+      }
+    } catch {
+      // Balance unreadable this tick: let the order path report its own error.
+    }
+  }
+
   for (const sig of signals) {
     if (remaining <= 0) break;
     if (tradedPairs.has(sig.pair)) continue;
@@ -428,7 +449,10 @@ export async function runServerBotTick() {
     if (!m?.ticker) continue;
 
     const priceCents = Math.max(1, Math.min(99, Math.round(sig.entry * 100)));
-    const count = Math.max(1, Math.floor(settings.bet_size / Math.max(0.01, sig.entry)));
+    // Skip pairs with nothing resting at the touch; shrink to available size.
+    const depth = restingDepth(m, sig.dir);
+    if (depth <= 0) continue;
+    const count = Math.max(1, Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, sig.entry))));
     let status = "placed";
     let msg = "";
     let contracts = count;
