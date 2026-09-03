@@ -68,9 +68,11 @@ describe("ranking", () => {
   });
 
   it("keeps manually resumed pairs tradable until a new loss", () => {
-    const base = MANUAL_RESUME["BTC"]!;
+    const base = -10;
+    MANUAL_RESUME["TEST"] = base;
     const between = COOLDOWN_CANDLES * 10 * CANDLE_MS + CANDLE_MS;
-    expect(pairVetoed("BTC", { BTC: row("BTC", { trades: 7, pnl: base }) } as PairEdgeMap, between)).toBe(false);
-    expect(pairVetoed("BTC", { BTC: row("BTC", { trades: 7, pnl: base - 5 }) } as PairEdgeMap, between)).toBe(true);
+    expect(pairVetoed("TEST", { TEST: row("TEST", { trades: 7, pnl: base }) } as PairEdgeMap, between)).toBe(false);
+    expect(pairVetoed("TEST", { TEST: row("TEST", { trades: 7, pnl: base - 5 }) } as PairEdgeMap, between)).toBe(true);
+    delete MANUAL_RESUME["TEST"];
   });
 });
