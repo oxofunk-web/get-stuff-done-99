@@ -140,7 +140,6 @@ export function Dashboard() {
           <SignalsPanel
             signals={bot.signals}
             candle={bot.candle}
-            tradeStatus={bot.tradeStatus}
             pairStatus={bot.pairStatus}
           />
           <PairEdgePanel accuracy={bot.accuracy} betSize={bot.betSize} />
@@ -157,11 +156,12 @@ export function Dashboard() {
       <footer className="mx-auto max-w-[960px] px-3 pb-6">
         <p className="rounded-md border border-wire bg-surface p-3 text-[9px] leading-relaxed text-muted-foreground">
           ⚠️ <strong className="text-foreground">AUTO-TRADING:</strong> real-time BRTI proxy via
-          Binance WebSocket (a constituent exchange), Kalshi REST for the YES/NO orderbook. Trades
-          fire automatically after the 10:00 mark at ≥86% confidence, up to one per pair (4 max) per 15-minute candle. Lag
-          detection compares BRTI spot momentum against Kalshi price direction — divergence is the
-          edge. Paper mode simulates fills on live books; live mode submits real fill-or-kill orders
-          signed server-side. Not financial advice. Kalshi is CFTC-regulated.
+          Binance WebSocket (a constituent exchange), Kalshi REST for the YES/NO orderbook. One
+          engine places trades: the server bot, which keeps running even with this app closed. It
+          fires after the 10:00 mark at ≥86% confidence, up to one per pair (4 max) per 15-minute
+          candle. Lag detection compares BRTI spot momentum against Kalshi price direction —
+          divergence is the edge. Live mode submits real immediate-or-cancel limit orders signed
+          server-side. Not financial advice. Kalshi is CFTC-regulated.
         </p>
       </footer>
     </div>
