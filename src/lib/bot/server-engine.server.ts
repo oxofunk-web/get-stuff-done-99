@@ -112,6 +112,7 @@ export interface ServerBotState {
   betSize: number;
   evMargin: number;
   maxTrades: number;
+  dailyLossCap: number;
   warmupHoursLeft: number;
   liveConfirmed: boolean;
   lastTickAt: string | null;
@@ -422,6 +423,28 @@ export async function runServerBotTick() {
   }
 
   const effMode = effectiveMode(settings);
+
+  // Same daily loss cap the dashboard enforces: once today's settled live P&L
+  // is past it, the server stops for the day too, so both halves of the bot
+  // agree about whether trading is allowed.
+  const cap = settings.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT;
+  if (effMode === "live") {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { data: dayRows } = await db
+      .from("trade_log")
+      .select("pnl")
+      .eq("mode", "live")
+      .gte("ts", dayStart.toISOString())
+      .not("pnl", "is", null);
+    const dayPnl = ((dayRows ?? []) as { pnl: number }[]).reduce((a, r) => a + r.pnl, 0);
+    if (dayPnl <= -cap) {
+      const msg = `day stopped — loss cap $${cap.toFixed(0)} reached (${dayPnl.toFixed(2)} today)`;
+      await heartbeat(msg);
+      return { ok: true, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg };
+    }
+  }
+
   const { data: existing } = await db
     .from("trade_log")
     .select("pair")
@@ -461,7 +484,7 @@ export async function runServerBotTick() {
     const priceCents = Math.max(1, Math.min(99, Math.round(sig.entry * 100)));
     // Skip pairs with nothing resting at the touch; shrink to available size.
     const depth = restingDepth(m, sig.dir);
-    if (depth <= 0) continue;
+    if (depth < MIN_RESTING_DEPTH) continue;
     const count = Math.max(1, Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, sig.entry))));
     let status = "placed";
     let msg = "";
