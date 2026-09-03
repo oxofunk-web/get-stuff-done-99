@@ -218,6 +218,8 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     winRate: 0,
     counterfactual: 0,
     table: emptyTable(),
+    pairTable: {},
+    pairEdge: [],
     byPair: [],
     byMinute: [],
     recent: [],
@@ -226,7 +228,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const db = await admin();
     const { data, error } = await db
       .from("signal_log")
-      .select("ts, pair, dir, conf, seconds_in, outcome, verdict")
+      .select("ts, pair, dir, conf, seconds_in, outcome, verdict, entry_price")
       .not("outcome", "is", null)
       .order("ts", { ascending: false })
       .limit(20000);
@@ -240,8 +242,21 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       seconds_in: number | null;
       outcome: string;
       verdict: string;
-
+      entry_price: number | null;
     }[];
+
+    // Realized dollars per pair, from the orders that actually filled.
+    const { data: tradeRows } = await db
+      .from("trade_log")
+      .select("pair, pnl, outcome, entry_price")
+      .limit(20000);
+    const money = new Map<string, { pnl: number; trades: number }>();
+    for (const t of (tradeRows ?? []) as { pair: string; pnl: number | null }[]) {
+      const m = money.get(t.pair) ?? { pnl: 0, trades: 0 };
+      m.trades += 1;
+      m.pnl += t.pnl ?? 0;
+      money.set(t.pair, m);
+    }
 
     // Calibration spans every settled decision; the headline win rate is the
     // trades that were actually taken.
