@@ -144,3 +144,31 @@ function EmptyState({ candle }: { candle: CandleInfo }) {
     </div>
   );
 }
+/** Per-pair "what are you waiting for" strip, shown when nothing has fired. */
+function PairStatusList({ rows }: { rows?: PairStatusRow[] }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="overflow-hidden rounded-md border border-wire">
+      <div className="border-b border-wire bg-surface-2 px-2 py-1 text-[7px] tracking-[0.2em] text-dim">
+        WHY EACH PAIR IS IDLE
+      </div>
+      <ul>
+        {rows.map((r) => (
+          <li
+            key={r.pair}
+            className="flex items-start justify-between gap-2 border-b border-wire/60 px-2 py-1.5 last:border-0"
+          >
+            <span className="font-sans text-[10px] font-extrabold text-foreground">{r.pair}</span>
+            <span
+              className={`text-right text-[9px] leading-snug ${
+                r.paused ? "text-no" : "text-muted-foreground"
+              }`}
+            >
+              {r.reason}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
