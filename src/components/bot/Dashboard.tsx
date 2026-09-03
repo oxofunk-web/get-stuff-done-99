@@ -112,6 +112,7 @@ export function Dashboard() {
           />
           <ServerBotPanel />
           <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
+          <PairEdgePanel accuracy={bot.accuracy} betSize={bot.betSize} />
           <AccuracyPanel
             accuracy={bot.accuracy}
             rejections={bot.rejections}
