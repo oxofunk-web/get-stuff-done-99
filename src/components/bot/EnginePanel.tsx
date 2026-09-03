@@ -11,6 +11,8 @@ interface Props {
   onToggle: () => void;
   betSize: number;
   onBetSize: (n: number) => void;
+  maxTrades: number;
+  onMaxTrades: (n: number) => void;
   placedCount: number;
   exposure: number;
   lastTrade: { label: string; time: string } | null;
@@ -28,6 +30,8 @@ export function EnginePanel({
   onToggle,
   betSize,
   onBetSize,
+  maxTrades,
+  onMaxTrades,
   placedCount,
   exposure,
   lastTrade,
