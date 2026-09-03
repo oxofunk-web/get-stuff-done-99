@@ -146,6 +146,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     betSize: s.bet_size,
     evMargin: s.ev_margin,
     maxTrades: s.max_trades,
+    dailyLossCap: s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT,
     warmupHoursLeft: Math.round((warmupMsLeft(s) / 3600000) * 10) / 10,
     liveConfirmed: Boolean(s.live_confirmed_at),
     lastTickAt: s.last_tick_at,
