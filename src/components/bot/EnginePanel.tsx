@@ -43,18 +43,9 @@ export function EnginePanel({
   const el = candle.elapsed;
   const gate = tradedThisCandle
     ? {
-        text: `✅ ${MAX_TRADES_PER_CANDLE} trades placed this candle — waiting for the next one`,
-        tone: "border-yes/40 bg-yes/10 text-yes",
-      }
-    : el < GATE_SECS
-      ? {
-          text: `🔒 Locked — trade window opens at the 10:00 mark (${mmss(GATE_SECS - el)})`,
-          tone: "border-wire bg-surface-2 text-muted-foreground",
-        }
-      : el >= CLOSE_SECS
-        ? { text: "🔴 Closing zone — too late for a new entry", tone: "border-no/30 bg-no/10 text-no" }
-        : {
-            text: `🟢 Trade window OPEN — the bot fires the best ${MAX_TRADES_PER_CANDLE} signals at 86%+`,
+        text: `✅ ${maxTrades} trades placed this candle — waiting for the next one`,
+...
+            text: `🟢 Trade window OPEN — the bot fires the best ${maxTrades} signals at 86%+`,
             tone: "border-yes/40 bg-yes/10 text-yes",
           };
 
