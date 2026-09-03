@@ -1,4 +1,10 @@
-import { calibrate, evPerDollar, returnSigma, type CalibrationTable } from "./calibration";
+import {
+  calibrateFor,
+  evPerDollar,
+  returnSigma,
+  type CalibrationTable,
+  type PairCalibration,
+} from "./calibration";
 import { candleInfo } from "./candle";
 import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
 import { getTuning } from "./tuning";
