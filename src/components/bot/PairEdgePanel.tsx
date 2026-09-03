@@ -23,8 +23,11 @@ function money(n: number) {
 export function PairEdgePanel({ accuracy, betSize }: Props) {
   const rows = PAIRS.map((p) => {
     const e = accuracy?.pairEdge.find((r) => r.pair === p.id);
-    const n = e?.n ?? 0;
-    const winRate = n ? ((e?.wins ?? 0) / n) * 100 : 0;
+    // Compare like with like: the win rate of trades actually fired against the
+    // breakeven of the prices those trades paid.
+    const n = e?.fired ?? 0;
+    const winRate = n ? ((e?.firedWins ?? 0) / n) * 100 : 0;
+    const graded = e?.n ?? 0;
     const avgEntry = e?.avgEntry ?? 0;
     const breakeven = avgEntry > 0 ? avgEntry * 100 : 0;
     // Contracts the bet buys at the pair's typical entry, and the dollars lost
@@ -34,8 +37,8 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
     const judged = n >= MIN_JUDGE && avgEntry > 0;
     return {
       pair: p.id,
-      
       n,
+      graded,
       winRate,
       breakeven,
       risk,
