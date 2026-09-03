@@ -598,6 +598,8 @@ export function useBot() {
     toggleBot,
     betSize,
     setBetSize,
+    maxTrades,
+    setMaxTrades,
     placedCount,
     exposure,
     sigCount,
