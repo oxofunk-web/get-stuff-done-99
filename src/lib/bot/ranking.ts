@@ -91,7 +91,8 @@ export const COOLDOWN_CANDLES = 4;
 export const CANDLE_MS = 15 * 60 * 1000;
 
 /** Pair -> P&L baseline at manual resume. Re-pauses only on a new loss. */
-export const MANUAL_RESUME: Record<string, number> = { BTC: -13.17, ETH: -13.35 };
+/* Cleared on the 2026-09-03 full reset: history was wiped, so no pair is paused. */
+export const MANUAL_RESUME: Record<string, number> = {};
 
 /** Deterministic candle index, identical on client and server. */
 export function candleIndex(now: number = Date.now()): number {
