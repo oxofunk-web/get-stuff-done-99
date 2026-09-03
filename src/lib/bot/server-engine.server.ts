@@ -17,10 +17,11 @@ import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
 import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
-import { rankSignals, setPairEdge } from "./ranking";
+import { dropVetoed, rankSignals, setPairEdge } from "./ranking";
 import type { PairEdgeRow } from "./telemetry.functions";
 import { resetTuning, setTuning } from "./tuning";
-import { fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
+import { restingDepth } from "./order-map";
+import { fetchLiveBalance, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
 
 /**
@@ -354,8 +355,9 @@ export async function runServerBotTick() {
   setPairEdge(cal.pairEdge);
 
   const now = Date.now();
-  // Best-edge-first, so the per-candle cap spends on the pairs that actually win.
-  const signals = rankSignals(computeSignals(spot, markets, history, now));
+  // Best-edge-first, so the per-candle cap spends on the pairs that actually
+  // win; pairs with a settled losing record are vetoed before ranking.
+  const signals = rankSignals(dropVetoed(computeSignals(spot, markets, history, now)));
   const trace = getSignalTrace();
 
   // Record every decision so settlement + calibration keep learning even with
