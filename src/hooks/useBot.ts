@@ -11,6 +11,7 @@ import {
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { pairVetoed, setPairEdge } from "@/lib/bot/ranking";
+import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
   getRejectionReport,
