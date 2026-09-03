@@ -131,6 +131,10 @@ export function Dashboard() {
             live={bot.live}
             evMargin={bot.evMargin}
             onEvMargin={bot.setEvMargin}
+            dayPnl={bot.dayPnl}
+            dailyLossCap={bot.dailyLossCap}
+            capHit={bot.capHit}
+            onResetDay={bot.resetDay}
           />
           <ServerBotPanel />
           <SignalsPanel
