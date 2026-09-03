@@ -122,7 +122,7 @@ export function useBot() {
     try {
       const res = await getAccuracy();
       setAccuracy(res);
-      if (res.ok) setCalibration(res.table);
+      if (res.ok) setCalibration(res.table, res.pairTable);
       // What the filters threw away, and whether those rejections were right.
       void getRejectionReport()
         .then((r) => setRejections(r.ok ? r.rows : []))
