@@ -44,7 +44,7 @@ export const getLiveStatus = createServerFn({ method: "GET" }).handler(async () 
   }
 });
 
-/** Places a real IOC limit order on Kalshi. Live mode only. */
+/** Places a real IOC limit order on Kalshi, capped by a hard slippage ceiling. */
 export const placeOrder = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -53,6 +53,7 @@ export const placeOrder = createServerFn({ method: "POST" })
         side: z.enum(["yes", "no"]),
         priceCents: z.number().int().min(1).max(99),
         count: z.number().int().min(1).max(500),
+        maxPriceCents: z.number().int().min(1).max(99).optional(),
       })
       .parse(input),
   )
