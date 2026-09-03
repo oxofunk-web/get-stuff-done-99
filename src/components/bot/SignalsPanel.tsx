@@ -3,13 +3,21 @@ import { CLOSE_SECS, GATE_SECS, PAIRS, THRESHOLD } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
 import type { Signal, TradeStatus } from "@/lib/bot/types";
 
+export interface PairStatusRow {
+  pair: string;
+  verdict: string;
+  reason: string;
+  paused: boolean;
+}
+
 interface Props {
   signals: Signal[];
   candle: CandleInfo;
   tradeStatus: Record<string, { status: TradeStatus; msg: string }>;
+  pairStatus?: PairStatusRow[];
 }
 
-export function SignalsPanel({ signals, candle, tradeStatus }: Props) {
+export function SignalsPanel({ signals, candle, tradeStatus, pairStatus }: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
@@ -23,7 +31,10 @@ export function SignalsPanel({ signals, candle, tradeStatus }: Props) {
 
       <div className="max-h-[420px] space-y-2 overflow-y-auto p-2.5">
         {signals.length === 0 ? (
-          <EmptyState candle={candle} />
+          <>
+            <EmptyState candle={candle} />
+            <PairStatusList rows={pairStatus} />
+          </>
         ) : (
           signals.map((s) => {
             const pair = PAIRS.find((p) => p.id === s.pair)!;
