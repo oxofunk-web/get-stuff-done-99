@@ -453,7 +453,7 @@ export async function runServerBotTick() {
 
     const slot = Math.floor(candleInfo(now).elapsed / 5) * 5;
     const fired = new Map(signals.map((s) => [s.pair, s]));
-    const logRows: Record<string, unknown>[] = trace.map((t) => {
+    const logRows: SignalInsert[] = trace.map((t) => {
       const s = fired.get(t.pair);
       const m = markets[t.pair];
       return {
