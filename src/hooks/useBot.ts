@@ -9,6 +9,7 @@ import {
   PAIRS,
   type PairId,
   MAX_SLIPPAGE_CENTS,
+  MIN_RESTING_DEPTH,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { dropVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
@@ -105,6 +106,8 @@ export function useBot() {
   const firingRef = useRef(false);
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
+  /** Pairs skipped for this candle (empty book) — not counted against the cap. */
+  const skippedPairsRef = useRef<Set<string>>(new Set());
   const [maxTrades, setMaxTrades] = useState(MAX_TRADES_PER_CANDLE);
 
   // ---- telemetry / accuracy -------------------------------------------------
@@ -175,6 +178,7 @@ export function useBot() {
       setTradeStatus({});
       seenSigIds.current = new Set();
       loggedSigRef.current = new Set();
+      skippedPairsRef.current = new Set();
 
       // Grade the candle that just closed against the settlement spot, then
       // pull the refreshed accuracy so calibration keeps learning.
