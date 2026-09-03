@@ -112,7 +112,8 @@ export function EnginePanel({
         </div>
         {mode === "live" ? (
           <p className="mt-1.5 text-[8px] leading-relaxed text-no">
-            Real orders will be submitted to your Kalshi account.
+            Real orders will be submitted to your Kalshi account by the server — even with this app
+            closed.
           </p>
         ) : !live.configured ? (
           <p className="mt-1.5 text-[8px] leading-relaxed text-dim">
