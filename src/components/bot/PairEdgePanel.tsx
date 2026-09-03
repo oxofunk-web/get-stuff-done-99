@@ -103,8 +103,8 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
           RISK/TRADE is the dollars at stake if the contract settles wrong (contracts × entry).
           NEEDS is the win rate the average entry price implies. ACTUAL is the settled rate of the
           trades this pair actually fired. The bot blends each pair&apos;s own record — fired trades
-          plus graded near-misses — into its probability, so the more history a pair has, the more it
-          counts and the harder a losing pair has to work to clear the value gate.
+          plus graded near-misses — into its probability, and ranks each candle&apos;s candidates by
+          value plus this measured edge, so the trade slots go to the pairs with the best real record.
         </div>
       </div>
     </section>
