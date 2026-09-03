@@ -24,6 +24,9 @@ export interface KalshiMarket {
   yesMid: number;
   spread: number;
   vol: number;
+  /** Contracts resting at the YES ask / YES bid (NO ask depth = YES bid size). */
+  yesAskSize: number;
+  yesBidSize: number;
   closeTime: string | null;
 }
 

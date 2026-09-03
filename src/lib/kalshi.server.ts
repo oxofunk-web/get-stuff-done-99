@@ -50,8 +50,21 @@ export function normalizeMarket(mkt: RawMarket) {
     yesMid,
     spread: Math.max(0, yesAsk - yesBid),
     vol: Number(mkt.volume_24h_fp ?? mkt.volume_24h ?? mkt.volume ?? 0) || 0,
+    yesAskSize: Math.floor(Number(mkt.yes_ask_size_fp ?? 0) || 0),
+    yesBidSize: Math.floor(Number(mkt.yes_bid_size_fp ?? 0) || 0),
     closeTime: mkt.close_time ?? null,
   };
+}
+
+/**
+ * Contracts resting at the touch on the side an order would take. Buying NO
+ * lifts the YES bid, so NO depth is the YES bid size.
+ */
+export function restingDepth(
+  m: { yesAskSize: number; yesBidSize: number },
+  side: "YES" | "NO",
+) {
+  return Math.floor(side === "YES" ? m.yesAskSize : m.yesBidSize);
 }
 
 /** Public (unauthenticated) Kalshi read — proxied server-side to dodge CORS. */
