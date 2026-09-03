@@ -42,6 +42,9 @@ function marketFromRow(row: SnapshotRow): KalshiMarket | null {
   const ask = clampPrice(yesAsk);
   const mid = row.yes_mid ?? (bid + ask) / 2;
   return {
+    // The tape records quotes, not resting size — treat replay books as deep.
+    yesAskSize: 10000,
+    yesBidSize: 10000,
     pair: row.pair as PairId,
     ticker: row.ticker ?? `${row.pair}-REPLAY`,
     strike: row.strike,

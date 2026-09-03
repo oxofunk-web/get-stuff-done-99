@@ -221,6 +221,9 @@ export function makeSyntheticFrames(opts: {
         const yesMid = Math.min(0.97, Math.max(0.03, 0.5 + edge * 90));
         const half = 0.01;
         markets[p] = {
+          // Synthetic books are infinitely deep — depth gates never block here.
+          yesAskSize: 10000,
+          yesBidSize: 10000,
           pair: p,
           ticker: `${p}-TEST`,
           strike: k,

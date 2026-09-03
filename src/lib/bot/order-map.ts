@@ -8,6 +8,19 @@
  * other, or every live trade silently inverts. Locked by unit tests in
  * `order-map.test.ts`.
  */
+
+/**
+ * Contracts resting at the touch on the side an order would take. Buying NO
+ * lifts the YES bid, so NO depth is the YES bid size. Client-safe: the engines
+ * use it to skip or shrink orders before anything is sent to Kalshi.
+ */
+export function restingDepth(
+  m: { yesAskSize: number; yesBidSize: number },
+  side: "YES" | "NO",
+) {
+  return Math.floor(side === "YES" ? m.yesAskSize : m.yesBidSize);
+}
+
 export interface BookOrder {
   side: "bid" | "ask";
   yesPriceCents: number;

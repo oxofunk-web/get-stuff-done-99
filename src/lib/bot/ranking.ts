@@ -53,3 +53,21 @@ export function rankScore(s: Signal, map: PairEdgeMap = edgeMap): number {
 export function rankSignals(signals: Signal[], map: PairEdgeMap = edgeMap): Signal[] {
   return [...signals].sort((a, b) => rankScore(b, map) - rankScore(a, map) || b.conf - a.conf);
 }
+
+/**
+ * Hard veto: once a pair has enough settled trades to judge and its realized
+ * P&L is negative, the bot stops buying it. Graded near-misses keep recording,
+ * so the pair re-qualifies on its own once the record recovers.
+ */
+export const VETO_MIN_TRADES = 5;
+
+export function pairVetoed(pair: string, map: PairEdgeMap = edgeMap): boolean {
+  const e = map[pair];
+  if (!e) return false;
+  return e.trades >= VETO_MIN_TRADES && e.pnl < 0;
+}
+
+/** Signals with vetoed pairs removed — apply before ranking for trade selection. */
+export function dropVetoed(signals: Signal[], map: PairEdgeMap = edgeMap): Signal[] {
+  return signals.filter((s) => !pairVetoed(s.pair, map));
+}

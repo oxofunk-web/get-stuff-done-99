@@ -11,7 +11,8 @@ import {
   MAX_SLIPPAGE_CENTS,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
-import { rankSignals, setPairEdge } from "@/lib/bot/ranking";
+import { dropVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
+import { restingDepth } from "@/lib/bot/order-map";
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
@@ -382,7 +383,10 @@ export function useBot() {
         1,
         Math.min(99, Math.round((sig.dir === "YES" ? m.yesAsk : m.noAsk) * 100)),
       );
-      const count = Math.max(1, Math.floor(betSize / (priceCents / 100)));
+      // Shrink to what's actually resting at the touch — thin books used to
+      // eat 69 failed orders asking for size that was never there.
+      const depth = restingDepth(m, sig.dir);
+      const count = Math.max(1, Math.min(depth > 0 ? depth : 1, Math.floor(betSize / (priceCents / 100))));
 
       tradesRef.current += 1;
       tradedPairsRef.current.add(sig.pair);
@@ -397,6 +401,13 @@ export function useBot() {
       if (mode === "paper") {
         await new Promise((r) => setTimeout(r, 500));
         msg = `PAPER ${sig.dir} ×${count} @ ${priceCents}¢`;
+      } else if (portfolio.balance != null && portfolio.balance < betSize) {
+        // Don't even send the order — 48 attempts died this way already.
+        status = "failed";
+        msg = `Waiting for funds — wallet $${portfolio.balance.toFixed(2)} is below the $${betSize} bet size. No order sent.`;
+      } else if (depth <= 0) {
+        status = "failed";
+        msg = "No resting volume at the touch — skipped before sending.";
       } else {
         const res = await placeOrder({
           data: {
@@ -489,7 +500,7 @@ export function useBot() {
       }
       firingRef.current = false;
     },
-    [betSize, markets, maxTrades, mode, notify, refreshLive, refreshPortfolio],
+    [betSize, markets, maxTrades, mode, notify, portfolio.balance, refreshLive, refreshPortfolio],
   );
 
   // Mark-to-market on the open book.
@@ -540,7 +551,7 @@ export function useBot() {
   useEffect(() => {
     if (!botOn || firingRef.current || capHit) return;
     if (tradesRef.current >= maxTrades) return;
-    const next = rankSignals(signals).find((s) => !tradedPairsRef.current.has(s.pair));
+    const next = rankSignals(dropVetoed(signals)).find((s) => !tradedPairsRef.current.has(s.pair));
     if (!next) return;
     void fire(next);
   }, [botOn, capHit, fire, maxTrades, signals]);

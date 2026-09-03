@@ -50,6 +50,8 @@ export function normalizeMarket(mkt: RawMarket) {
     yesMid,
     spread: Math.max(0, yesAsk - yesBid),
     vol: Number(mkt.volume_24h_fp ?? mkt.volume_24h ?? mkt.volume ?? 0) || 0,
+    yesAskSize: Math.floor(Number(mkt.yes_ask_size_fp ?? 0) || 0),
+    yesBidSize: Math.floor(Number(mkt.yes_bid_size_fp ?? 0) || 0),
     closeTime: mkt.close_time ?? null,
   };
 }

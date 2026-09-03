@@ -17,10 +17,11 @@ import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
 import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
-import { rankSignals, setPairEdge } from "./ranking";
+import { dropVetoed, rankSignals, setPairEdge } from "./ranking";
 import type { PairEdgeRow } from "./telemetry.functions";
 import { resetTuning, setTuning } from "./tuning";
-import { fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
+import { restingDepth } from "./order-map";
+import { fetchLiveBalance, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
 
 /**
@@ -354,8 +355,9 @@ export async function runServerBotTick() {
   setPairEdge(cal.pairEdge);
 
   const now = Date.now();
-  // Best-edge-first, so the per-candle cap spends on the pairs that actually win.
-  const signals = rankSignals(computeSignals(spot, markets, history, now));
+  // Best-edge-first, so the per-candle cap spends on the pairs that actually
+  // win; pairs with a settled losing record are vetoed before ranking.
+  const signals = rankSignals(dropVetoed(computeSignals(spot, markets, history, now)));
   const trace = getSignalTrace();
 
   // Record every decision so settlement + calibration keep learning even with
@@ -419,6 +421,27 @@ export async function runServerBotTick() {
   const tradedPairs = new Set(((existing ?? []) as { pair: string }[]).map((r) => r.pair));
   let remaining = Math.max(0, settings.max_trades - tradedPairs.size);
 
+  // Live mode: don't fire at all when the wallet can't cover the bet — those
+  // attempts used to pile up as failed orders every tick.
+  if (effMode === "live" && remaining > 0) {
+    const keyId = process.env["KALSHI_API_KEY_ID"];
+    const pem = process.env["KALSHI_PRIVATE_KEY"];
+    if (!keyId || !pem) {
+      await heartbeat("live requested but server keys are missing");
+      return { ok: false, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg: "no live keys" };
+    }
+    try {
+      const balance = await fetchLiveBalance({ keyId, pem });
+      if (balance < settings.bet_size) {
+        const msg = `waiting for funds — wallet $${balance.toFixed(2)} below $${settings.bet_size} bet size`;
+        await heartbeat(msg);
+        return { ok: true, sampled: snapshotRows.length, signals: signals.length, placed: 0, msg };
+      }
+    } catch {
+      // Balance unreadable this tick: let the order path report its own error.
+    }
+  }
+
   for (const sig of signals) {
     if (remaining <= 0) break;
     if (tradedPairs.has(sig.pair)) continue;
@@ -426,7 +449,10 @@ export async function runServerBotTick() {
     if (!m?.ticker) continue;
 
     const priceCents = Math.max(1, Math.min(99, Math.round(sig.entry * 100)));
-    const count = Math.max(1, Math.floor(settings.bet_size / Math.max(0.01, sig.entry)));
+    // Skip pairs with nothing resting at the touch; shrink to available size.
+    const depth = restingDepth(m, sig.dir);
+    if (depth <= 0) continue;
+    const count = Math.max(1, Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, sig.entry))));
     let status = "placed";
     let msg = "";
     let contracts = count;
