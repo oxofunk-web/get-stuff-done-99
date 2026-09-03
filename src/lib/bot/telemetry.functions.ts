@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { BANDS, emptyTable, type CalibrationTable } from "./calibration";
+import { BANDS, emptyTable, type CalibrationTable, type PairCalibration } from "./calibration";
 
 /**
  * Telemetry for the trading engine: raw market tape, every signal (fired and
@@ -338,6 +338,8 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       winRate: rows.length ? (wins / rows.length) * 100 : 0,
       counterfactual: all.length - rows.length,
       table,
+      pairTable,
+      pairEdge,
       byPair: [...pairMap.entries()].map(([pair, v]) => ({ pair, ...v })).sort((a, b) => b.n - a.n),
       byMinute: [...minMap.entries()]
         .map(([minute, v]) => ({ minute, ...v }))
