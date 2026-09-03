@@ -143,6 +143,7 @@ export type Database = {
           settled_spot: number | null
           sigma_dist: number | null
           skew: number | null
+          source: string
           spot: number | null
           spot_mom: number | null
           spread: number | null
@@ -168,6 +169,7 @@ export type Database = {
           settled_spot?: number | null
           sigma_dist?: number | null
           skew?: number | null
+          source?: string
           spot?: number | null
           spot_mom?: number | null
           spread?: number | null
@@ -193,6 +195,7 @@ export type Database = {
           settled_spot?: number | null
           sigma_dist?: number | null
           skew?: number | null
+          source?: string
           spot?: number | null
           spot_mom?: number | null
           spread?: number | null
