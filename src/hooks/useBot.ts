@@ -292,6 +292,29 @@ export function useBot() {
     [markets, now, tick],
   );
 
+  // Why each pair is idle right now — so "no signals" reads as "here's what
+  // every pair is waiting for" instead of a blank panel.
+  const pairStatus = useMemo(() => {
+    const trace = getSignalTrace();
+    const skipped = skippedPairsRef.current;
+    return PAIRS.map((p) => {
+      const t = trace.find((x) => x.pair === p.id);
+      const paused = pairVetoed(p.id);
+      return {
+        pair: p.id,
+        verdict: t?.verdict ?? "rejected",
+        reason: paused
+          ? "paused — losing record, cooling down"
+          : skipped.has(p.id)
+            ? "skipped this candle — book was empty"
+            : (t?.reason ?? "waiting for data"),
+        paused,
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signals, now]);
+
   // Count brand-new signals
   useEffect(() => {
     const fresh = signals.filter((s) => !seenSigIds.current.has(s.id));
@@ -390,6 +413,21 @@ export function useBot() {
       // Shrink to what's actually resting at the touch — thin books used to
       // eat 69 failed orders asking for size that was never there.
       const depth = restingDepth(m, sig.dir);
+      // Empty/near-empty book: skip the pair for this candle instead of burning
+      // a cap slot and logging another failed order. Marking it skipped stops
+      // the selector from re-firing the same signal every tick.
+      if (mode === "live" && depth < MIN_RESTING_DEPTH) {
+        skippedPairsRef.current.add(sig.pair);
+        setTradeStatus((s) => ({
+          ...s,
+          [sig.id]: {
+            status: "failed",
+            msg: `Skipped — only ${depth} contract(s) resting at the touch (needs ${MIN_RESTING_DEPTH}).`,
+          },
+        }));
+        firingRef.current = false;
+        return;
+      }
       const count = Math.max(1, Math.min(depth > 0 ? depth : 1, Math.floor(betSize / (priceCents / 100))));
 
       tradesRef.current += 1;
