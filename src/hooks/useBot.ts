@@ -11,6 +11,7 @@ import {
   MAX_SLIPPAGE_CENTS,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
+import { rankSignals, setPairEdge } from "@/lib/bot/ranking";
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
@@ -122,7 +123,11 @@ export function useBot() {
     try {
       const res = await getAccuracy();
       setAccuracy(res);
-      if (res.ok) setCalibration(res.table, res.pairTable);
+      if (res.ok) {
+        setCalibration(res.table, res.pairTable);
+        // Selection uses the same measured per-pair record as the panel.
+        setPairEdge(res.pairEdge);
+      }
       // What the filters threw away, and whether those rejections were right.
       void getRejectionReport()
         .then((r) => setRejections(r.ok ? r.rows : []))
@@ -530,12 +535,12 @@ export function useBot() {
     notify("LIVE MONEY armed at $5 per trade — flip BOT STATUS on to trade.", "warn");
   }, [live.configured, mode, notify]);
 
-  // Auto-trade: up to `maxTrades` per candle, highest-confidence
-  // signals first, one per pair.
+  // Auto-trade: up to `maxTrades` per candle, one per pair, ranked by expected
+  // value tilted by each pair's own settled edge — not simply the first signals.
   useEffect(() => {
     if (!botOn || firingRef.current || capHit) return;
     if (tradesRef.current >= maxTrades) return;
-    const next = signals.find((s) => !tradedPairsRef.current.has(s.pair));
+    const next = rankSignals(signals).find((s) => !tradedPairsRef.current.has(s.pair));
     if (!next) return;
     void fire(next);
   }, [botOn, capHit, fire, maxTrades, signals]);
