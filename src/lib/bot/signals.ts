@@ -16,13 +16,20 @@ import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
  * outcomes exist this stays empty and confidence is used raw.
  */
 let calibration: CalibrationTable | undefined;
+/** Per-pair tables so the engine weights the pairs it actually wins on. */
+let pairCalibration: PairCalibration | undefined;
 
-export function setCalibration(table: CalibrationTable | undefined) {
+export function setCalibration(table: CalibrationTable | undefined, pairTables?: PairCalibration) {
   calibration = table;
+  if (pairTables !== undefined) pairCalibration = pairTables;
 }
 
 export function getCalibration() {
   return calibration;
+}
+
+export function getPairCalibration() {
+  return pairCalibration;
 }
 
 /**
