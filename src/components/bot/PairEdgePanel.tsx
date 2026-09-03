@@ -41,8 +41,9 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
     const trades = e?.trades ?? 0;
     const pnl = e?.pnl ?? 0;
     // Same rule the engines enforce: enough settled trades + losing record =
-    // the bot refuses to buy this pair until its record recovers.
-    const paused = trades >= VETO_MIN_TRADES && pnl < 0;
+    // paused, with a probe candle every cooldown cycle.
+    const paused = e ? pairVetoed(p.id, { [p.id]: e }) : false;
+
     return {
       pair: p.id,
       n,
