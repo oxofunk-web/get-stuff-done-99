@@ -8,6 +8,7 @@ import {
   MAX_TRADES_PER_CANDLE,
   PAIRS,
   type PairId,
+  MAX_SLIPPAGE_CENTS,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { getTuning, setTuning } from "@/lib/bot/tuning";

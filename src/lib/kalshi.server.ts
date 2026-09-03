@@ -1,3 +1,4 @@
+import { MAX_SLIPPAGE_CENTS } from "./bot/constants";
 import { mapOrderToBook } from "./bot/order-map";
 
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
@@ -277,9 +278,6 @@ interface CreateOrderResponse {
   remaining_count: string;
   average_fill_price?: string;
 }
-
-/** Never pay more than this many cents above the price the signal was scored at. */
-export const MAX_SLIPPAGE_CENTS = 2;
 
 /**
  * Kalshi reports `average_fill_price` on the YES scale, and the units have
