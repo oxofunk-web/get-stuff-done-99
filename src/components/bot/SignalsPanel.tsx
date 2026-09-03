@@ -145,7 +145,7 @@ function EmptyState({ candle }: { candle: CandleInfo }) {
   );
 }
 /** Per-pair "what are you waiting for" strip, shown when nothing has fired. */
-function PairStatusList({ rows }: { rows?: PairStatusRow[] }) {
+function PairStatusList({ rows }: { rows?: PairStatusRow[] | undefined }) {
   if (!rows?.length) return null;
   return (
     <div className="overflow-hidden rounded-md border border-wire">
