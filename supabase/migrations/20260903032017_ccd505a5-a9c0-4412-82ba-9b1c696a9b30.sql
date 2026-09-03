@@ -1,0 +1,1 @@
+alter table public.bot_settings add column if not exists daily_loss_cap numeric not null default 20;
