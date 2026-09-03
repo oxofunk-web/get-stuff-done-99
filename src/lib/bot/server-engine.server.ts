@@ -325,7 +325,8 @@ export async function runServerBotTick() {
   // ---- 3. Same gates, same math as the dashboard --------------------------
   resetTuning();
   setTuning({ evMargin: settings.ev_margin });
-  setCalibration(await loadCalibration(db));
+  const cal = await loadCalibration(db);
+  setCalibration(cal.table, cal.pairTable);
 
   const now = Date.now();
   const signals = computeSignals(spot, markets, history, now);
