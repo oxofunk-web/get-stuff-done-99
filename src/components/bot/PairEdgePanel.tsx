@@ -1,5 +1,5 @@
 import { PAIRS } from "@/lib/bot/constants";
-import { VETO_MIN_TRADES } from "@/lib/bot/ranking";
+import { COOLDOWN_CANDLES, VETO_MIN_TRADES, pairVetoed, pauseCandlesLeft } from "@/lib/bot/ranking";
 import type { AccuracyStats } from "@/lib/bot/telemetry.functions";
 
 /** Below this many settled samples a pair is still "learning", not judged. */
