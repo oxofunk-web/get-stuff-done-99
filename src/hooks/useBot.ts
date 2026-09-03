@@ -393,12 +393,18 @@ export function useBot() {
         msg = `PAPER ${sig.dir} ×${count} @ ${priceCents}¢`;
       } else {
         const res = await placeOrder({
-          data: { ticker: m.ticker, side: sig.dir === "YES" ? "yes" : "no", priceCents, count },
+          data: {
+            ticker: m.ticker,
+            side: sig.dir === "YES" ? "yes" : "no",
+            priceCents,
+            count,
+            maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+          },
         });
         if (res.ok) {
-          msg = `${sig.dir} ×${count} @ ${priceCents}¢ · ${res.status}`;
           filledCount = res.filled;
           filledPriceCents = res.priceCents;
+          msg = `${sig.dir} ×${filledCount} @ ${priceCents}¢ · ${res.status}`;
         } else {
           status = "failed";
           msg = res.error ?? "Order rejected";
