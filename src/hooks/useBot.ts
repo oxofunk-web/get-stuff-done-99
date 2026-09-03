@@ -11,7 +11,8 @@ import {
   MAX_SLIPPAGE_CENTS,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
-import { rankSignals, setPairEdge } from "@/lib/bot/ranking";
+import { dropVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
+import { restingDepth } from "@/lib/kalshi.server";
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
