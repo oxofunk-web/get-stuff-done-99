@@ -252,9 +252,13 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       .limit(20000);
     const money = new Map<string, { pnl: number; trades: number }>();
     for (const t of (tradeRows ?? []) as { pair: string; pnl: number | null }[]) {
+      // Only settled orders count: failed attempts and unsettled fills carry no
+      // realized P&L, and counting them would judge a pair on orders that never
+      // had a chance to win or lose.
+      if (t.pnl == null) continue;
       const m = money.get(t.pair) ?? { pnl: 0, trades: 0 };
       m.trades += 1;
-      m.pnl += t.pnl ?? 0;
+      m.pnl += t.pnl;
       money.set(t.pair, m);
     }
 
