@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { BANDS, emptyTable, type CalibrationTable } from "./calibration";
+import { BANDS, emptyTable, type CalibrationTable, type PairCalibration } from "./calibration";
 
 /**
  * Telemetry for the trading engine: raw market tape, every signal (fired and
@@ -171,6 +171,22 @@ export const getRejectionReport = createServerFn({ method: "GET" }).handler(
 );
 
 
+/** Per-pair economics: what a trade risks and what the pair actually returns. */
+export interface PairEdgeRow {
+  pair: string;
+  /** Settled decisions used for the win rate (fired + counterfactuals). */
+  n: number;
+  wins: number;
+  /** Settled trades actually fired on this pair. */
+  fired: number;
+  firedWins: number;
+  /** Average entry price paid, 0-1. */
+  avgEntry: number;
+  /** Realized dollar P&L booked on this pair. */
+  pnl: number;
+  trades: number;
+}
+
 export interface AccuracyStats {
   ok: boolean;
   total: number;
@@ -179,6 +195,9 @@ export interface AccuracyStats {
   /** Settled rejected signals graded as counterfactuals — calibration fuel. */
   counterfactual: number;
   table: CalibrationTable;
+  /** Confidence bands split per pair — feeds per-pair calibration. */
+  pairTable: PairCalibration;
+  pairEdge: PairEdgeRow[];
   byPair: { pair: string; n: number; wins: number }[];
   byMinute: { minute: number; n: number; wins: number }[];
   recent: { ts: string; pair: string; dir: string; conf: number; outcome: string }[];
@@ -199,6 +218,8 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     winRate: 0,
     counterfactual: 0,
     table: emptyTable(),
+    pairTable: {},
+    pairEdge: [],
     byPair: [],
     byMinute: [],
     recent: [],
@@ -207,7 +228,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const db = await admin();
     const { data, error } = await db
       .from("signal_log")
-      .select("ts, pair, dir, conf, seconds_in, outcome, verdict")
+      .select("ts, pair, dir, conf, seconds_in, outcome, verdict, entry_price")
       .not("outcome", "is", null)
       .order("ts", { ascending: false })
       .limit(20000);
@@ -221,8 +242,21 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       seconds_in: number | null;
       outcome: string;
       verdict: string;
-
+      entry_price: number | null;
     }[];
+
+    // Realized dollars per pair, from the orders that actually filled.
+    const { data: tradeRows } = await db
+      .from("trade_log")
+      .select("pair, pnl, outcome, entry_price")
+      .limit(20000);
+    const money = new Map<string, { pnl: number; trades: number }>();
+    for (const t of (tradeRows ?? []) as { pair: string; pnl: number | null }[]) {
+      const m = money.get(t.pair) ?? { pnl: 0, trades: 0 };
+      m.trades += 1;
+      m.pnl += t.pnl ?? 0;
+      money.set(t.pair, m);
+    }
 
     // Calibration spans every settled decision; the headline win rate is the
     // trades that were actually taken.
@@ -230,6 +264,11 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
+    const pairTable: PairCalibration = {};
+    const edge = new Map<
+      string,
+      { n: number; wins: number; fired: number; firedWins: number; entrySum: number; entryN: number }
+    >();
     let wins = 0;
 
     for (const r of all) {
@@ -240,6 +279,29 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
         band.n += 1;
         if (won) band.wins += 1;
       }
+
+      // Same bands, restricted to this pair: the pair's own measured record.
+      const pt = (pairTable[r.pair] ??= emptyTable());
+      const pband = pt.find((b) => conf >= b.lo && conf < b.hi);
+      if (pband) {
+        pband.n += 1;
+        if (won) pband.wins += 1;
+      }
+
+      const e =
+        edge.get(r.pair) ?? { n: 0, wins: 0, fired: 0, firedWins: 0, entrySum: 0, entryN: 0 };
+      e.n += 1;
+      if (won) e.wins += 1;
+      if (r.verdict === "fired") {
+        e.fired += 1;
+        if (won) e.firedWins += 1;
+        if (r.entry_price != null && r.entry_price > 0) {
+          e.entrySum += r.entry_price;
+          e.entryN += 1;
+        }
+      }
+      edge.set(r.pair, e);
+
       if (r.verdict !== "fired") continue;
       if (won) wins += 1;
 
@@ -255,6 +317,20 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       minMap.set(minute, m);
     }
 
+    const pairEdge: PairEdgeRow[] = [...edge.entries()]
+      .map(([pair, e]) => ({
+        pair,
+        n: e.n,
+        wins: e.wins,
+        fired: e.fired,
+        firedWins: e.firedWins,
+        avgEntry: e.entryN ? e.entrySum / e.entryN : 0,
+        pnl: money.get(pair)?.pnl ?? 0,
+        trades: money.get(pair)?.trades ?? 0,
+      }))
+      .sort((a, b) => b.n - a.n);
+
+
     return {
       ok: true,
       total: rows.length,
@@ -262,6 +338,8 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       winRate: rows.length ? (wins / rows.length) * 100 : 0,
       counterfactual: all.length - rows.length,
       table,
+      pairTable,
+      pairEdge,
       byPair: [...pairMap.entries()].map(([pair, v]) => ({ pair, ...v })).sort((a, b) => b.n - a.n),
       byMinute: [...minMap.entries()]
         .map(([minute, v]) => ({ minute, ...v }))

@@ -4,6 +4,7 @@ import { ClockPanel } from "./ClockPanel";
 import { EnginePanel } from "./EnginePanel";
 import { LogPanel } from "./LogPanel";
 import { MarketsPanel } from "./MarketsPanel";
+import { PairEdgePanel } from "./PairEdgePanel";
 import { PnlPanel } from "./PnlPanel";
 import { ServerBotPanel } from "./ServerBotPanel";
 import { SignalsPanel } from "./SignalsPanel";
@@ -112,6 +113,7 @@ export function Dashboard() {
           />
           <ServerBotPanel />
           <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
+          <PairEdgePanel accuracy={bot.accuracy} betSize={bot.betSize} />
           <AccuracyPanel
             accuracy={bot.accuracy}
             rejections={bot.rejections}

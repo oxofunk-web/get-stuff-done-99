@@ -13,7 +13,7 @@
  * lives in Supabase — workers are stateless, so nothing important is kept in
  * module memory.
  */
-import { emptyTable } from "./calibration";
+import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
 import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
@@ -191,23 +191,34 @@ async function fetchAllMarkets(): Promise<Partial<Record<PairId, KalshiMarket>>>
   return out;
 }
 
-/** Calibration table from settled signal outcomes — same bands as the client. */
+/**
+ * Calibration from settled signal outcomes — same bands as the client, plus the
+ * per-pair split so the server bot weights the pairs that actually win.
+ */
 async function loadCalibration(db: Db) {
   const table = emptyTable();
+  const pairTable: PairCalibration = {};
   const { data } = await db
     .from("signal_log")
-    .select("conf, outcome")
+    .select("pair, conf, outcome")
     .not("outcome", "is", null)
     .not("conf", "is", null)
     .limit(20000);
-  for (const r of (data ?? []) as { conf: number; outcome: string }[]) {
+  for (const r of (data ?? []) as { pair: string; conf: number; outcome: string }[]) {
+    const won = r.outcome === "win";
     const band = table.find((b) => r.conf >= b.lo && r.conf < b.hi);
     if (band) {
       band.n += 1;
-      if (r.outcome === "win") band.wins += 1;
+      if (won) band.wins += 1;
+    }
+    const pt = (pairTable[r.pair] ??= emptyTable());
+    const pband = pt.find((b) => r.conf >= b.lo && r.conf < b.hi);
+    if (pband) {
+      pband.n += 1;
+      if (won) pband.wins += 1;
     }
   }
-  return table;
+  return { table, pairTable };
 }
 
 interface SnapshotInsert {
@@ -314,7 +325,8 @@ export async function runServerBotTick() {
   // ---- 3. Same gates, same math as the dashboard --------------------------
   resetTuning();
   setTuning({ evMargin: settings.ev_margin });
-  setCalibration(await loadCalibration(db));
+  const cal = await loadCalibration(db);
+  setCalibration(cal.table, cal.pairTable);
 
   const now = Date.now();
   const signals = computeSignals(spot, markets, history, now);

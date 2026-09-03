@@ -1,4 +1,10 @@
-import { calibrate, evPerDollar, returnSigma, type CalibrationTable } from "./calibration";
+import {
+  calibrateFor,
+  evPerDollar,
+  returnSigma,
+  type CalibrationTable,
+  type PairCalibration,
+} from "./calibration";
 import { candleInfo } from "./candle";
 import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
 import { getTuning } from "./tuning";
@@ -10,13 +16,20 @@ import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
  * outcomes exist this stays empty and confidence is used raw.
  */
 let calibration: CalibrationTable | undefined;
+/** Per-pair tables so the engine weights the pairs it actually wins on. */
+let pairCalibration: PairCalibration | undefined;
 
-export function setCalibration(table: CalibrationTable | undefined) {
+export function setCalibration(table: CalibrationTable | undefined, pairTables?: PairCalibration) {
   calibration = table;
+  if (pairTables !== undefined) pairCalibration = pairTables;
 }
 
 export function getCalibration() {
   return calibration;
+}
+
+export function getPairCalibration() {
+  return pairCalibration;
 }
 
 /**
@@ -304,7 +317,7 @@ export function computeSignals(
       0.99,
       Math.max(0.01, (dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2)),
     );
-    const calibrated = calibrate(conf, calibration);
+    const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
     const ev = evPerDollar(calibrated, entry);
 
     if (ev < T.evMargin) {
