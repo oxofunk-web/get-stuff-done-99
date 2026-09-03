@@ -8,26 +8,28 @@ import {
   MAX_TRADES_PER_CANDLE,
   PAIRS,
   type PairId,
-  MAX_SLIPPAGE_CENTS,
-  MIN_RESTING_DEPTH,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
-import { dropVetoed, pairVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
-import { restingDepth } from "@/lib/bot/order-map";
-import { getTuning, setTuning } from "@/lib/bot/tuning";
+import { pairVetoed, setPairEdge } from "@/lib/bot/ranking";
+import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
   getRejectionReport,
   recordSignals,
   recordSnapshots,
-  recordTrade,
   settleCandle,
   type AccuracyStats,
   type RejectionRow,
 } from "@/lib/bot/telemetry.functions";
+import {
+  confirmServerLive,
+  getServerBot,
+  updateServerBot,
+  type ServerBotState,
+} from "@/lib/bot/serverbot.functions";
 
-import type { KalshiMarket, Signal, TradeLogEntry, TradeStatus } from "@/lib/bot/types";
-import { getLiveStatus, getMarkets, getPortfolio, placeOrder } from "@/lib/kalshi.functions";
+import type { KalshiMarket, TradeLogEntry } from "@/lib/bot/types";
+import { getLiveStatus, getMarkets, getPortfolio } from "@/lib/kalshi.functions";
 
 
 export type Mode = "paper" | "live";
@@ -58,6 +60,12 @@ export interface Portfolio {
   error: string | null;
 }
 
+/**
+ * The dashboard is a remote control + monitor for the ONE trader: the server
+ * bot. It never places orders itself — every control here writes the shared
+ * `bot_settings` row the server runner reads on each tick, so a sleeping
+ * phone loses nothing and an open phone can never double a candle's trades.
+ */
 export function useBot() {
   const { spot, status: feedStatus, source: feedSource, tick } = useBrtiFeed();
 
@@ -66,20 +74,25 @@ export function useBot() {
   const historyRef = useRef<Partial<Record<PairId, number[]>>>({});
   const marketsRef = useRef<Partial<Record<PairId, KalshiMarket>>>({});
 
-  const [mode, setMode] = useState<Mode>("paper");
-  const [botOn, setBotOn] = useState(false);
-  const [betSize, setBetSize] = useState(5);
-  const [dailyLossCap, setDailyLossCap] = useState(DAILY_LOSS_CAP_DEFAULT);
-  const [capHit, setCapHit] = useState(false);
-  const dayRef = useRef<{ day: string; base: number }>({ day: "", base: 0 });
-  const armedRef = useRef(false);
-  const [placedCount, setPlacedCount] = useState(0);
-  const [exposure, setExposure] = useState(0);
+  // ---- server bot (the only trader) ----------------------------------------
+  const [server, setServer] = useState<ServerBotState | null>(null);
+
+  const refreshServer = useCallback(async () => {
+    try {
+      setServer(await getServerBot());
+    } catch {
+      // keep last known state on a transient failure
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshServer();
+    const i = setInterval(() => void refreshServer(), 15000);
+    return () => clearInterval(i);
+  }, [refreshServer]);
+
   const [sigCount, setSigCount] = useState(0);
-  const [log, setLog] = useState<TradeLogEntry[]>([]);
-  const [lastTrade, setLastTrade] = useState<{ label: string; time: string } | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [tradeStatus, setTradeStatus] = useState<Record<string, { status: TradeStatus; msg: string }>>({});
   const [live, setLive] = useState<{ configured: boolean; balance: number | null; error: string | null }>({
     configured: false,
     balance: null,
@@ -93,35 +106,18 @@ export function useBot() {
     positions: [],
     error: null,
   });
-  const [open, setOpen] = useState<OpenPosition[]>([]);
-  const [realizedPaper, setRealizedPaper] = useState(0);
-  const [wins, setWins] = useState(0);
-  const [losses, setLosses] = useState(0);
 
   const [now, setNow] = useState(() => Date.now());
   const candle = candleInfo(now);
   const candleRef = useRef(candle.id);
-  const tradesRef = useRef(0);
-  const tradedPairsRef = useRef<Set<string>>(new Set());
-  const firingRef = useRef(false);
   const seenSigIds = useRef<Set<string>>(new Set());
-  const [tradedThisCandle, setTradedThisCandle] = useState(false);
-  /** Pairs skipped for this candle (empty book) — not counted against the cap. */
-  const skippedPairsRef = useRef<Set<string>>(new Set());
-  const [maxTrades, setMaxTrades] = useState(MAX_TRADES_PER_CANDLE);
 
   // ---- telemetry / accuracy -------------------------------------------------
   const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
   const [rejections, setRejections] = useState<RejectionRow[]>([]);
-  const [evMargin, setEvMarginState] = useState(getTuning().evMargin);
   const spotRef = useRef(spot);
   spotRef.current = spot;
   const loggedSigRef = useRef<Set<string>>(new Set());
-
-  const setEvMargin = useCallback((v: number) => {
-    setEvMarginState(v);
-    setTuning({ evMargin: v });
-  }, []);
 
   const refreshAccuracy = useCallback(async () => {
     try {
@@ -161,27 +157,108 @@ export function useBot() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // ---- controls: write straight to the shared server settings ---------------
+  const applyServer = useCallback(
+    async (fn: () => Promise<ServerBotState | { ok: boolean; state?: ServerBotState; error?: string; hoursLeft?: number }>) => {
+      try {
+        const res = await fn();
+        if ("state" in res && res.state) setServer(res.state);
+        else if ("enabled" in res) setServer(res as ServerBotState);
+        if ("error" in res && res.error === "warmup" && "hoursLeft" in res) {
+          notify(`Live unlocks in ~${res.hoursLeft}h — the server paper-trades until then.`, "warn");
+        }
+        return res;
+      } catch (e) {
+        notify(e instanceof Error ? e.message : "Update failed", "warn");
+        return null;
+      }
+    },
+    [notify],
+  );
+
+  // Keep the client-side signal display on the same EV gate the server
+  // enforces, so what the panel calls a signal is what the runner would fire.
+  useEffect(() => {
+    if (server) setTuning({ evMargin: server.evMargin });
+  }, [server]);
+
+  const mode: Mode = server?.effectiveMode ?? "paper";
+  const botOn = server?.enabled ?? false;
+  const betSize = server?.betSize ?? 5;
+  const maxTrades = server?.maxTrades ?? MAX_TRADES_PER_CANDLE;
+  const dailyLossCap = server?.dailyLossCap ?? DAILY_LOSS_CAP_DEFAULT;
+  const evMargin = server?.evMargin ?? 0.08;
+
+  const toggleBot = useCallback(() => {
+    const next = !botOn;
+    void applyServer(() => updateServerBot({ data: { enabled: next } }));
+    notify(
+      next
+        ? "Auto-trading ON — the server fires after the 10:00 mark at 86%+, even with the app closed"
+        : "Auto-trading paused",
+      next ? "yes" : "warn",
+    );
+  }, [applyServer, botOn, notify]);
+
+  const switchMode = useCallback(
+    async (next: Mode) => {
+      if (next === "live") {
+        let st = live;
+        try {
+          st = await (async () => {
+            const r = await getLiveStatus();
+            setLive(r);
+            return r;
+          })();
+        } catch {
+          // fall back to last known live state
+        }
+        if (!st.configured) {
+          notify("Live mode needs your Kalshi API key on the server first.", "warn");
+          return;
+        }
+        await applyServer(() => confirmServerLive());
+        notify("LIVE mode armed — the server places real orders, even with the app closed.", "warn");
+        return;
+      }
+      await applyServer(() => updateServerBot({ data: { mode: "paper" } }));
+      notify("Paper mode — simulated fills on live market data.", "yes");
+    },
+    [applyServer, live, notify],
+  );
+
+  const setBetSize = useCallback(
+    (n: number) => void applyServer(() => updateServerBot({ data: { betSize: n } })),
+    [applyServer],
+  );
+  const setMaxTrades = useCallback(
+    (n: number) => void applyServer(() => updateServerBot({ data: { maxTrades: n } })),
+    [applyServer],
+  );
+  const setDailyLossCap = useCallback(
+    (n: number) => void applyServer(() => updateServerBot({ data: { dailyLossCap: n } })),
+    [applyServer],
+  );
+  const setEvMargin = useCallback(
+    (n: number) => void applyServer(() => updateServerBot({ data: { evMargin: n } })),
+    [applyServer],
+  );
+
   // Clock
   useEffect(() => {
     const i = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(i);
   }, []);
 
-  // Candle rollover resets the one-trade-per-candle lock
+  // Candle rollover: grade the candle that just closed so calibration keeps
+  // learning. Trade settlement itself runs on the server cron.
   useEffect(() => {
     if (candle.id !== candleRef.current) {
       const closed = candleRef.current;
       candleRef.current = candle.id;
-      tradesRef.current = 0;
-      tradedPairsRef.current = new Set();
-      setTradedThisCandle(false);
-      setTradeStatus({});
       seenSigIds.current = new Set();
       loggedSigRef.current = new Set();
-      skippedPairsRef.current = new Set();
 
-      // Grade the candle that just closed against the settlement spot, then
-      // pull the refreshed accuracy so calibration keeps learning.
       const finals = PAIRS.map((p) => ({ pair: p.id, spot: spotRef.current[p.id]?.price ?? 0 })).filter(
         (f) => f.spot > 0,
       );
@@ -190,30 +267,6 @@ export function useBot() {
           .then(() => refreshAccuracy())
           .catch(() => undefined);
       }
-
-      // Settle every position that belonged to the candle that just closed.
-
-      setOpen((list) => {
-        const expired = list.filter((p) => p.candleId === closed);
-        if (expired.length) {
-          let pnl = 0;
-          let w = 0;
-          let l = 0;
-          for (const p of expired) {
-            const mid = marketsRef.current[p.pair]?.yesMid ?? 0.5;
-            const finalProb = p.dir === "YES" ? mid : 1 - mid;
-            const won = finalProb >= 0.5;
-            pnl += won ? p.count * (1 - p.entry) : -p.count * p.entry;
-            if (won) w += 1;
-            else l += 1;
-          }
-          setRealizedPaper((r) => r + pnl);
-          setWins((x) => x + w);
-          setLosses((x) => x + l);
-          setExposure((e) => Math.max(0, e - expired.reduce((a, p) => a + p.stake, 0)));
-        }
-        return list.filter((p) => p.candleId !== closed);
-      });
     }
   }, [candle.id, refreshAccuracy]);
 
@@ -265,6 +318,7 @@ export function useBot() {
   }, [refreshLive]);
 
   // Wallet balance + realized P&L from the Kalshi account, once keys exist.
+  const dayRef = useRef<{ day: string; base: number }>({ day: "", base: 0 });
   const refreshPortfolio = useCallback(async () => {
     try {
       const res = await getPortfolio();
@@ -296,21 +350,15 @@ export function useBot() {
   // every pair is waiting for" instead of a blank panel.
   const pairStatus = useMemo(() => {
     const trace = getSignalTrace();
-    const skipped = skippedPairsRef.current;
     return PAIRS.map((p) => {
       const t = trace.find((x) => x.pair === p.id);
       const paused = pairVetoed(p.id);
       return {
         pair: p.id,
         verdict: t?.verdict ?? "rejected",
-        reason: paused
-          ? "paused — losing record, cooling down"
-          : skipped.has(p.id)
-            ? "skipped this candle — book was empty"
-            : (t?.reason ?? "waiting for data"),
+        reason: paused ? "paused — losing record, cooling down" : (t?.reason ?? "waiting for data"),
         paused,
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signals, now]);
@@ -398,152 +446,30 @@ export function useBot() {
     return () => clearInterval(i);
   }, []);
 
+  // ---- read models derived from the server bot + Kalshi account -------------
 
-
-  const fire = useCallback(
-    async (sig: Signal) => {
-      const m = markets[sig.pair];
-      if (!m?.ticker) return;
-      firingRef.current = true;
-
-      const priceCents = Math.max(
-        1,
-        Math.min(99, Math.round((sig.dir === "YES" ? m.yesAsk : m.noAsk) * 100)),
-      );
-      // Shrink to what's actually resting at the touch — thin books used to
-      // eat 69 failed orders asking for size that was never there.
-      const depth = restingDepth(m, sig.dir);
-      // Empty/near-empty book: skip the pair for this candle instead of burning
-      // a cap slot and logging another failed order. Marking it skipped stops
-      // the selector from re-firing the same signal every tick.
-      if (mode === "live" && depth < MIN_RESTING_DEPTH) {
-        skippedPairsRef.current.add(sig.pair);
-        setTradeStatus((s) => ({
-          ...s,
-          [sig.id]: {
-            status: "failed",
-            msg: `Skipped — only ${depth} contract(s) resting at the touch (needs ${MIN_RESTING_DEPTH}).`,
-          },
-        }));
-        firingRef.current = false;
-        return;
-      }
-      const count = Math.max(1, Math.min(depth > 0 ? depth : 1, Math.floor(betSize / (priceCents / 100))));
-
-      tradesRef.current += 1;
-      tradedPairsRef.current.add(sig.pair);
-      setTradedThisCandle(tradesRef.current >= maxTrades);
-      setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "Placing order…" } }));
-
-      let status: TradeStatus = "placed";
-      let msg = "";
-      let filledCount = count;
-      let filledPriceCents = priceCents;
-
-      if (mode === "paper") {
-        await new Promise((r) => setTimeout(r, 500));
-        msg = `PAPER ${sig.dir} ×${count} @ ${priceCents}¢`;
-      } else if (portfolio.balance != null && portfolio.balance < betSize) {
-        // Don't even send the order — 48 attempts died this way already.
-        status = "failed";
-        msg = `Waiting for funds — wallet $${portfolio.balance.toFixed(2)} is below the $${betSize} bet size. No order sent.`;
-      } else if (depth <= 0) {
-        status = "failed";
-        msg = "No resting volume at the touch — skipped before sending.";
-      } else {
-        const res = await placeOrder({
-          data: {
-            ticker: m.ticker,
-            side: sig.dir === "YES" ? "yes" : "no",
-            priceCents,
-            count,
-            maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
-          },
-        });
-        if (res.ok) {
-          filledCount = res.filled;
-          filledPriceCents = res.priceCents;
-          msg = `${sig.dir} ×${filledCount} @ ${priceCents}¢ · ${res.status}`;
-        } else {
-          status = "failed";
-          msg = res.error ?? "Order rejected";
-        }
-      }
-
-      setTradeStatus((s) => ({ ...s, [sig.id]: { status, msg } }));
-      setLog((l) =>
-        [
-          {
-            id: `${sig.id}-${Date.now()}`,
-            time: new Date().toLocaleTimeString(),
-            pair: sig.pair,
-            dir: sig.dir,
-            conf: sig.conf,
-            status,
-            msg,
-            paper: mode === "paper",
-          },
-          ...l,
-        ].slice(0, 30),
-      );
-
-      void recordTrade({
-        data: {
-          row: {
-            candle_id: candleRef.current,
-            pair: sig.pair,
-            dir: sig.dir,
-            mode,
-            conf: sig.conf,
-            calibrated: sig.calibrated,
-            contracts: filledCount,
-            entry_price: filledPriceCents / 100,
-            stake: (filledCount * filledPriceCents) / 100,
-            status,
-            msg,
-            order_id: null,
-          },
-        },
-      }).catch(() => undefined);
-
-
-
-      if (status === "placed") {
-        const filledStake = (filledCount * filledPriceCents) / 100;
-        setPlacedCount((c) => c + 1);
-        setExposure((e) => e + filledStake);
-        setOpen((l) => [
-          {
-            id: `${sig.id}-${Date.now()}`,
-            pair: sig.pair,
-            dir: sig.dir,
-            count: filledCount,
-            entry: filledPriceCents / 100,
-            stake: filledStake,
-            candleId: candleRef.current,
-            paper: mode === "paper",
-          },
-          ...l,
-        ]);
-        setLastTrade({ label: `${sig.pair} ${sig.dir}`, time: new Date().toLocaleTimeString() });
-        notify(
-          `${sig.pair} ${sig.dir} — ${sig.conf.toFixed(0)}% · $${betSize} ${mode === "paper" ? "(paper)" : "PLACED"}`,
-          sig.dir === "YES" ? "yes" : "no",
-        );
-        if (mode === "live") {
-          void refreshLive();
-          void refreshPortfolio();
-        }
-      } else {
-        // Do NOT roll the counters back. Un-marking the pair here used to make
-        // the next tick re-fire the same order 4-7x/second, each attempt
-        // crossing harder until it filled far above the scored price.
-        notify(`Trade failed: ${msg}`, "warn");
-      }
-      firingRef.current = false;
-    },
-    [betSize, markets, maxTrades, mode, notify, portfolio.balance, refreshLive, refreshPortfolio],
-  );
+  // Open positions come from the real account (live). Ticker prefix maps back
+  // to a pair; entry = exposure / contracts.
+  const open: OpenPosition[] = useMemo(() => {
+    if (mode !== "live") return [];
+    return portfolio.positions
+      .map((p, i) => {
+        const pair = PAIRS.find((x) => p.ticker.startsWith(x.series));
+        if (!pair || p.count === 0) return null;
+        const count = Math.abs(p.count);
+        return {
+          id: `${p.ticker}-${i}`,
+          pair: pair.id,
+          dir: (p.count > 0 ? "YES" : "NO") as "YES" | "NO",
+          count,
+          entry: count > 0 ? p.exposure / count : 0,
+          stake: p.exposure,
+          candleId: candle.id,
+          paper: false,
+        };
+      })
+      .filter((p): p is OpenPosition => p !== null);
+  }, [mode, portfolio.positions, candle.id]);
 
   // Mark-to-market on the open book.
   const unrealized = useMemo(() => {
@@ -554,108 +480,60 @@ export function useBot() {
     }, 0);
   }, [markets, open]);
 
-  const realized = mode === "live" ? portfolio.realized : realizedPaper;
+  const realized = mode === "live" ? portfolio.realized : 0;
   const walletBalance = portfolio.balance;
+  const exposure = mode === "live" ? portfolio.exposure : 0;
 
-  // Today's real P&L: Kalshi realized since the first read of the day (plus the
-  // live mark on anything still open) in live mode, paper results otherwise.
-  const dayRealized =
-    mode === "live" ? portfolio.realized - dayRef.current.base : realizedPaper;
+  // Today's real P&L: Kalshi realized since the first read of the day (plus
+  // the live mark on anything still open).
+  const dayRealized = mode === "live" ? portfolio.realized - dayRef.current.base : 0;
   const dayPnl = dayRealized + unrealized;
 
-  // Daily loss cap — hard stop for the rest of the day.
-  useEffect(() => {
-    if (dayPnl > -dailyLossCap) {
-      if (capHit) setCapHit(false);
-      return;
-    }
-    if (capHit) return;
-    setCapHit(true);
-    setBotOn(false);
-    notify(
-      `Daily loss cap hit (-$${dailyLossCap}) — auto-trading stopped for today.`,
-      "no",
-    );
-  }, [capHit, dailyLossCap, dayPnl, notify]);
-
-  // Manual "start a fresh day": re-anchor today's P&L to the wallet as it
-  // stands now so the cap stops blocking, without touching the cap value.
-  const resetDay = useCallback(() => {
-    dayRef.current = { day: new Date().toDateString(), base: portfolio.realized };
-    setRealizedPaper(0);
-    setCapHit(false);
-    notify("Day reset — loss cap cleared. Flip BOT STATUS on to resume.", "warn");
-  }, [notify, portfolio.realized]);
-
-  // Arm LIVE MONEY at the $5 size as soon as the Kalshi key is verified. The
-  // bot itself still needs BOT STATUS switched on before anything fires.
-  useEffect(() => {
-    if (armedRef.current || !live.configured || mode === "live") return;
-    armedRef.current = true;
-    setBetSize(5);
-    setMode("live");
-    notify("LIVE MONEY armed at $5 per trade — flip BOT STATUS on to trade.", "warn");
-  }, [live.configured, mode, notify]);
-
-  // Auto-trade: up to `maxTrades` per candle, one per pair, ranked by expected
-  // value tilted by each pair's own settled edge — not simply the first signals.
-  useEffect(() => {
-    if (!botOn || firingRef.current || capHit) return;
-    if (tradesRef.current >= maxTrades) return;
-    const next = rankSignals(dropVetoed(signals)).find(
-      (s) => !tradedPairsRef.current.has(s.pair) && !skippedPairsRef.current.has(s.pair),
-    );
-    if (!next) return;
-    void fire(next);
-  }, [botOn, capHit, fire, maxTrades, signals]);
-
-  const toggleBot = useCallback(() => {
-    setBotOn((on) => {
-      const next = !on;
-      notify(
-        next
-          ? "Auto-trading ON — fires after the 10:00 mark at 86%+"
-          : "Auto-trading paused",
-        next ? "yes" : "warn",
-      );
-      return next;
-    });
-  }, [notify]);
-
-  const switchMode = useCallback(
-    async (next: Mode) => {
-      if (next === "live") {
-        // Never let a flaky status check strand the user in paper mode: fall
-        // back to the last known live state if the refresh itself fails.
-        let st = live;
-        try {
-          st = await refreshLive();
-        } catch (e) {
-          notify(
-            `Could not re-check Kalshi (${e instanceof Error ? e.message : "network error"}) — using last known status.`,
-            "warn",
-          );
-        }
-        if (!st.configured) {
-          notify("Live mode needs your Kalshi API key on the server first.", "warn");
-          return;
-        }
-        setBotOn(false);
-        setMode("live");
-        notify(
-          st.error
-            ? `LIVE mode armed, but Kalshi reported: ${st.error}`
-            : "LIVE mode armed — real money orders. Bot switched off.",
-          "warn",
-        );
-        return;
-      }
-      setMode("paper");
-      notify("Paper mode — simulated fills on live market data.", "yes");
-    },
-    [live, notify, refreshLive],
+  // Server trade log → dashboard stats and the trade log panel.
+  const serverTrades = server?.recentTrades ?? [];
+  const log: TradeLogEntry[] = useMemo(
+    () =>
+      serverTrades.map((t) => ({
+        id: t.ts + t.pair,
+        time: new Date(t.ts).toLocaleTimeString(),
+        pair: t.pair as PairId,
+        dir: t.dir as "YES" | "NO",
+        conf: 0,
+        status: t.status === "placed" ? "placed" : "failed",
+        msg: t.msg ?? "",
+        paper: t.mode === "paper",
+      })),
+    [serverTrades],
+  );
+  const placedCount = useMemo(
+    () => serverTrades.filter((t) => t.status === "placed").length,
+    [serverTrades],
+  );
+  const lastTrade = useMemo(() => {
+    const t = serverTrades.find((x) => x.status === "placed");
+    return t ? { label: `${t.pair} ${t.dir}`, time: new Date(t.ts).toLocaleTimeString() } : null;
+  }, [serverTrades]);
+  const tradedThisCandle = useMemo(
+    () =>
+      serverTrades.filter((t) => t.status === "placed" && t.candle_id === candle.id).length >=
+      maxTrades,
+    [serverTrades, candle.id, maxTrades],
   );
 
+  // Settled win/loss record across everything the bot has placed.
+  const wins = accuracy?.ok ? accuracy.wins : 0;
+  const losses = accuracy?.ok ? Math.max(0, accuracy.total - accuracy.wins) : 0;
+
+  // Daily loss cap banner — the server enforces the stop itself; this just
+  // mirrors it on the dashboard.
+  const capHit = dayPnl <= -dailyLossCap;
+
+  // Manual "start a fresh day": re-anchor today's P&L to the wallet as it
+  // stands now so the banner clears, without touching the cap value.
+  const resetDay = useCallback(() => {
+    dayRef.current = { day: new Date().toDateString(), base: portfolio.realized };
+    notify("Day reset — the banner clears here; the server cap follows today's settled trades.", "warn");
+  }, [notify, portfolio.realized]);
 
   return {
     spot,
@@ -680,7 +558,6 @@ export function useBot() {
     log,
     lastTrade,
     toast,
-    tradeStatus,
     tradedThisCandle,
     live,
     portfolio,
@@ -700,6 +577,7 @@ export function useBot() {
     accuracy,
     rejections,
     refreshAccuracy,
+    server,
 
     evMargin,
     setEvMargin,

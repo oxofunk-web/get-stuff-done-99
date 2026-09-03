@@ -119,6 +119,7 @@ export interface ServerBotState {
   lastTickMsg: string | null;
   recentTrades: {
     ts: string;
+    candle_id: number;
     pair: string;
     dir: string;
     mode: string;
@@ -134,7 +135,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
   const s = await loadSettings(db);
   const { data: recent } = await db
     .from("trade_log")
-    .select("ts, pair, dir, mode, status, msg, outcome, pnl")
+    .select("ts, candle_id, pair, dir, mode, status, msg, outcome, pnl")
     .eq("source", "server")
     .order("ts", { ascending: false })
     .limit(8);
@@ -450,7 +451,6 @@ export async function runServerBotTick() {
     .from("trade_log")
     .select("pair")
     .eq("candle_id", c3.id)
-    .eq("source", "server")
     .eq("status", "placed");
   const tradedPairs = new Set(((existing ?? []) as { pair: string }[]).map((r) => r.pair));
   let remaining = Math.max(0, settings.max_trades - tradedPairs.size);

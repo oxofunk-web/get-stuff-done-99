@@ -34,6 +34,8 @@ export const updateServerBot = createServerFn({ method: "POST" })
         enabled: z.boolean().optional(),
         betSize: z.number().min(1).max(100).optional(),
         evMargin: z.number().min(0).max(0.5).optional(),
+        maxTrades: z.number().int().min(1).max(7).optional(),
+        dailyLossCap: z.number().min(1).max(1000).optional(),
         mode: z.enum(["paper", "live"]).optional(),
       })
       .parse(d),
@@ -46,6 +48,8 @@ export const updateServerBot = createServerFn({ method: "POST" })
       first_enabled_at?: string;
       bet_size?: number;
       ev_margin?: number;
+      max_trades?: number;
+      daily_loss_cap?: number;
       mode?: "paper" | "live";
       updated_at: string;
     } = { updated_at: new Date().toISOString() };
@@ -58,6 +62,8 @@ export const updateServerBot = createServerFn({ method: "POST" })
     }
     if (data.betSize !== undefined) patch.bet_size = data.betSize;
     if (data.evMargin !== undefined) patch.ev_margin = data.evMargin;
+    if (data.maxTrades !== undefined) patch.max_trades = data.maxTrades;
+    if (data.dailyLossCap !== undefined) patch.daily_loss_cap = data.dailyLossCap;
     // Requesting live without a prior confirmation still runs paper server-side
     // until confirmServerLive stamps live_confirmed_at.
     if (data.mode !== undefined) patch.mode = data.mode;
