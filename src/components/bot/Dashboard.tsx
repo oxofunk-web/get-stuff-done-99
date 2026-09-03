@@ -4,6 +4,7 @@ import { ClockPanel } from "./ClockPanel";
 import { EnginePanel } from "./EnginePanel";
 import { LogPanel } from "./LogPanel";
 import { MarketsPanel } from "./MarketsPanel";
+import { PairEdgePanel } from "./PairEdgePanel";
 import { PnlPanel } from "./PnlPanel";
 import { ServerBotPanel } from "./ServerBotPanel";
 import { SignalsPanel } from "./SignalsPanel";
