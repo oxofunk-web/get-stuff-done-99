@@ -33,15 +33,19 @@ import { fetchLiveBalance, fetchOpenMarket, normalizeMarket, placeLiveOrder } fr
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
 
 /**
- * Short sampling burst per tick. One sample per minute is too thin for the
- * momentum math (minTicks = 24), so each tick takes a quick burst; by the time
- * the trade window opens the candle already holds dozens of fresh ticks.
+ * Sampling. The momentum math needs ~24 ticks inside a candle, so one sample
+ * per minute is far too thin when the dashboard isn't also feeding the tape.
+ * Each tick therefore samples continuously for most of its minute, re-scoring
+ * the engine after every sample — that gives the server the same
+ * many-chances-per-candle view the dashboard has instead of a single look.
  */
-const SAMPLES = 4;
-const SAMPLE_GAP_MS = 3500;
+const SAMPLE_GAP_MS = 2500;
+/** Time budget per tick — under a minute so consecutive cron ticks never overlap. */
+const TICK_BUDGET_MS = 52_000;
 /** Server bot must paper-trade this long before live can be armed. */
 export const WARMUP_MS = 24 * 3600 * 1000;
 const TAPE_RETENTION_MS = 7 * 24 * 3600 * 1000;
+
 
 export interface ServerBotRow {
   id: boolean;
