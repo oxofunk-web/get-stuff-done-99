@@ -22,7 +22,9 @@ function money(n: number) {
  * negative edge has to be cheaper before it clears the EV gate.
  */
 export function PairEdgePanel({ accuracy, betSize }: Props) {
+  const cooldownLeft = pauseCandlesLeft();
   const rows = PAIRS.map((p) => {
+
     const e = accuracy?.pairEdge.find((r) => r.pair === p.id);
     // Compare like with like: the win rate of trades actually fired against the
     // breakeven of the prices those trades paid.
