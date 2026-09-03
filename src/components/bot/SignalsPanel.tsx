@@ -14,7 +14,7 @@ interface Props {
   signals: Signal[];
   candle: CandleInfo;
   tradeStatus: Record<string, { status: TradeStatus; msg: string }>;
-  pairStatus?: PairStatusRow[];
+  pairStatus?: PairStatusRow[] | undefined;
 }
 
 export function SignalsPanel({ signals, candle, tradeStatus, pairStatus }: Props) {
