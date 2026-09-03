@@ -112,7 +112,12 @@ export function Dashboard() {
             onEvMargin={bot.setEvMargin}
           />
           <ServerBotPanel />
-          <SignalsPanel signals={bot.signals} candle={bot.candle} tradeStatus={bot.tradeStatus} />
+          <SignalsPanel
+            signals={bot.signals}
+            candle={bot.candle}
+            tradeStatus={bot.tradeStatus}
+            pairStatus={bot.pairStatus}
+          />
           <PairEdgePanel accuracy={bot.accuracy} betSize={bot.betSize} />
           <AccuracyPanel
             accuracy={bot.accuracy}
