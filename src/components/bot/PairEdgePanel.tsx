@@ -104,9 +104,11 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
                   {r.trades ? money(r.pnl) : "—"}
                 </div>
                 <div className="col-span-5 -mt-0.5 text-[8px] text-dim">
-                  {!r.judged
-                    ? `learning — ${r.n} settled trades (needs ${Math.max(1, MIN_JUDGE - r.n)} more) · ${r.graded} graded samples already feeding the odds`
-                    : `edge ${r.edge >= 0 ? "+" : ""}${r.edge.toFixed(0)} pts vs. breakeven · ${r.graded} graded samples · engine weights ${r.pair} by this record`}
+                  {r.paused
+                    ? `paused by the bot — ${r.trades} settled trades at ${money(r.pnl)} P&L; it re-arms automatically when the record recovers`
+                    : !r.judged
+                      ? `learning — ${r.n} settled trades (needs ${Math.max(1, MIN_JUDGE - r.n)} more) · ${r.graded} graded samples already feeding the odds`
+                      : `edge ${r.edge >= 0 ? "+" : ""}${r.edge.toFixed(0)} pts vs. breakeven · ${r.graded} graded samples · engine weights ${r.pair} by this record`}
                 </div>
               </div>
             );
