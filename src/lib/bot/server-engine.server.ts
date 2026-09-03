@@ -15,7 +15,7 @@
  */
 import { emptyTable } from "./calibration";
 import { candleInfo } from "./candle";
-import { CLOSE_SECS, GATE_SECS, PAIRS, type PairId } from "./constants";
+import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
 import { resetTuning, setTuning } from "./tuning";
 import { fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
