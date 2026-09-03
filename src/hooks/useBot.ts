@@ -8,6 +8,7 @@ import {
   MAX_TRADES_PER_CANDLE,
   PAIRS,
   type PairId,
+  MAX_SLIPPAGE_CENTS,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { getTuning, setTuning } from "@/lib/bot/tuning";
@@ -393,12 +394,18 @@ export function useBot() {
         msg = `PAPER ${sig.dir} ×${count} @ ${priceCents}¢`;
       } else {
         const res = await placeOrder({
-          data: { ticker: m.ticker, side: sig.dir === "YES" ? "yes" : "no", priceCents, count },
+          data: {
+            ticker: m.ticker,
+            side: sig.dir === "YES" ? "yes" : "no",
+            priceCents,
+            count,
+            maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+          },
         });
         if (res.ok) {
-          msg = `${sig.dir} ×${count} @ ${priceCents}¢ · ${res.status}`;
           filledCount = res.filled;
           filledPriceCents = res.priceCents;
+          msg = `${sig.dir} ×${filledCount} @ ${priceCents}¢ · ${res.status}`;
         } else {
           status = "failed";
           msg = res.error ?? "Order rejected";
@@ -470,11 +477,9 @@ export function useBot() {
           void refreshPortfolio();
         }
       } else {
-        // A rejected/canceled IOC moved no money, so allow the bot to retry a
-        // later valid signal in this candle instead of falsely marking it traded.
-        tradesRef.current = Math.max(0, tradesRef.current - 1);
-        tradedPairsRef.current.delete(sig.pair);
-        setTradedThisCandle(false);
+        // Do NOT roll the counters back. Un-marking the pair here used to make
+        // the next tick re-fire the same order 4-7x/second, each attempt
+        // crossing harder until it filled far above the scored price.
         notify(`Trade failed: ${msg}`, "warn");
       }
       firingRef.current = false;

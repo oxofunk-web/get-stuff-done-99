@@ -2,6 +2,7 @@ export const GATE_SECS = 600; // trade window opens at the 10:00 mark (5 min bef
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
 export const THRESHOLD = 86; // minimum confidence to fire
 export const MAX_TRADES_PER_CANDLE = 4; // up to one trade per pair per 15m candle
+export const MAX_SLIPPAGE_CENTS = 2; // never pay more than 2c above the scored price
 export const DAILY_LOSS_CAP_DEFAULT = 20; // stop trading after this much loss in a day
 export const LAG_PCT = 0.0012; // 0.12% BRTI vs Kalshi divergence
 export const KALSHI_POLL_MS = 8000;

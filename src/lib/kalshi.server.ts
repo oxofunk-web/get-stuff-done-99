@@ -1,3 +1,4 @@
+import { MAX_SLIPPAGE_CENTS } from "./bot/constants";
 import { mapOrderToBook } from "./bot/order-map";
 
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
@@ -264,8 +265,11 @@ function friendlyOrderError(error: unknown) {
 interface PlaceLiveOrderInput {
   ticker: string;
   side: "yes" | "no";
+  /** Price the signal was scored at (cents, on the ordered side's scale). */
   priceCents: number;
   count: number;
+  /** Hard slippage ceiling. Defaults to scored price + MAX_SLIPPAGE_CENTS. */
+  maxPriceCents?: number | undefined;
 }
 
 interface CreateOrderResponse {
@@ -275,62 +279,94 @@ interface CreateOrderResponse {
   average_fill_price?: string;
 }
 
-/** Places an IOC order and retries once with a fresh quote if the touch moved. */
+/**
+ * Kalshi reports `average_fill_price` on the YES scale, and the units have
+ * shifted between dollars and cents across API revisions — normalize both, then
+ * translate back onto the side we actually bought.
+ */
+export function normalizeFillCents(raw: unknown, side: "yes" | "no") {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const yesCents = n <= 1 ? n * 100 : n;
+  const paid = side === "yes" ? yesCents : 100 - yesCents;
+  if (paid <= 0 || paid > 100) return null;
+  return Math.round(paid);
+}
+
+/**
+ * Single-shot IOC order with a hard slippage cap. No retry loop: chasing a
+ * moving touch is how the engine used to fill 14¢ above the scored price and
+ * throw away the whole edge. If the book has moved past the cap, we skip.
+ */
 export async function placeLiveOrder(
   creds: { keyId: string; pem: string },
   input: PlaceLiveOrderInput,
 ) {
   try {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const fresh = await fetchMarket(input.ticker);
-      const market = fresh ? normalizeMarket(fresh) : null;
-      const restingSize = Number(
-        (input.side === "yes" ? fresh?.yes_ask_size_fp : fresh?.yes_bid_size_fp) ?? 0,
-      );
-      const quoteCents = market
-        ? Math.round((input.side === "yes" ? market.yesAsk : market.noAsk) * 100)
-        : input.priceCents;
-      const limitCents = Math.min(
-        99,
-        Math.max(1, Math.max(input.priceCents, quoteCents || input.priceCents) + 2 + attempt),
-      );
-      const count = Math.max(
-        1,
-        restingSize > 0 ? Math.min(input.count, Math.floor(restingSize)) : input.count,
-      );
-      // side + price flip are one coupled decision — see order-map.ts
-      const book = mapOrderToBook(input.side, limitCents);
-      const response = await authedKalshi<CreateOrderResponse>(
-        creds,
-        "POST",
-        "/portfolio/events/orders",
-        {
-          ticker: input.ticker,
-          client_order_id: crypto.randomUUID(),
-          side: book.side,
-          count: count.toFixed(2),
-          price: book.price,
-          time_in_force: "immediate_or_cancel",
-          self_trade_prevention_type: "taker_at_cross",
-          post_only: false,
-          exchange_index: -1,
-        },
-      );
-      const filled = Number(response.fill_count);
-      if (Number.isFinite(filled) && filled > 0) {
-        const average = Number(response.average_fill_price);
-        return {
-          ok: true as const,
-          orderId: response.order_id,
-          filled,
-          priceCents: limitCents,
-          status: `filled ${filled}${Number.isFinite(average) ? ` @ ${(average * 100).toFixed(0)}¢` : ""}`,
-        };
-      }
+    const ceiling = Math.min(
+      99,
+      Math.max(1, input.maxPriceCents ?? input.priceCents + MAX_SLIPPAGE_CENTS),
+    );
+    const fresh = await fetchMarket(input.ticker);
+    const market = fresh ? normalizeMarket(fresh) : null;
+    const quoteCents = market
+      ? Math.round((input.side === "yes" ? market.yesAsk : market.noAsk) * 100)
+      : 0;
+
+    if (quoteCents > ceiling) {
+      return {
+        ok: false as const,
+        error: `Quote moved — ${input.side.toUpperCase()} is now ${quoteCents}¢ vs the ${input.priceCents}¢ the signal was scored at (cap ${ceiling}¢). Skipped instead of chasing.`,
+      };
+    }
+
+    const limitCents = Math.min(ceiling, Math.max(1, Math.max(quoteCents, input.priceCents)));
+    // Depth resting at the touch on the side we're taking, in contracts.
+    const restingSize = Math.floor(
+      Number((input.side === "yes" ? fresh?.yes_ask_size_fp : fresh?.yes_bid_size_fp) ?? 0),
+    );
+    if (restingSize === 0) {
+      return {
+        ok: false as const,
+        error: "Book too thin — nothing resting at the live price, so no order was sent.",
+      };
+    }
+    const count = Math.max(1, Math.min(input.count, restingSize));
+
+    // side + price flip are one coupled decision — see order-map.ts
+    const book = mapOrderToBook(input.side, limitCents);
+    const response = await authedKalshi<CreateOrderResponse>(
+      creds,
+      "POST",
+      "/portfolio/events/orders",
+      {
+        ticker: input.ticker,
+        client_order_id: crypto.randomUUID(),
+        side: book.side,
+        count: count.toFixed(2),
+        price: book.price,
+        time_in_force: "immediate_or_cancel",
+        self_trade_prevention_type: "taker_at_cross",
+        post_only: false,
+        exchange_index: -1,
+      },
+    );
+    const filled = Number(response.fill_count);
+    if (Number.isFinite(filled) && filled > 0) {
+      const fillCents = normalizeFillCents(response.average_fill_price, input.side) ?? limitCents;
+      return {
+        ok: true as const,
+        orderId: response.order_id,
+        filled,
+        /** Actual average price paid — used for stake and P&L. */
+        priceCents: fillCents,
+        limitCents,
+        status: `filled ${filled} @ ${fillCents}¢`,
+      };
     }
     return {
       ok: false as const,
-      error: "No resting volume at the live price after two attempts — order canceled safely.",
+      error: `No fill at ${limitCents}¢ — the resting size vanished before the order landed. Not chasing it.`,
     };
   } catch (error) {
     console.error("Kalshi order failed", error);

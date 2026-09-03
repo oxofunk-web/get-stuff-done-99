@@ -15,7 +15,7 @@
  */
 import { emptyTable } from "./calibration";
 import { candleInfo } from "./candle";
-import { CLOSE_SECS, GATE_SECS, PAIRS, type PairId } from "./constants";
+import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
 import { resetTuning, setTuning } from "./tuning";
 import { fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
@@ -406,7 +406,13 @@ export async function runServerBotTick() {
       } else {
         const res = await placeLiveOrder(
           { keyId, pem },
-          { ticker: m.ticker, side: sig.dir === "YES" ? "yes" : "no", priceCents, count },
+          {
+            ticker: m.ticker,
+            side: sig.dir === "YES" ? "yes" : "no",
+            priceCents,
+            count,
+            maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+          },
         );
         if (res.ok) {
           contracts = res.filled;
