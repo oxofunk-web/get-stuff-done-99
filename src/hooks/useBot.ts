@@ -102,6 +102,7 @@ export function useBot() {
   const firingRef = useRef(false);
   const seenSigIds = useRef<Set<string>>(new Set());
   const [tradedThisCandle, setTradedThisCandle] = useState(false);
+  const [maxTrades, setMaxTrades] = useState(MAX_TRADES_PER_CANDLE);
 
   // ---- telemetry / accuracy -------------------------------------------------
   const [accuracy, setAccuracy] = useState<AccuracyStats | null>(null);
@@ -379,7 +380,7 @@ export function useBot() {
 
       tradesRef.current += 1;
       tradedPairsRef.current.add(sig.pair);
-      setTradedThisCandle(tradesRef.current >= MAX_TRADES_PER_CANDLE);
+      setTradedThisCandle(tradesRef.current >= maxTrades);
       setTradeStatus((s) => ({ ...s, [sig.id]: { status: "pending", msg: "Placing order…" } }));
 
       let status: TradeStatus = "placed";
