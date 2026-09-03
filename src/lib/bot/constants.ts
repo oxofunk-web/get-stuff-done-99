@@ -4,6 +4,12 @@ export const THRESHOLD = 86; // minimum confidence to fire
 export const MAX_TRADES_PER_CANDLE = 4; // up to one trade per pair per 15m candle
 export const MAX_SLIPPAGE_CENTS = 3; // never pay more than 3c above the scored price
 export const DAILY_LOSS_CAP_DEFAULT = 20; // stop trading after this much loss in a day
+/**
+ * Minimum contracts resting at the touch before an order is worth sending.
+ * Thin books ate 119 of 147 live attempts; below this we skip the pair for the
+ * candle instead of logging another failure.
+ */
+export const MIN_RESTING_DEPTH = 2;
 export const LAG_PCT = 0.0012; // 0.12% BRTI vs Kalshi divergence
 export const KALSHI_POLL_MS = 8000;
 

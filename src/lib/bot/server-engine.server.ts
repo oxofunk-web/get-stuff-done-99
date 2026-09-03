@@ -15,7 +15,15 @@
  */
 import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
-import { CLOSE_SECS, GATE_SECS, MAX_SLIPPAGE_CENTS, PAIRS, type PairId } from "./constants";
+import {
+  CLOSE_SECS,
+  DAILY_LOSS_CAP_DEFAULT,
+  GATE_SECS,
+  MAX_SLIPPAGE_CENTS,
+  MIN_RESTING_DEPTH,
+  PAIRS,
+  type PairId,
+} from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
 import { dropVetoed, rankSignals, setPairEdge } from "./ranking";
 import type { PairEdgeRow } from "./telemetry.functions";
@@ -46,6 +54,7 @@ export interface ServerBotRow {
   live_confirmed_at: string | null;
   last_tick_at: string | null;
   last_tick_msg: string | null;
+  daily_loss_cap: number;
 }
 
 type Db = Awaited<ReturnType<typeof admin>>;
@@ -71,6 +80,7 @@ export async function loadSettings(db: Db): Promise<ServerBotRow> {
     live_confirmed_at: null,
     last_tick_at: null,
     last_tick_msg: null,
+    daily_loss_cap: DAILY_LOSS_CAP_DEFAULT,
   };
   const { data: inserted } = await db
     .from("bot_settings")
