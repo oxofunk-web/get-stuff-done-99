@@ -119,6 +119,7 @@ export interface ServerBotState {
   lastTickMsg: string | null;
   recentTrades: {
     ts: string;
+    candle_id: number;
     pair: string;
     dir: string;
     mode: string;

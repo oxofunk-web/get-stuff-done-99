@@ -34,6 +34,8 @@ export const updateServerBot = createServerFn({ method: "POST" })
         enabled: z.boolean().optional(),
         betSize: z.number().min(1).max(100).optional(),
         evMargin: z.number().min(0).max(0.5).optional(),
+        maxTrades: z.number().int().min(1).max(7).optional(),
+        dailyLossCap: z.number().min(1).max(1000).optional(),
         mode: z.enum(["paper", "live"]).optional(),
       })
       .parse(d),
