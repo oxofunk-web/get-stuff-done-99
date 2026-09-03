@@ -55,6 +55,39 @@ export function calibrate(conf: number, table?: CalibrationTable): number {
   return clamp(blended, 0.01, 0.99);
 }
 
+/** Per-pair calibration tables, keyed by pair id. */
+export type PairCalibration = Record<string, CalibrationTable>;
+
+/**
+ * Shrinkage weight for a pair's own record. `PAIR_FULL_TRUST` settled samples
+ * inside the band is where the pair's own win rate is trusted outright; below
+ * that it is pulled toward the global curve so 2-3 lucky trades cannot move the
+ * probability.
+ */
+export const PAIR_FULL_TRUST = 40;
+
+/**
+ * Calibrated probability that weights the pair's *own* settled record.
+ *
+ * global   = the all-pairs band calibration (today's behaviour)
+ * pairRate = the same band restricted to this pair
+ * result   = global blended toward pairRate, weighted by how much pair history
+ *            exists. No pair history → identical to `calibrate`.
+ */
+export function calibrateFor(
+  pair: string,
+  conf: number,
+  table?: CalibrationTable,
+  pairTables?: PairCalibration,
+): number {
+  const global = calibrate(conf, table);
+  const pb = bucketFor(conf, pairTables?.[pair]);
+  if (!pb || pb.n <= 0) return global;
+  const pairRate = (pb.wins + global * PRIOR) / (pb.n + PRIOR);
+  const w = clamp(pb.n / PAIR_FULL_TRUST, 0, 1);
+  return clamp(global * (1 - w) + pairRate * w, 0.01, 0.99);
+}
+
 /** Expected value per dollar risked at a given fill price. */
 export function evPerDollar(prob: number, price: number) {
   const p = clamp(prob, 0.01, 0.99);
