@@ -578,6 +578,15 @@ export function useBot() {
     );
   }, [capHit, dailyLossCap, dayPnl, notify]);
 
+  // Manual "start a fresh day": re-anchor today's P&L to the wallet as it
+  // stands now so the cap stops blocking, without touching the cap value.
+  const resetDay = useCallback(() => {
+    dayRef.current = { day: new Date().toDateString(), base: portfolio.realized };
+    setRealizedPaper(0);
+    setCapHit(false);
+    notify("Day reset — loss cap cleared. Flip BOT STATUS on to resume.", "warn");
+  }, [notify, portfolio.realized]);
+
   // Arm LIVE MONEY at the $5 size as soon as the Kalshi key is verified. The
   // bot itself still needs BOT STATUS switched on before anything fires.
   useEffect(() => {
@@ -593,7 +602,9 @@ export function useBot() {
   useEffect(() => {
     if (!botOn || firingRef.current || capHit) return;
     if (tradesRef.current >= maxTrades) return;
-    const next = rankSignals(dropVetoed(signals)).find((s) => !tradedPairsRef.current.has(s.pair));
+    const next = rankSignals(dropVetoed(signals)).find(
+      (s) => !tradedPairsRef.current.has(s.pair) && !skippedPairsRef.current.has(s.pair),
+    );
     if (!next) return;
     void fire(next);
   }, [botOn, capHit, fire, maxTrades, signals]);
@@ -678,6 +689,8 @@ export function useBot() {
     dailyLossCap,
     setDailyLossCap,
     capHit,
+    resetDay,
+    pairStatus,
     realized,
     unrealized,
     open,
