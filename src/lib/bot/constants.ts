@@ -17,7 +17,7 @@ export const EV_MARGIN = 0.08;
 /** Minimum cushion between spot and strike, in standard deviations of movement. */
 export const MIN_SIGMA_DIST = 0.35;
 
-export type PairId = "BTC" | "ETH" | "SOL" | "XRP";
+export type PairId = "BTC" | "ETH" | "SOL" | "XRP" | "BNB" | "NEAR" | "DOGE";
 
 export interface Pair {
   id: PairId;
