@@ -12,7 +12,7 @@ import {
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { dropVetoed, rankSignals, setPairEdge } from "@/lib/bot/ranking";
-import { restingDepth } from "@/lib/kalshi.server";
+import { restingDepth } from "@/lib/bot/order-map";
 import { getTuning, setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,

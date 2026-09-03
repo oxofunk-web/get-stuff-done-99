@@ -56,17 +56,6 @@ export function normalizeMarket(mkt: RawMarket) {
   };
 }
 
-/**
- * Contracts resting at the touch on the side an order would take. Buying NO
- * lifts the YES bid, so NO depth is the YES bid size.
- */
-export function restingDepth(
-  m: { yesAskSize: number; yesBidSize: number },
-  side: "YES" | "NO",
-) {
-  return Math.floor(side === "YES" ? m.yesAskSize : m.yesBidSize);
-}
-
 /** Public (unauthenticated) Kalshi read — proxied server-side to dodge CORS. */
 export async function fetchOpenMarket(series: string): Promise<RawMarket | null> {
   const path = `/markets?series_ticker=${series}&status=open&limit=1`;
