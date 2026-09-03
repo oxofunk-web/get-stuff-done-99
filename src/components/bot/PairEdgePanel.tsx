@@ -1,4 +1,5 @@
 import { PAIRS } from "@/lib/bot/constants";
+import { VETO_MIN_TRADES } from "@/lib/bot/ranking";
 import type { AccuracyStats } from "@/lib/bot/telemetry.functions";
 
 /** Below this many settled samples a pair is still "learning", not judged. */
@@ -35,6 +36,11 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
     const contracts = avgEntry > 0 ? Math.max(1, Math.floor(betSize / avgEntry)) : 0;
     const risk = contracts * avgEntry;
     const judged = n >= MIN_JUDGE && avgEntry > 0;
+    const trades = e?.trades ?? 0;
+    const pnl = e?.pnl ?? 0;
+    // Same rule the engines enforce: enough settled trades + losing record =
+    // the bot refuses to buy this pair until its record recovers.
+    const paused = trades >= VETO_MIN_TRADES && pnl < 0;
     return {
       pair: p.id,
       n,
@@ -43,10 +49,11 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
       breakeven,
       risk,
       contracts,
-      pnl: e?.pnl ?? 0,
-      trades: e?.trades ?? 0,
+      pnl,
+      trades,
       edge: judged ? winRate - breakeven : 0,
       judged,
+      paused,
     };
   }).sort((a, b) => Number(b.judged) - Number(a.judged) || b.edge - a.edge);
 
@@ -67,10 +74,17 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
 
           {rows.map((r) => {
             const good = r.judged && r.edge > 0;
-            const tone = !r.judged ? "text-gold" : good ? "text-yes" : "text-no";
+            const tone = r.paused ? "text-no" : !r.judged ? "text-gold" : good ? "text-yes" : "text-no";
             return (
               <div key={r.pair} className="col-span-5 grid grid-cols-[auto_1fr_1fr_1fr_1fr] items-baseline gap-x-2 border-t border-wire/60 py-1">
-                <div className="w-12 text-[10px] font-semibold text-foreground">{r.pair}</div>
+                <div className="w-12 text-[10px] font-semibold text-foreground">
+                  {r.pair}
+                  {r.paused ? (
+                    <span className="ml-1 rounded border border-no/60 px-1 text-[7px] font-bold tracking-widest text-no">
+                      PAUSED
+                    </span>
+                  ) : null}
+                </div>
                 <div className="text-right text-[10px] tabular-nums text-muted-foreground">
                   {r.risk > 0 ? money(r.risk) : "—"}
                   {r.contracts ? (
