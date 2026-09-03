@@ -13,11 +13,11 @@ export interface PairStatusRow {
 interface Props {
   signals: Signal[];
   candle: CandleInfo;
-  tradeStatus: Record<string, { status: TradeStatus; msg: string }>;
+  tradeStatus?: Record<string, { status: TradeStatus; msg: string }> | undefined;
   pairStatus?: PairStatusRow[] | undefined;
 }
 
-export function SignalsPanel({ signals, candle, tradeStatus, pairStatus }: Props) {
+export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: Props) {
   return (
     <section className="panel">
       <div className="panel-head">

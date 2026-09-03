@@ -447,7 +447,7 @@ export function useBot() {
     if (mode !== "live") return [];
     return portfolio.positions
       .map((p, i) => {
-        const pair = PAIRS.find((x) => p.ticker.startsWith(x.kalshiSeries));
+        const pair = PAIRS.find((x) => p.ticker.startsWith(x.series));
         if (!pair || p.count === 0) return null;
         const count = Math.abs(p.count);
         return {
@@ -515,7 +515,7 @@ export function useBot() {
 
   // Settled win/loss record across everything the bot has placed.
   const wins = accuracy?.ok ? accuracy.wins : 0;
-  const losses = accuracy?.ok ? Math.max(0, accuracy.trades - accuracy.wins) : 0;
+  const losses = accuracy?.ok ? Math.max(0, accuracy.total - accuracy.wins) : 0;
 
   // Daily loss cap banner — the server enforces the stop itself; this just
   // mirrors it on the dashboard.
