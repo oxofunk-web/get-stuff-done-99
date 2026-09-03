@@ -264,6 +264,11 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
+    const pairTable: PairCalibration = {};
+    const edge = new Map<
+      string,
+      { n: number; wins: number; fired: number; firedWins: number; entrySum: number; entryN: number }
+    >();
     let wins = 0;
 
     for (const r of all) {
@@ -274,6 +279,29 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
         band.n += 1;
         if (won) band.wins += 1;
       }
+
+      // Same bands, restricted to this pair: the pair's own measured record.
+      const pt = (pairTable[r.pair] ??= emptyTable());
+      const pband = pt.find((b) => conf >= b.lo && conf < b.hi);
+      if (pband) {
+        pband.n += 1;
+        if (won) pband.wins += 1;
+      }
+
+      const e =
+        edge.get(r.pair) ?? { n: 0, wins: 0, fired: 0, firedWins: 0, entrySum: 0, entryN: 0 };
+      e.n += 1;
+      if (won) e.wins += 1;
+      if (r.verdict === "fired") {
+        e.fired += 1;
+        if (won) e.firedWins += 1;
+        if (r.entry_price != null && r.entry_price > 0) {
+          e.entrySum += r.entry_price;
+          e.entryN += 1;
+        }
+      }
+      edge.set(r.pair, e);
+
       if (r.verdict !== "fired") continue;
       if (won) wins += 1;
 
@@ -288,6 +316,20 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       if (won) m.wins += 1;
       minMap.set(minute, m);
     }
+
+    const pairEdge: PairEdgeRow[] = [...edge.entries()]
+      .map(([pair, e]) => ({
+        pair,
+        n: e.n,
+        wins: e.wins,
+        fired: e.fired,
+        firedWins: e.firedWins,
+        avgEntry: e.entryN ? e.entrySum / e.entryN : 0,
+        pnl: money.get(pair)?.pnl ?? 0,
+        trades: money.get(pair)?.trades ?? 0,
+      }))
+      .sort((a, b) => b.n - a.n);
+
 
     return {
       ok: true,
