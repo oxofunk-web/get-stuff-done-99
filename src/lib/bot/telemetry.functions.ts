@@ -43,6 +43,7 @@ const signalRow = z.object({
   sigma_dist: z.number().nullable().default(null),
   spot: z.number().nullable().default(null),
   strike: z.number().nullable().default(null),
+  source: z.enum(["client", "server"]).default("client"),
 });
 
 const tradeRow = z.object({
@@ -84,7 +85,10 @@ export const recordSignals = createServerFn({ method: "POST" })
     const db = await admin();
     const { error } = await db
       .from("signal_log")
-      .upsert(data.rows, { onConflict: "candle_id,pair,verdict,seconds_in", ignoreDuplicates: true });
+      .upsert(data.rows, {
+        onConflict: "candle_id,pair,verdict,seconds_in,source",
+        ignoreDuplicates: true,
+      });
     if (error) return { ok: false, inserted: 0, error: error.message };
     return { ok: true, inserted: data.rows.length };
   });
