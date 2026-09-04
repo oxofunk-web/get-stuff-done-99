@@ -32,8 +32,6 @@ export const updateServerBot = createServerFn({ method: "POST" })
         evMargin: z.number().min(0).max(0.5).optional(),
         maxTrades: z.number().int().min(1).max(7).optional(),
         dailyLossCap: z.number().min(1).max(1000).optional(),
-        takeProfitCents: z.number().int().min(2).max(50).optional(),
-        stopLossCents: z.number().int().min(2).max(50).optional(),
       })
       .parse(d),
   )
@@ -47,8 +45,6 @@ export const updateServerBot = createServerFn({ method: "POST" })
       ev_margin?: number;
       max_trades?: number;
       daily_loss_cap?: number;
-      take_profit_cents?: number;
-      stop_loss_cents?: number;
       updated_at: string;
     } = { updated_at: new Date().toISOString() };
     if (data.enabled !== undefined) {
@@ -61,8 +57,6 @@ export const updateServerBot = createServerFn({ method: "POST" })
     if (data.evMargin !== undefined) patch.ev_margin = data.evMargin;
     if (data.maxTrades !== undefined) patch.max_trades = data.maxTrades;
     if (data.dailyLossCap !== undefined) patch.daily_loss_cap = data.dailyLossCap;
-    if (data.takeProfitCents !== undefined) patch.take_profit_cents = data.takeProfitCents;
-    if (data.stopLossCents !== undefined) patch.stop_loss_cents = data.stopLossCents;
     await db.from("bot_settings").update(patch).eq("id", true);
     return getServerBotState(db);
   });
