@@ -1,29 +1,41 @@
-# Is live trading working now?
+# Why you see no signals and no trades
 
-Honest answer: the two bugs are fixed in code, but nothing has been proven live yet.
+Nothing is broken in the plumbing. I pulled the live rows just now:
 
-What the data currently shows:
+- The runner is alive and inside the trade window: last heartbeat 06:10 UTC, `in window · no signal passed the gates · 8 looks`, 8 sampling rounds per tick.
+- Live trading is ON: $10 per bet, 3 per candle, $20 daily cap.
+- The book data is real and fresh (BTC ticker `KXBTC15M-26SEP040215-15`, 87/88¢ quotes seconds old).
+- Every pair is being killed by a **filter**, not by a bug. The newest server rounds read: `not enough value at this price` (EV gate), `mid outside tradable band`, `book too flat`, `book too wide`, `spot too close to the strike`, `confidence below threshold`.
+- The dashboard is rejecting for the same reasons at the same second, so client and server agree.
 
-- The runner is alive — last heartbeat seconds ago, "watching · outside trade window · 8 looks".
-- Live trading is ON, $10 per bet, 3 trades per candle.
-- The newest rows in the trade log are still the old "Quote moved — NO is now 88¢ vs the 71¢" failures from 05:40, before the fix. No trade window has opened since the change, so there is no post-fix evidence either way.
-- The scheduled tick runs against the deployed build, not the editor sandbox, so the fix only takes effect once the app is published.
+So the engine is looking 8+ times per candle and the filter stack is currently strict enough that essentially nothing can pass — that is why it "was better before": the gates were looser then.
 
-## Plan to confirm it actually trades
+## The gates that are actually blocking you
 
-1. Publish, so the scheduled runner picks up the fixed code.
-2. Watch one full 15-minute window (the trade gate opens at the 10:00 mark of each candle) and check three things in order:
-   - Signals scored during the window carry the same market ticker as the order attempt.
-   - No new "Quote moved" skips with a double-digit cent gap — that gap was the symptom of the stale-book bug.
-   - At least one order reaches the exchange, or every skip has a legitimate reason (book too thin, edge gone, out of band, cap reached).
-3. If orders still do not go out, capture the exact skip reason per pair from the signal log and report which gate is blocking, instead of guessing.
+| Gate | Now | Effect seen in the log |
+| --- | --- | --- |
+| Confidence | 86 | `confidence below threshold` |
+| EV per dollar | 0.08 | `not enough value at this price` — most common rejection |
+| YES mid band | 12–90¢ | `mid outside tradable band` on 87¢ books (the ones with real depth) |
+| Book skew | 4¢ | `book too flat` |
+| Max spread | 5¢ | `book too wide` (NEAR every round) |
+| Strike cushion | 0.55σ | `spot too close to the strike` |
 
-## Safety note
+## What I'll change
 
-Live money is armed right now at $10 per trade, 3 per candle, with the -$20 daily loss cap. If you would rather confirm the fix before real orders fly, turn LIVE TRADING off for one window, watch the skip reasons, and turn it back on once the tickers line up.
+1. **Loosen the stack to a tradable setting**: confidence 78, EV margin 0.04, mid band 8–94¢, skew 2¢, max spread 7¢, cushion 0.35σ. These are the values that let a well-priced 85¢ favourite through instead of discarding it.
+2. **Put all six on the dashboard** in a new `SIGNAL GATES` block in Bot Control, with a preset switch: **STRICT** (today's values), **BALANCED** (the new defaults), **AGGRESSIVE** (confidence 70, EV 0.02, mid 5–97¢, skew 1¢, spread 9¢, cushion 0.2σ). Saved in `bot_settings` so the server runner uses exactly what you pick.
+3. **Show the blocking gate live** on the dashboard: per pair, the newest rejection reason and how far it missed by, so you can see "ETH missed EV by 0.01" instead of silence.
+4. **Nothing else changes**: the 10:00 window, one trade per pair per candle, depth check, 3¢ slippage cap, balance check, daily loss cap, and order mechanics stay as they are.
+
+## After the change
+
+Publish (only the deployed build runs the scheduled tick), then watch one window. If orders still don't go out, the skip reason per pair will name the exact gate rather than a guess.
 
 ## Technical notes
 
-- `fetchOpenMarket` now selects the open market with the soonest future `close_time` instead of `limit=1`, so scoring and order pricing always use the same candle.
-- The server runner seeds its book only from the current candle within the last 20 seconds, drops any quote it cannot re-confirm, and refuses to send an order if the ticker changed between scoring and submission.
-- Verification uses `trade_log` and `signal_log` rows with `source = 'server'` for the candle that follows publishing.
+- `bot_settings`: add `threshold`, `ev_margin` (exists), `min_yes_mid`, `max_yes_mid`, `min_skew`, `max_spread`, `min_sigma_dist`, `gate_preset`, with GRANTs matching the existing table.
+- `src/lib/bot/constants.ts`: relax the BALANCED defaults; `tuning.ts` unchanged in shape.
+- `src/lib/bot/server-engine.server.ts`: pass the full saved gate set into `setTuning` (currently only `evMargin`).
+- `src/lib/bot/serverbot.functions.ts`: extend the zod patch schema with the gate fields plus preset.
+- `src/hooks/useBot.ts` + `EnginePanel.tsx`: preset buttons and sliders; `SignalsPanel.tsx`/`ServerBotPanel.tsx` surface the newest blocking gate per pair from `signal_log`.
