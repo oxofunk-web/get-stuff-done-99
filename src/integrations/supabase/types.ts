@@ -21,16 +21,23 @@ export type Database = {
           enabled: boolean
           ev_margin: number
           first_enabled_at: string | null
+          gate_preset: string
           id: boolean
           last_tick_at: string | null
           last_tick_msg: string | null
           live_confirmed_at: string | null
+          max_spread: number
           max_trades: number
+          max_yes_mid: number
+          min_sigma_dist: number
+          min_skew: number
+          min_yes_mid: number
           mode: string
           run_lease_id: string | null
           run_lease_until: string | null
           stop_loss_cents: number
           take_profit_cents: number
+          threshold: number
           updated_at: string
         }
         Insert: {
@@ -39,16 +46,23 @@ export type Database = {
           enabled?: boolean
           ev_margin?: number
           first_enabled_at?: string | null
+          gate_preset?: string
           id?: boolean
           last_tick_at?: string | null
           last_tick_msg?: string | null
           live_confirmed_at?: string | null
+          max_spread?: number
           max_trades?: number
+          max_yes_mid?: number
+          min_sigma_dist?: number
+          min_skew?: number
+          min_yes_mid?: number
           mode?: string
           run_lease_id?: string | null
           run_lease_until?: string | null
           stop_loss_cents?: number
           take_profit_cents?: number
+          threshold?: number
           updated_at?: string
         }
         Update: {
@@ -57,16 +71,23 @@ export type Database = {
           enabled?: boolean
           ev_margin?: number
           first_enabled_at?: string | null
+          gate_preset?: string
           id?: boolean
           last_tick_at?: string | null
           last_tick_msg?: string | null
           live_confirmed_at?: string | null
+          max_spread?: number
           max_trades?: number
+          max_yes_mid?: number
+          min_sigma_dist?: number
+          min_skew?: number
+          min_yes_mid?: number
           mode?: string
           run_lease_id?: string | null
           run_lease_until?: string | null
           stop_loss_cents?: number
           take_profit_cents?: number
+          threshold?: number
           updated_at?: string
         }
         Relationships: []

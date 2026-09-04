@@ -66,8 +66,8 @@ export function normalizeMarket(mkt: RawMarket) {
  * moved 71¢ -> 88¢" skips and nonsense signals. Always pick the open market
  * that closes soonest in the future: the candle currently being traded.
  */
-export async function fetchOpenMarket(series: string): Promise<RawMarket | null> {
-  const path = `/markets?series_ticker=${series}&status=open&limit=20`;
+export async function fetchOpenMarket(series: string, spot?: number | null): Promise<RawMarket | null> {
+  const path = `/markets?series_ticker=${series}&status=open&limit=200`;
   for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
     try {
       const r = await fetch(base + path, { headers: { accept: "application/json" } });
@@ -80,7 +80,25 @@ export async function fetchOpenMarket(series: string): Promise<RawMarket | null>
         .map((m) => ({ m, close: m.close_time ? new Date(m.close_time).getTime() : NaN }))
         .filter((x) => Number.isFinite(x.close) && x.close > now)
         .sort((a, b) => a.close - b.close);
-      return upcoming[0]?.m ?? markets[0] ?? null;
+      if (!upcoming.length) return markets[0] ?? null;
+      // Every candle lists MANY strikes. Keep only the candle closing soonest,
+      // then take the strike nearest spot (or nearest a 50¢ mid when spot is
+      // unknown) — far out-of-the-money strikes quote at 1-3¢ and are never
+      // tradable, which is what silenced the engine.
+      const soonest = upcoming[0]!.close;
+      const candle = upcoming.filter((x) => x.close === soonest).map((x) => x.m);
+      // Rank by how balanced the book is, not raw strike distance: late in a
+      // candle the nearest strike can still be a 1¢ certainty, while a slightly
+      // further strike is the one actually priced in a tradable range.
+      const score = (m: RawMarket) => {
+        const n = normalizeMarket(m);
+        const quoted = n.yesBid > 0 || n.yesAsk > 0;
+        if (quoted) return Math.abs(n.yesMid - 0.5);
+        const strike = m.floor_strike ?? m.cap_strike ?? null;
+        if (spot && strike != null) return 0.5 + Math.abs(strike - spot) / spot;
+        return 1;
+      };
+      return candle.reduce((best, m) => (score(m) < score(best) ? m : best), candle[0]!);
     } catch {
       // try next base
     }

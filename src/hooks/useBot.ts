@@ -5,8 +5,17 @@ import { candleInfo } from "@/lib/bot/candle";
 import {
   KALSHI_POLL_MS,
   DAILY_LOSS_CAP_DEFAULT,
+  EV_MARGIN,
+  GATE_PRESETS,
+  MAX_SPREAD,
   MAX_TRADES_PER_CANDLE,
+  MAX_YES_MID,
+  MIN_SIGMA_DIST,
+  MIN_SKEW,
+  MIN_YES_MID,
   PAIRS,
+  THRESHOLD,
+  type GatePresetName,
   type PairId,
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
@@ -168,17 +177,36 @@ export function useBot() {
     [notify],
   );
 
-  // Keep the client-side signal display on the same EV gate the server
+  // Keep the client-side signal display on the exact gates the server
   // enforces, so what the panel calls a signal is what the runner would fire.
   useEffect(() => {
-    if (server) setTuning({ evMargin: server.evMargin });
+    if (!server) return;
+    setTuning({
+      evMargin: server.evMargin,
+      threshold: server.threshold,
+      minYesMid: server.minYesMid,
+      maxYesMid: server.maxYesMid,
+      minSkew: server.minSkew,
+      maxSpread: server.maxSpread,
+      minSigmaDist: server.minSigmaDist,
+    });
   }, [server]);
 
   const botOn = server?.enabled ?? false;
   const betSize = server?.betSize ?? 5;
   const maxTrades = server?.maxTrades ?? MAX_TRADES_PER_CANDLE;
   const dailyLossCap = server?.dailyLossCap ?? DAILY_LOSS_CAP_DEFAULT;
-  const evMargin = server?.evMargin ?? 0.08;
+  const evMargin = server?.evMargin ?? EV_MARGIN;
+  const gates = {
+    threshold: server?.threshold ?? THRESHOLD,
+    evMargin,
+    minYesMid: server?.minYesMid ?? MIN_YES_MID,
+    maxYesMid: server?.maxYesMid ?? MAX_YES_MID,
+    minSkew: server?.minSkew ?? MIN_SKEW,
+    maxSpread: server?.maxSpread ?? MAX_SPREAD,
+    minSigmaDist: server?.minSigmaDist ?? MIN_SIGMA_DIST,
+  };
+  const gatePreset = server?.gatePreset ?? "balanced";
 
   // One switch, live money. Turning it on arms real orders immediately.
   const toggleBot = useCallback(() => {
@@ -190,7 +218,7 @@ export function useBot() {
     void applyServer(() => updateServerBot({ data: { enabled: next } }));
     notify(
       next
-        ? "LIVE TRADING ON — real orders after the 10:00 mark at 86%+, even with the app closed"
+        ? "LIVE TRADING ON — real orders after the 10:00 mark, even with the app closed"
         : "Live trading OFF — no new orders will be placed",
       next ? "no" : "warn",
     );
@@ -212,6 +240,20 @@ export function useBot() {
     (n: number) => void applyServer(() => updateServerBot({ data: { evMargin: n } })),
     [applyServer],
   );
+  /** Tune one gate by hand — the saved preset becomes CUSTOM server-side. */
+  const setGate = useCallback(
+    (patch: Partial<Record<keyof typeof GATE_PRESETS.balanced, number>>) =>
+      void applyServer(() => updateServerBot({ data: patch })),
+    [applyServer],
+  );
+  const setGatePreset = useCallback(
+    (name: GatePresetName) =>
+      void applyServer(() =>
+        updateServerBot({ data: { ...GATE_PRESETS[name], gatePreset: name } }),
+      ),
+    [applyServer],
+  );
+
 
   // Clock
   useEffect(() => {
@@ -244,7 +286,12 @@ export function useBot() {
     let stop = false;
     const pull = async () => {
       try {
-        const res = await getMarkets();
+        const spots: Record<string, number> = {};
+        for (const p of PAIRS) {
+          const px = spotRef.current[p.id]?.price;
+          if (px) spots[p.id] = px;
+        }
+        const res = await getMarkets({ data: spots });
         if (stop) return;
         const next: Partial<Record<PairId, KalshiMarket>> = {};
         for (const m of res.markets) {
@@ -546,6 +593,10 @@ export function useBot() {
 
     evMargin,
     setEvMargin,
+    gates,
+    gatePreset,
+    setGate,
+    setGatePreset,
     pairs: PAIRS,
   };
 }

@@ -1,6 +1,6 @@
 export const GATE_SECS = 600; // trade window opens at the 10:00 mark (5 min before settle)
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
-export const THRESHOLD = 86; // minimum confidence to fire
+export const THRESHOLD = 78; // minimum confidence to fire (BALANCED preset)
 export const MAX_TRADES_PER_CANDLE = 4; // up to one trade per pair per 15m candle
 export const MAX_SLIPPAGE_CENTS = 3; // never pay more than 3c above the scored price
 export const DAILY_LOSS_CAP_DEFAULT = 20; // stop trading after this much loss in a day
@@ -13,16 +13,64 @@ export const MIN_RESTING_DEPTH = 2;
 export const LAG_PCT = 0.0012; // 0.12% BRTI vs Kalshi divergence
 export const KALSHI_POLL_MS = 8000;
 
-/** Quality filters — a signal must clear all of these before it can fire. */
-export const MAX_SPREAD = 0.05; // skip illiquid books wider than 5¢
-export const MIN_YES_MID = 0.12; // skip lottery-ticket longshots
-export const MAX_YES_MID = 0.9; // skip near-certain, no edge left
-export const MIN_SKEW = 0.04; // book must lean at least 4¢ one way
+/**
+ * Quality filters — a signal must clear all of these before it can fire.
+ * These are the BALANCED preset: strict enough to skip junk books, loose
+ * enough that well-priced favourites are not thrown away. The dashboard can
+ * override every one of them (STRICT / BALANCED / AGGRESSIVE).
+ */
+export const MAX_SPREAD = 0.07; // skip illiquid books wider than 7¢
+export const MIN_YES_MID = 0.08; // skip lottery-ticket longshots
+export const MAX_YES_MID = 0.94; // skip near-certain, no edge left
+export const MIN_SKEW = 0.02; // book must lean at least 2¢ one way
 export const MIN_TICKS = 24; // enough spot history to trust momentum
 /** Minimum expected value per dollar risked — kills "95% read at 92¢" trades. */
-export const EV_MARGIN = 0.08;
+export const EV_MARGIN = 0.04;
 /** Minimum cushion between spot and strike, in standard deviations of movement. */
-export const MIN_SIGMA_DIST = 0.55;
+export const MIN_SIGMA_DIST = 0.35;
+
+/** Gate presets exposed on the dashboard. */
+export interface GatePreset {
+  threshold: number;
+  evMargin: number;
+  minYesMid: number;
+  maxYesMid: number;
+  minSkew: number;
+  maxSpread: number;
+  minSigmaDist: number;
+}
+
+export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePreset> = {
+  strict: {
+    threshold: 86,
+    evMargin: 0.08,
+    minYesMid: 0.12,
+    maxYesMid: 0.9,
+    minSkew: 0.04,
+    maxSpread: 0.05,
+    minSigmaDist: 0.55,
+  },
+  balanced: {
+    threshold: 78,
+    evMargin: 0.04,
+    minYesMid: 0.08,
+    maxYesMid: 0.94,
+    minSkew: 0.02,
+    maxSpread: 0.07,
+    minSigmaDist: 0.35,
+  },
+  aggressive: {
+    threshold: 70,
+    evMargin: 0.02,
+    minYesMid: 0.05,
+    maxYesMid: 0.97,
+    minSkew: 0.01,
+    maxSpread: 0.09,
+    minSigmaDist: 0.2,
+  },
+};
+
+export type GatePresetName = keyof typeof GATE_PRESETS;
 
 export type PairId = "BTC" | "ETH" | "SOL" | "XRP" | "BNB" | "NEAR" | "DOGE";
 

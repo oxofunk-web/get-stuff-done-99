@@ -10,11 +10,17 @@ import {
   placeLiveOrder,
 } from "./kalshi.server";
 
-/** Live YES/NO orderbook for every 15-minute crypto series. Public data. */
-export const getMarkets = createServerFn({ method: "GET" }).handler(async () => {
+/**
+ * Live YES/NO orderbook for every 15-minute crypto series. Public data.
+ * Spot prices are optional but strongly recommended: each candle lists many
+ * strikes and only the one nearest spot is tradable.
+ */
+export const getMarkets = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) => z.record(z.string(), z.number()).optional().parse(input) ?? {})
+  .handler(async ({ data }) => {
   const results = await Promise.all(
     PAIRS.map(async (p) => {
-      const raw = await fetchOpenMarket(p.series);
+      const raw = await fetchOpenMarket(p.series, data[p.id] ?? null);
       if (!raw) return null;
       return { pair: p.id, ...normalizeMarket(raw) };
     }),

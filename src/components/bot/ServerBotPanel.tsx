@@ -60,10 +60,10 @@ export function ServerBotPanel() {
           places orders; the controls in Bot Control drive it. It records the tape even
           while off.
         </p>
-        {state?.skips?.length ? (
+        {(state?.skips?.length ?? 0) || (state?.blocks?.length ?? 0) ? (
           <div className="mt-2 space-y-0.5 border-t border-wire pt-2">
             <p className="text-[8px] font-bold tracking-widest text-dim">WHY NO ORDER</p>
-            {state.skips.slice(0, 5).map((s) => (
+            {(state?.skips?.length ? state.skips : (state?.blocks ?? [])).slice(0, 7).map((s) => (
               <p key={s.pair} className="flex justify-between gap-2 text-[8px] text-dim">
                 <span className="font-bold text-fg">{s.pair}</span>
                 <span className="truncate text-right">{s.reason}</span>
