@@ -341,10 +341,12 @@ export function computeSignals(
       ? ` BRTI LAG — spot ${spotMom > 0 ? "accelerating up" : "dropping"} (${(spotMom * 100).toFixed(3)}%) while the Kalshi book hasn't moved.`
       : "";
 
+    // Label the price of the LEG we would buy, not the YES mid. A "NO at 11¢"
+    // label on a 89¢ NO made cheap-looking trades look like free money.
     note(
       p.id,
       "fired",
-      `${dir} at ${(ym * 100).toFixed(0)}¢`,
+      `${dir} costs ${(entry * 100).toFixed(0)}¢`,
       {
         conf: Number(conf.toFixed(1)),
         calibrated: Number(calibrated.toFixed(3)),

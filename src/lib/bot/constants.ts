@@ -2,7 +2,15 @@ export const GATE_SECS = 600; // trade window opens at the 10:00 mark (5 min bef
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
 export const THRESHOLD = 78; // minimum confidence to fire (BALANCED preset)
 export const MAX_TRADES_PER_CANDLE = 4; // up to one trade per pair per 15m candle
-export const MAX_SLIPPAGE_CENTS = 3; // never pay more than 3c above the scored price
+export const MAX_SLIPPAGE_CENTS = 3; // floor for the value-based slippage cap
+/**
+ * Absolute ceiling on chasing, in cents above the scored price. The real cap is
+ * value-based (pay up to where EV falls under the margin); this stops a very
+ * high-confidence read from turning into an unbounded chase.
+ */
+export const MAX_CHASE_CENTS = 8;
+/** Order attempts allowed per pair per candle (one retry after a moved quote). */
+export const MAX_ORDER_ATTEMPTS = 2;
 export const DAILY_LOSS_CAP_DEFAULT = 20; // stop trading after this much loss in a day
 /**
  * Minimum contracts resting at the touch before an order is worth sending.

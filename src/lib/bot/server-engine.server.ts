@@ -21,6 +21,8 @@ import {
   CLOSE_SECS,
   DAILY_LOSS_CAP_DEFAULT,
   GATE_SECS,
+  MAX_CHASE_CENTS,
+  MAX_ORDER_ATTEMPTS,
   MAX_SLIPPAGE_CENTS,
   MAX_SPREAD,
   MAX_YES_MID,
@@ -48,10 +50,14 @@ import type { KalshiMarket, SpotState, SpotTick } from "./types";
  * many-chances-per-candle view the dashboard has instead of a single look.
  */
 const SAMPLE_GAP_MS = 2500;
-/** Time budget per tick — under a minute so consecutive cron ticks never overlap. */
-const TICK_BUDGET_MS = 22_000;
-/** Lease is longer than the work budget, but shorter than the next cron wake-up. */
-const RUN_LEASE_SECONDS = 50;
+/**
+ * Time budget per tick. The cron wakes the runner every minute, so a 22s budget
+ * left the engine blind for ~38s of every minute — signals that appeared in
+ * those holes were never seen. Sample for almost the whole minute instead.
+ */
+const TICK_BUDGET_MS = 50_000;
+/** Lease covers the work budget but expires before the next cron wake-up. */
+const RUN_LEASE_SECONDS = 58;
 /** Fallback exit thresholds, in cents, when settings are unreadable. */
 const TAPE_RETENTION_MS = 7 * 24 * 3600 * 1000;
 
