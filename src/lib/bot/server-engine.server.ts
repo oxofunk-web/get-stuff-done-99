@@ -269,11 +269,11 @@ async function fetchAllMarkets(
 }
 
 /** Fresh single-pair quote, used to re-price right before an order goes out. */
-async function fetchOneMarket(pair: PairId): Promise<KalshiMarket | null> {
+async function fetchOneMarket(pair: PairId, spot?: number | null): Promise<KalshiMarket | null> {
   const p = PAIRS.find((x) => x.id === pair);
   if (!p) return null;
   try {
-    const raw = await fetchOpenMarket(p.series);
+    const raw = await fetchOpenMarket(p.series, spot ?? null);
     if (!raw) return null;
     return { pair: p.id, ...normalizeMarket(raw) } as KalshiMarket;
   } catch {
