@@ -463,9 +463,18 @@ async function runOwnedServerBotTick(db: Db) {
     const c = candleInfo();
     const [spots, mkts] = await Promise.all([fetchSpots(), fetchAllMarkets()]);
     const snapshotRows: SnapshotInsert[] = [];
+    const roundAt = Date.now();
     for (const p of PAIRS) {
       const m = mkts[p.id];
-      if (m) markets[p.id] = m;
+      if (m) {
+        markets[p.id] = m;
+        marketAt[p.id] = roundAt;
+      } else if (roundAt - (marketAt[p.id] ?? 0) > MAX_QUOTE_AGE_MS) {
+        // Never score a book we can no longer confirm: a stale quote reads as a
+        // huge (fake) edge and then fails at order time as "quote moved".
+        delete markets[p.id];
+        delete marketAt[p.id];
+      }
       const price = spots[p.id];
       if (!price) continue;
       latestSpots[p.id] = price;
@@ -484,6 +493,7 @@ async function runOwnedServerBotTick(db: Db) {
         vol: known?.vol ?? null,
       });
     }
+
     if (!snapshotRows.length) {
       lastMsg = "feeds unavailable — no spot prices this round";
       await sleep(SAMPLE_GAP_MS);
