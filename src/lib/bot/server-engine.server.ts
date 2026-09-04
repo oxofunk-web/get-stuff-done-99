@@ -340,17 +340,24 @@ async function runOwnedServerBotTick(db: Db) {
   const deadline = startedAt + TICK_BUDGET_MS;
 
   const markets: Partial<Record<PairId, KalshiMarket>> = {};
+  /** When each cached quote was observed — stale books must never score. */
+  const marketAt: Partial<Record<PairId, number>> = {};
   const latestSpots: Partial<Record<PairId, number>> = {};
+  /** A quote older than this is dropped rather than scored. */
+  const MAX_QUOTE_AGE_MS = 20_000;
 
   // Each scheduled run starts with an empty process, so seed the last known book
-  // from the recorded tape. Without this the first rounds of every run scored
-  // "no market" and nothing could ever fire; orders always re-price off a fresh
-  // pull anyway, so a seeded quote is only ever used for scoring.
+  // from the recorded tape — but ONLY from this candle and only from the last few
+  // seconds. Seeding from a previous candle's market was scoring one candle's
+  // book while ordering in the next, which showed up as bogus signals and
+  // "quote moved" skips.
   {
-    const since = new Date(Date.now() - 180_000).toISOString();
+    const seedCandle = candleInfo().id;
+    const since = new Date(Date.now() - MAX_QUOTE_AGE_MS).toISOString();
     const { data: warm } = await db
       .from("market_snapshots")
       .select("pair, ticker, strike, yes_bid, yes_ask, yes_mid, spread, vol, ts")
+      .eq("candle_id", seedCandle)
       .gte("ts", since)
       .not("ticker", "is", null)
       .order("ts", { ascending: true })
@@ -364,6 +371,7 @@ async function runOwnedServerBotTick(db: Db) {
       yes_mid: number | null;
       spread: number | null;
       vol: number | null;
+      ts: string;
     }[]) {
       if (!r.ticker || r.yes_bid == null || r.yes_ask == null) continue;
       markets[r.pair as PairId] = {
@@ -376,8 +384,10 @@ async function runOwnedServerBotTick(db: Db) {
         spread: r.spread ?? r.yes_ask - r.yes_bid,
         vol: r.vol ?? 0,
       } as KalshiMarket;
+      marketAt[r.pair as PairId] = new Date(r.ts).getTime();
     }
   }
+
 
 
   const heartbeat = async (msg: string) => {
@@ -453,9 +463,18 @@ async function runOwnedServerBotTick(db: Db) {
     const c = candleInfo();
     const [spots, mkts] = await Promise.all([fetchSpots(), fetchAllMarkets()]);
     const snapshotRows: SnapshotInsert[] = [];
+    const roundAt = Date.now();
     for (const p of PAIRS) {
       const m = mkts[p.id];
-      if (m) markets[p.id] = m;
+      if (m) {
+        markets[p.id] = m;
+        marketAt[p.id] = roundAt;
+      } else if (roundAt - (marketAt[p.id] ?? 0) > MAX_QUOTE_AGE_MS) {
+        // Never score a book we can no longer confirm: a stale quote reads as a
+        // huge (fake) edge and then fails at order time as "quote moved".
+        delete markets[p.id];
+        delete marketAt[p.id];
+      }
       const price = spots[p.id];
       if (!price) continue;
       latestSpots[p.id] = price;
@@ -474,6 +493,7 @@ async function runOwnedServerBotTick(db: Db) {
         vol: known?.vol ?? null,
       });
     }
+
     if (!snapshotRows.length) {
       lastMsg = "feeds unavailable — no spot prices this round";
       await sleep(SAMPLE_GAP_MS);
@@ -625,15 +645,25 @@ async function runOwnedServerBotTick(db: Db) {
             ev: sig.ev,
           });
         };
-        // Always re-price off a freshly pulled book: the scoring market may be a
-        // cached/seeded quote, and we never send an order on a stale price.
-        const fresh = (await fetchOneMarket(sig.pair)) ?? markets[sig.pair];
-        if (fresh) markets[sig.pair] = fresh;
+        // Always re-price off a freshly pulled book, and make sure it is the SAME
+        // market the signal was scored on. Scoring one candle and ordering in the
+        // next is what produced the "quote moved 17¢" skips.
+        const scoredTicker = markets[sig.pair]?.ticker ?? null;
+        const fresh = await fetchOneMarket(sig.pair);
+        if (fresh) {
+          markets[sig.pair] = fresh;
+          marketAt[sig.pair] = Date.now();
+        }
         const m = fresh;
         if (!m?.ticker) {
           skip("no open market ticker this round");
           continue;
         }
+        if (scoredTicker && scoredTicker !== m.ticker) {
+          skip("candle rolled over — re-scoring on the new market instead of chasing");
+          continue;
+        }
+
 
         const freshEntry = sig.dir === "YES" ? m.yesAsk : 1 - m.yesBid;
         if (!Number.isFinite(freshEntry) || freshEntry <= 0 || freshEntry >= 1) {

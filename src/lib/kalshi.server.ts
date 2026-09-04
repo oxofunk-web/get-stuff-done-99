@@ -56,21 +56,38 @@ export function normalizeMarket(mkt: RawMarket) {
   };
 }
 
-/** Public (unauthenticated) Kalshi read — proxied server-side to dodge CORS. */
+/**
+ * Public (unauthenticated) Kalshi read — proxied server-side to dodge CORS.
+ *
+ * A 15-minute series usually has more than one market in `open` status around a
+ * rollover (the candle that is settling and the one that just opened). Taking
+ * `limit=1` returned whichever the API listed first, so scoring and order
+ * pricing could land on two DIFFERENT candles — that is what produced "quote
+ * moved 71¢ -> 88¢" skips and nonsense signals. Always pick the open market
+ * that closes soonest in the future: the candle currently being traded.
+ */
 export async function fetchOpenMarket(series: string): Promise<RawMarket | null> {
-  const path = `/markets?series_ticker=${series}&status=open&limit=1`;
+  const path = `/markets?series_ticker=${series}&status=open&limit=20`;
   for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
     try {
       const r = await fetch(base + path, { headers: { accept: "application/json" } });
       if (!r.ok) continue;
       const j = (await r.json()) as { markets?: RawMarket[] };
-      return j.markets?.[0] ?? null;
+      const markets = j.markets ?? [];
+      if (!markets.length) continue;
+      const now = Date.now();
+      const upcoming = markets
+        .map((m) => ({ m, close: m.close_time ? new Date(m.close_time).getTime() : NaN }))
+        .filter((x) => Number.isFinite(x.close) && x.close > now)
+        .sort((a, b) => a.close - b.close);
+      return upcoming[0]?.m ?? markets[0] ?? null;
     } catch {
       // try next base
     }
   }
   return null;
 }
+
 
 /** Fresh single-market snapshot (best bid/ask + resting size at top of book). */
 export async function fetchMarket(ticker: string): Promise<RawMarket | null> {
