@@ -22,7 +22,6 @@ import {
   type RejectionRow,
 } from "@/lib/bot/telemetry.functions";
 import {
-  confirmServerLive,
   getServerBot,
   updateServerBot,
   type ServerBotState,
@@ -31,8 +30,6 @@ import {
 import type { KalshiMarket, TradeLogEntry } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio } from "@/lib/kalshi.functions";
 
-
-export type Mode = "paper" | "live";
 
 export interface Toast {
   id: number;
@@ -48,7 +45,6 @@ export interface OpenPosition {
   entry: number; // dollars per contract
   stake: number;
   candleId: number;
-  paper: boolean;
 }
 
 export interface Portfolio {
@@ -159,14 +155,10 @@ export function useBot() {
 
   // ---- controls: write straight to the shared server settings ---------------
   const applyServer = useCallback(
-    async (fn: () => Promise<ServerBotState | { ok: boolean; state?: ServerBotState; error?: string; hoursLeft?: number }>) => {
+    async (fn: () => Promise<ServerBotState>) => {
       try {
         const res = await fn();
-        if ("state" in res && res.state) setServer(res.state);
-        else if ("enabled" in res) setServer(res as ServerBotState);
-        if ("error" in res && res.error === "warmup" && "hoursLeft" in res) {
-          notify(`Live unlocks in ~${res.hoursLeft}h — the server paper-trades until then.`, "warn");
-        }
+        setServer(res);
         return res;
       } catch (e) {
         notify(e instanceof Error ? e.message : "Update failed", "warn");
@@ -182,50 +174,29 @@ export function useBot() {
     if (server) setTuning({ evMargin: server.evMargin });
   }, [server]);
 
-  const mode: Mode = server?.effectiveMode ?? "paper";
   const botOn = server?.enabled ?? false;
   const betSize = server?.betSize ?? 5;
   const maxTrades = server?.maxTrades ?? MAX_TRADES_PER_CANDLE;
   const dailyLossCap = server?.dailyLossCap ?? DAILY_LOSS_CAP_DEFAULT;
   const evMargin = server?.evMargin ?? 0.08;
+  const takeProfitCents = server?.takeProfitCents ?? 12;
+  const stopLossCents = server?.stopLossCents ?? 10;
 
+  // One switch, live money. Turning it on arms real orders immediately.
   const toggleBot = useCallback(() => {
     const next = !botOn;
+    if (next && !live.configured) {
+      notify("Live trading needs your Kalshi API key on the server first.", "warn");
+      return;
+    }
     void applyServer(() => updateServerBot({ data: { enabled: next } }));
     notify(
       next
-        ? "Auto-trading ON — the server fires after the 10:00 mark at 86%+, even with the app closed"
-        : "Auto-trading paused",
-      next ? "yes" : "warn",
+        ? "LIVE TRADING ON — real orders after the 10:00 mark at 86%+, even with the app closed"
+        : "Live trading OFF — no new orders will be placed",
+      next ? "no" : "warn",
     );
-  }, [applyServer, botOn, notify]);
-
-  const switchMode = useCallback(
-    async (next: Mode) => {
-      if (next === "live") {
-        let st = live;
-        try {
-          st = await (async () => {
-            const r = await getLiveStatus();
-            setLive(r);
-            return r;
-          })();
-        } catch {
-          // fall back to last known live state
-        }
-        if (!st.configured) {
-          notify("Live mode needs your Kalshi API key on the server first.", "warn");
-          return;
-        }
-        await applyServer(() => confirmServerLive());
-        notify("LIVE mode armed — the server places real orders, even with the app closed.", "warn");
-        return;
-      }
-      await applyServer(() => updateServerBot({ data: { mode: "paper" } }));
-      notify("Paper mode — simulated fills on live market data.", "yes");
-    },
-    [applyServer, live, notify],
-  );
+  }, [applyServer, botOn, live.configured, notify]);
 
   const setBetSize = useCallback(
     (n: number) => void applyServer(() => updateServerBot({ data: { betSize: n } })),
@@ -241,6 +212,14 @@ export function useBot() {
   );
   const setEvMargin = useCallback(
     (n: number) => void applyServer(() => updateServerBot({ data: { evMargin: n } })),
+    [applyServer],
+  );
+  const setTakeProfitCents = useCallback(
+    (n: number) => void applyServer(() => updateServerBot({ data: { takeProfitCents: n } })),
+    [applyServer],
+  );
+  const setStopLossCents = useCallback(
+    (n: number) => void applyServer(() => updateServerBot({ data: { stopLossCents: n } })),
     [applyServer],
   );
 
@@ -451,7 +430,6 @@ export function useBot() {
   // Open positions come from the real account (live). Ticker prefix maps back
   // to a pair; entry = exposure / contracts.
   const open: OpenPosition[] = useMemo(() => {
-    if (mode !== "live") return [];
     return portfolio.positions
       .map((p, i) => {
         const pair = PAIRS.find((x) => p.ticker.startsWith(x.series));
@@ -465,11 +443,10 @@ export function useBot() {
           entry: count > 0 ? p.exposure / count : 0,
           stake: p.exposure,
           candleId: candle.id,
-          paper: false,
         };
       })
       .filter((p): p is OpenPosition => p !== null);
-  }, [mode, portfolio.positions, candle.id]);
+  }, [portfolio.positions, candle.id]);
 
   // Mark-to-market on the open book.
   const unrealized = useMemo(() => {
@@ -480,13 +457,13 @@ export function useBot() {
     }, 0);
   }, [markets, open]);
 
-  const realized = mode === "live" ? portfolio.realized : 0;
+  const realized = portfolio.realized;
   const walletBalance = portfolio.balance;
-  const exposure = mode === "live" ? portfolio.exposure : 0;
+  const exposure = portfolio.exposure;
 
   // Today's real P&L: Kalshi realized since the first read of the day (plus
   // the live mark on anything still open).
-  const dayRealized = mode === "live" ? portfolio.realized - dayRef.current.base : 0;
+  const dayRealized = portfolio.realized - dayRef.current.base;
   const dayPnl = dayRealized + unrealized;
 
   // Server trade log → dashboard stats and the trade log panel.
@@ -501,7 +478,8 @@ export function useBot() {
         conf: 0,
         status: t.status === "placed" ? "placed" : "failed",
         msg: t.msg ?? "",
-        paper: t.mode === "paper",
+        exitReason: t.exit_reason,
+        pnl: t.pnl,
       })),
     [serverTrades],
   );
@@ -544,8 +522,10 @@ export function useBot() {
     history: historyRef.current,
     signals,
     candle,
-    mode,
-    switchMode,
+    takeProfitCents,
+    setTakeProfitCents,
+    stopLossCents,
+    setStopLossCents,
     botOn,
     toggleBot,
     betSize,

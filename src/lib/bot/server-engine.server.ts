@@ -8,10 +8,12 @@
  * enabled in `bot_settings` — places up to `max_trades` orders per candle.
  *
  * Tape recording happens on every tick (it feeds the replay/tuning pipeline).
- * Order placement is gated by settings and always runs in paper mode until
- * live has been separately confirmed after a 24h warmup. All durable state
- * lives in Supabase — workers are stateless, so nothing important is kept in
- * module memory.
+ * Trading is LIVE ONLY: there is no paper path — a signal either becomes a real
+ * Kalshi order or a recorded reason why it did not. The single ON/OFF switch in
+ * `bot_settings.enabled` arms real money immediately. All durable state lives in
+ * Supabase — workers are stateless, so nothing important is kept in module
+ * memory. Filled positions are managed every tick: take profit, stop out, or
+ * let them settle.
  */
 import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
@@ -44,15 +46,17 @@ const SAMPLE_GAP_MS = 2500;
 const TICK_BUDGET_MS = 22_000;
 /** Lease is longer than the work budget, but shorter than the next cron wake-up. */
 const RUN_LEASE_SECONDS = 50;
-/** Server bot must paper-trade this long before live can be armed. */
-export const WARMUP_MS = 24 * 3600 * 1000;
+/** Fallback exit thresholds, in cents, when settings are unreadable. */
+export const TAKE_PROFIT_CENTS_DEFAULT = 12;
+export const STOP_LOSS_CENTS_DEFAULT = 10;
 const TAPE_RETENTION_MS = 7 * 24 * 3600 * 1000;
 
 
 export interface ServerBotRow {
   id: boolean;
   enabled: boolean;
-  mode: "paper" | "live";
+  /** Pinned to "live" — paper mode no longer exists. */
+  mode: "live";
   bet_size: number;
   ev_margin: number;
   max_trades: number;
@@ -61,6 +65,8 @@ export interface ServerBotRow {
   last_tick_at: string | null;
   last_tick_msg: string | null;
   daily_loss_cap: number;
+  take_profit_cents: number;
+  stop_loss_cents: number;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
 }
@@ -80,15 +86,17 @@ export async function loadSettings(db: Db): Promise<ServerBotRow> {
   const fallback: ServerBotRow = {
     id: true,
     enabled: false,
-    mode: "paper",
+    mode: "live",
     bet_size: 5,
     ev_margin: 0.08,
-    max_trades: 2,
+    max_trades: 4,
     first_enabled_at: null,
     live_confirmed_at: null,
     last_tick_at: null,
     last_tick_msg: null,
     daily_loss_cap: DAILY_LOSS_CAP_DEFAULT,
+    take_profit_cents: TAKE_PROFIT_CENTS_DEFAULT,
+    stop_loss_cents: STOP_LOSS_CENTS_DEFAULT,
   };
   const { data: inserted } = await db
     .from("bot_settings")
@@ -98,31 +106,16 @@ export async function loadSettings(db: Db): Promise<ServerBotRow> {
   return (inserted as unknown as ServerBotRow | null) ?? fallback;
 }
 
-/** Milliseconds of mandatory paper warmup remaining before live can be armed. */
-export function warmupMsLeft(row: ServerBotRow) {
-  if (!row.first_enabled_at) return WARMUP_MS;
-  return Math.max(0, WARMUP_MS - (Date.now() - new Date(row.first_enabled_at).getTime()));
-}
-
-/** The mode the server actually trades in — never live before its gates pass. */
-export function effectiveMode(row: ServerBotRow): "paper" | "live" {
-  if (row.mode !== "live") return "paper";
-  if (!row.live_confirmed_at) return "paper";
-  if (warmupMsLeft(row) > 0) return "paper";
-  return "live";
-}
 
 export interface ServerBotState {
   ok: boolean;
   enabled: boolean;
-  requestedMode: "paper" | "live";
-  effectiveMode: "paper" | "live";
   betSize: number;
   evMargin: number;
   maxTrades: number;
   dailyLossCap: number;
-  warmupHoursLeft: number;
-  liveConfirmed: boolean;
+  takeProfitCents: number;
+  stopLossCents: number;
   lastTickAt: string | null;
   lastTickMsg: string | null;
   recentTrades: {
@@ -130,11 +123,12 @@ export interface ServerBotState {
     candle_id: number;
     pair: string;
     dir: string;
-    mode: string;
     status: string;
     msg: string | null;
     outcome: string | null;
     pnl: number | null;
+    exit_reason: string | null;
+    exit_price: number | null;
   }[];
   /** Newest reason per pair a server-seen signal did NOT become an order. */
   skips: { pair: string; reason: string; ts: string }[];
@@ -146,7 +140,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
   const s = await loadSettings(db);
   const { data: recent } = await db
     .from("trade_log")
-    .select("ts, candle_id, pair, dir, mode, status, msg, outcome, pnl")
+    .select("ts, candle_id, pair, dir, status, msg, outcome, pnl, exit_reason, exit_price")
     .eq("source", "server")
     .order("ts", { ascending: false })
     .limit(8);
@@ -168,14 +162,12 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
   return {
     ok: true,
     enabled: s.enabled,
-    requestedMode: s.mode,
-    effectiveMode: effectiveMode(s),
     betSize: s.bet_size,
     evMargin: s.ev_margin,
     maxTrades: s.max_trades,
     dailyLossCap: s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT,
-    warmupHoursLeft: Math.round((warmupMsLeft(s) / 3600000) * 10) / 10,
-    liveConfirmed: Boolean(s.live_confirmed_at),
+    takeProfitCents: s.take_profit_cents ?? TAKE_PROFIT_CENTS_DEFAULT,
+    stopLossCents: s.stop_loss_cents ?? STOP_LOSS_CENTS_DEFAULT,
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
     recentTrades: (recent ?? []) as ServerBotState["recentTrades"],
@@ -323,6 +315,107 @@ interface SignalInsert {
   strike?: number | null;
 }
 
+interface OpenTradeRow {
+  id: string;
+  candle_id: number;
+  pair: string;
+  dir: "YES" | "NO";
+  contracts: number | null;
+  entry_price: number | null;
+}
+
+/**
+ * Managed exits. Every tick, each filled position from the current candle is
+ * marked against the live book and closed early when it has run far enough one
+ * way — take profit, stop out, or the signal flipped against it. Anything else
+ * is left to settle at the candle's close.
+ *
+ * Closing a YES position means buying NO (and vice versa): the pair nets to $1,
+ * so the realized move is `sellValue - entry` where `sellValue` is the bid on
+ * the side we hold. Exits reuse `placeLiveOrder`, so they get the same fresh
+ * quote, depth check, slippage cap and IOC discipline as entries.
+ */
+async function manageExits(
+  db: Db,
+  settings: ServerBotRow,
+  markets: Partial<Record<PairId, KalshiMarket>>,
+  scored: { pair: PairId; dir: "YES" | "NO" }[],
+  candleId: number,
+) {
+  const keyId = process.env["KALSHI_API_KEY_ID"];
+  const pem = process.env["KALSHI_PRIVATE_KEY"];
+  if (!keyId || !pem) return 0;
+
+  const tp = (settings.take_profit_cents ?? TAKE_PROFIT_CENTS_DEFAULT) / 100;
+  const sl = (settings.stop_loss_cents ?? STOP_LOSS_CENTS_DEFAULT) / 100;
+
+  const { data } = await db
+    .from("trade_log")
+    .select("id, candle_id, pair, dir, contracts, entry_price")
+    .eq("source", "server")
+    .eq("status", "placed")
+    .eq("candle_id", candleId)
+    .is("exit_at", null)
+    .limit(20);
+
+  let closed = 0;
+  for (const pos of (data ?? []) as unknown as OpenTradeRow[]) {
+    const m = markets[pos.pair as PairId];
+    const count = Math.floor(pos.contracts ?? 0);
+    const entry = pos.entry_price ?? 0;
+    if (!m?.ticker || count < 1 || entry <= 0) continue;
+
+    // What we could sell the position for right now, in dollars per contract.
+    const sellValue = pos.dir === "YES" ? m.yesBid : 1 - m.yesAsk;
+    const move = sellValue - entry;
+    const flipped = scored.some((s) => s.pair === pos.pair && s.dir !== pos.dir);
+
+    let reason: string | null = null;
+    if (move >= tp) reason = `take profit +${(move * 100).toFixed(0)}¢`;
+    else if (move <= -sl) reason = `stop out ${(move * 100).toFixed(0)}¢`;
+    else if (flipped && move < 0) reason = `signal flipped — cut at ${(move * 100).toFixed(0)}¢`;
+    if (!reason) continue;
+
+    // Close by taking the other side of the same market.
+    const closeSide: "yes" | "no" = pos.dir === "YES" ? "no" : "yes";
+    const closeAskCents = Math.round((closeSide === "yes" ? m.yesAsk : 1 - m.yesBid) * 100);
+    const priceCents = Math.max(1, Math.min(99, closeAskCents));
+    const depth = restingDepth(m, closeSide === "yes" ? "YES" : "NO");
+    if (depth < 1) continue;
+
+    const res = await placeLiveOrder(
+      { keyId, pem },
+      {
+        ticker: m.ticker,
+        side: closeSide,
+        priceCents,
+        count: Math.min(count, depth),
+        maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+      },
+    );
+    if (!res.ok) continue;
+
+    const exitValue = 1 - res.priceCents / 100;
+    const pnl = (exitValue - entry) * res.filled;
+    await db
+      .from("trade_log")
+      .update({
+        exit_at: new Date().toISOString(),
+        exit_price: exitValue,
+        exit_reason: reason,
+        exit_order_id: res.orderId,
+        exit_contracts: res.filled,
+        outcome: pnl >= 0 ? "win" : "loss",
+        pnl,
+        settled_at: new Date().toISOString(),
+        msg: `CLOSED EARLY · ${reason} · ${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`,
+      })
+      .eq("id", pos.id);
+    closed += 1;
+  }
+  return closed;
+}
+
 
 /**
  * One tick = continuous sampling for most of a minute. Every round records the
@@ -353,19 +446,17 @@ async function runOwnedServerBotTick(db: Db) {
   setCalibration(cal.table, cal.pairTable);
   setPairEdge(cal.pairEdge);
 
-  const effMode = effectiveMode(settings);
   const cap = settings.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT;
 
   // Same daily loss cap the dashboard shows: once today's settled live P&L is
   // past it, the server stops trading for the rest of the day (it keeps
   // recording the tape below only if it never gets here).
-  if (settings.enabled && effMode === "live") {
+  if (settings.enabled) {
     const dayStart = new Date();
     dayStart.setUTCHours(0, 0, 0, 0);
     const { data: dayRows } = await db
       .from("trade_log")
       .select("pnl")
-      .eq("mode", "live")
       .gte("ts", dayStart.toISOString())
       .not("pnl", "is", null);
     const dayPnl = ((dayRows ?? []) as { pnl: number }[]).reduce((a, r) => a + r.pnl, 0);
@@ -376,9 +467,9 @@ async function runOwnedServerBotTick(db: Db) {
     }
   }
 
-  // Live mode: don't attempt anything when the wallet can't cover one bet.
+  // Real money only: don't attempt anything when the wallet can't cover one bet.
   let fundsOk = true;
-  if (settings.enabled && effMode === "live") {
+  if (settings.enabled) {
     const keyId = process.env["KALSHI_API_KEY_ID"];
     const pem = process.env["KALSHI_PRIVATE_KEY"];
     if (!keyId || !pem) {
@@ -400,6 +491,7 @@ async function runOwnedServerBotTick(db: Db) {
 
   let sampled = 0;
   let placedNow = 0;
+  let exitedNow = 0;
   let rounds = 0;
   let lastSignals = 0;
   let lastMsg = "watching · outside trade window";
@@ -541,6 +633,12 @@ async function runOwnedServerBotTick(db: Db) {
       });
     }
 
+    // ---- 4b. Manage anything already filled this candle -------------------
+    if (settings.enabled) {
+      const closedNow = await manageExits(db, settings, markets, scored, c.id);
+      if (closedNow > 0) exitedNow += closedNow;
+    }
+
     // ---- 5. Trade, only when enabled and inside the window ----------------
     const inWindow = c.elapsed >= GATE_SECS && c.elapsed < CLOSE_SECS;
     if (!settings.enabled) {
@@ -608,51 +706,45 @@ async function runOwnedServerBotTick(db: Db) {
         let entry = sig.entry;
         let orderId: string | null = null;
 
-        if (effMode === "paper") {
-          msg = `SERVER PAPER ${sig.dir} ×${count} @ ${priceCents}¢ · conf ${sig.conf.toFixed(0)}%`;
+        const keyId = process.env["KALSHI_API_KEY_ID"];
+        const pem = process.env["KALSHI_PRIVATE_KEY"];
+        if (!keyId || !pem) {
+          status = "failed";
+          msg = "Live keys not configured on the server.";
         } else {
-          const keyId = process.env["KALSHI_API_KEY_ID"];
-          const pem = process.env["KALSHI_PRIVATE_KEY"];
-          if (!keyId || !pem) {
+          // A tick may place more than one order. Re-check funds immediately
+          // before every submission so an earlier fill cannot starve a later one.
+          let freshBalance: number | null = null;
+          try {
+            freshBalance = await fetchLiveBalance({ keyId, pem });
+          } catch {
             status = "failed";
-            msg = "Live keys not configured on the server.";
-          } else {
-            // A tick may place more than one order. Re-check funds immediately
-            // before every submission so an earlier fill cannot starve a later one.
-            let freshBalance: number | null = null;
-            try {
-              freshBalance = await fetchLiveBalance({ keyId, pem });
-            } catch {
-              status = "failed";
-              msg = "Balance recheck failed — no live order was sent.";
-            }
-            const required = count * sig.entry;
-            if (freshBalance !== null && freshBalance + 0.0001 < required) {
-              status = "failed";
-              msg = `Insufficient Kalshi balance — $${freshBalance.toFixed(2)} available, $${required.toFixed(2)} required.`;
-            }
-            if (status === "failed") {
-              // The failed attempt is persisted below as the terminal result.
+            msg = "Balance recheck failed — no live order was sent.";
+          }
+          const required = count * sig.entry;
+          if (freshBalance !== null && freshBalance + 0.0001 < required) {
+            status = "failed";
+            msg = `Insufficient Kalshi balance — $${freshBalance.toFixed(2)} available, $${required.toFixed(2)} required.`;
+          }
+          if (status !== "failed") {
+            const res = await placeLiveOrder(
+              { keyId, pem },
+              {
+                ticker: m.ticker,
+                side: sig.dir === "YES" ? "yes" : "no",
+                priceCents,
+                count,
+                maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+              },
+            );
+            if (res.ok) {
+              contracts = res.filled;
+              entry = res.priceCents / 100;
+              orderId = res.orderId;
+              msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
             } else {
-              const res = await placeLiveOrder(
-                { keyId, pem },
-                {
-                  ticker: m.ticker,
-                  side: sig.dir === "YES" ? "yes" : "no",
-                  priceCents,
-                  count,
-                  maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
-                },
-              );
-              if (res.ok) {
-                contracts = res.filled;
-                entry = res.priceCents / 100;
-                orderId = res.orderId;
-                msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
-              } else {
-                status = "failed";
-                msg = res.error ?? "Order rejected";
-              }
+              status = "failed";
+              msg = res.error ?? "Order rejected";
             }
           }
         }
@@ -661,7 +753,7 @@ async function runOwnedServerBotTick(db: Db) {
           candle_id: c.id,
           pair: sig.pair,
           dir: sig.dir,
-          mode: effMode,
+          mode: "live",
           conf: sig.conf,
           calibrated: sig.calibrated,
           contracts,
@@ -681,7 +773,7 @@ async function runOwnedServerBotTick(db: Db) {
       }
       lastMsg =
         placedNow > 0
-          ? `placed ${placedNow} ${effMode} trade(s) this tick`
+          ? `placed ${placedNow} live trade(s) this tick`
           : `in window · ${signals.length} signal(s) · no fill`;
     }
 
@@ -702,8 +794,17 @@ async function runOwnedServerBotTick(db: Db) {
     await heartbeat("feeds unavailable — no spot prices this tick");
     return { ok: false, error: "no spot prices", ms: Date.now() - startedAt };
   }
-  if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks`);
-  return { ok: true, sampled, rounds, signals: lastSignals, placed: placedNow, msg: lastMsg };
+  const exitNote = exitedNow > 0 ? ` · closed ${exitedNow} early` : "";
+  if (fundsOk) await heartbeat(`${lastMsg}${exitNote} · ${rounds} looks`);
+  return {
+    ok: true,
+    sampled,
+    rounds,
+    signals: lastSignals,
+    placed: placedNow,
+    exited: exitedNow,
+    msg: lastMsg,
+  };
 }
 
 /**

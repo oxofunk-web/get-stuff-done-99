@@ -1,12 +1,9 @@
 import { mmss } from "@/lib/bot/candle";
 import { CLOSE_SECS, GATE_SECS } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
-import type { Mode } from "@/hooks/useBot";
 
 interface Props {
   candle: CandleInfo;
-  mode: Mode;
-  onModeChange: (m: Mode) => void;
   botOn: boolean;
   onToggle: () => void;
   betSize: number;
@@ -20,6 +17,10 @@ interface Props {
   live: { configured: boolean; balance: number | null; error: string | null };
   evMargin: number;
   onEvMargin: (n: number) => void;
+  takeProfitCents: number;
+  onTakeProfitCents: (n: number) => void;
+  stopLossCents: number;
+  onStopLossCents: (n: number) => void;
   dayPnl: number;
   dailyLossCap: number;
   capHit: boolean;
@@ -28,8 +29,6 @@ interface Props {
 
 export function EnginePanel({
   candle,
-  mode,
-  onModeChange,
   botOn,
   onToggle,
   betSize,
@@ -43,6 +42,10 @@ export function EnginePanel({
   live,
   evMargin,
   onEvMargin,
+  takeProfitCents,
+  onTakeProfitCents,
+  stopLossCents,
+  onStopLossCents,
   dayPnl,
   dailyLossCap,
   capHit,

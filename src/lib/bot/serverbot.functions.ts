@@ -1,18 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import {
-  getServerBotState,
-  loadSettings,
-  warmupMsLeft,
-  type ServerBotState,
-} from "./server-engine.server";
+import { getServerBotState, loadSettings, type ServerBotState } from "./server-engine.server";
 
 /**
- * Dashboard controls for the server-side bot: read its state, flip it on/off,
- * tune bet size and EV margin, and confirm live trading after the warmup.
- * The settings row is service-role only, so every read/write goes through
- * here — the browser never touches the table directly.
+ * Dashboard controls for the server-side bot: read its state, arm/disarm live
+ * trading, and tune bet size, EV margin, candle cap, loss cap and the exit
+ * thresholds. Trading is live-only — flipping the switch on arms real money
+ * immediately. The settings row is service-role only, so every read/write goes
+ * through here; the browser never touches the table directly.
  */
 
 async function admin() {
@@ -36,7 +32,8 @@ export const updateServerBot = createServerFn({ method: "POST" })
         evMargin: z.number().min(0).max(0.5).optional(),
         maxTrades: z.number().int().min(1).max(7).optional(),
         dailyLossCap: z.number().min(1).max(1000).optional(),
-        mode: z.enum(["paper", "live"]).optional(),
+        takeProfitCents: z.number().int().min(2).max(50).optional(),
+        stopLossCents: z.number().int().min(2).max(50).optional(),
       })
       .parse(d),
   )
@@ -50,12 +47,12 @@ export const updateServerBot = createServerFn({ method: "POST" })
       ev_margin?: number;
       max_trades?: number;
       daily_loss_cap?: number;
-      mode?: "paper" | "live";
+      take_profit_cents?: number;
+      stop_loss_cents?: number;
       updated_at: string;
     } = { updated_at: new Date().toISOString() };
     if (data.enabled !== undefined) {
       patch.enabled = data.enabled;
-      // First-ever enable starts the 24h paper warmup clock.
       if (data.enabled && !cur.first_enabled_at) {
         patch.first_enabled_at = new Date().toISOString();
       }
@@ -64,38 +61,8 @@ export const updateServerBot = createServerFn({ method: "POST" })
     if (data.evMargin !== undefined) patch.ev_margin = data.evMargin;
     if (data.maxTrades !== undefined) patch.max_trades = data.maxTrades;
     if (data.dailyLossCap !== undefined) patch.daily_loss_cap = data.dailyLossCap;
-    // Requesting live without a prior confirmation still runs paper server-side
-    // until confirmServerLive stamps live_confirmed_at.
-    if (data.mode !== undefined) patch.mode = data.mode;
+    if (data.takeProfitCents !== undefined) patch.take_profit_cents = data.takeProfitCents;
+    if (data.stopLossCents !== undefined) patch.stop_loss_cents = data.stopLossCents;
     await db.from("bot_settings").update(patch).eq("id", true);
     return getServerBotState(db);
   });
-
-/**
- * Second, explicit confirmation that the server may place real-money orders
- * with the app closed. Refuses until the 24h paper warmup has elapsed.
- */
-export const confirmServerLive = createServerFn({ method: "POST" }).handler(
-  async (): Promise<{ ok: boolean; state?: ServerBotState; error?: string; hoursLeft?: number }> => {
-    const db = await admin();
-    const cur = await loadSettings(db);
-    const left = warmupMsLeft(cur);
-    if (left > 0) {
-      return {
-        ok: false,
-        error: "warmup",
-        hoursLeft: Math.round((left / 3600000) * 10) / 10,
-      };
-    }
-    await db
-      .from("bot_settings")
-      .update({
-        live_confirmed_at: new Date().toISOString(),
-        mode: "live",
-        enabled: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", true);
-    return { ok: true, state: await getServerBotState(db) };
-  },
-);
