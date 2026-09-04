@@ -711,7 +711,7 @@ async function runOwnedServerBotTick(db: Db) {
         // market the signal was scored on. Scoring one candle and ordering in the
         // next is what produced the "quote moved 17¢" skips.
         const scoredTicker = markets[sig.pair]?.ticker ?? null;
-        const fresh = await fetchOneMarket(sig.pair);
+        const fresh = await fetchOneMarket(sig.pair, latestSpots[sig.pair] ?? null);
         if (fresh) {
           markets[sig.pair] = fresh;
           marketAt[sig.pair] = Date.now();
