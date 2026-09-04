@@ -517,7 +517,11 @@ async function runOwnedServerBotTick(db: Db) {
 
     // ---- 1. Sample the feeds and record the tape --------------------------
     const c = candleInfo();
-    const [spots, mkts] = await Promise.all([fetchSpots(), fetchAllMarkets()]);
+    // Spot first: the strike nearest spot is the only tradable one of the many
+    // strikes each candle lists, so the market pull needs the price.
+    const spots = await fetchSpots();
+    for (const p of PAIRS) if (spots[p.id]) latestSpots[p.id] = spots[p.id]!;
+    const mkts = await fetchAllMarkets(latestSpots);
     const snapshotRows: SnapshotInsert[] = [];
     const roundAt = Date.now();
     for (const p of PAIRS) {
