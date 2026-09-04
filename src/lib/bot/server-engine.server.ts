@@ -340,17 +340,24 @@ async function runOwnedServerBotTick(db: Db) {
   const deadline = startedAt + TICK_BUDGET_MS;
 
   const markets: Partial<Record<PairId, KalshiMarket>> = {};
+  /** When each cached quote was observed — stale books must never score. */
+  const marketAt: Partial<Record<PairId, number>> = {};
   const latestSpots: Partial<Record<PairId, number>> = {};
+  /** A quote older than this is dropped rather than scored. */
+  const MAX_QUOTE_AGE_MS = 20_000;
 
   // Each scheduled run starts with an empty process, so seed the last known book
-  // from the recorded tape. Without this the first rounds of every run scored
-  // "no market" and nothing could ever fire; orders always re-price off a fresh
-  // pull anyway, so a seeded quote is only ever used for scoring.
+  // from the recorded tape — but ONLY from this candle and only from the last few
+  // seconds. Seeding from a previous candle's market was scoring one candle's
+  // book while ordering in the next, which showed up as bogus signals and
+  // "quote moved" skips.
   {
-    const since = new Date(Date.now() - 180_000).toISOString();
+    const seedCandle = candleInfo().id;
+    const since = new Date(Date.now() - MAX_QUOTE_AGE_MS).toISOString();
     const { data: warm } = await db
       .from("market_snapshots")
       .select("pair, ticker, strike, yes_bid, yes_ask, yes_mid, spread, vol, ts")
+      .eq("candle_id", seedCandle)
       .gte("ts", since)
       .not("ticker", "is", null)
       .order("ts", { ascending: true })
@@ -364,6 +371,7 @@ async function runOwnedServerBotTick(db: Db) {
       yes_mid: number | null;
       spread: number | null;
       vol: number | null;
+      ts: string;
     }[]) {
       if (!r.ticker || r.yes_bid == null || r.yes_ask == null) continue;
       markets[r.pair as PairId] = {
@@ -376,8 +384,10 @@ async function runOwnedServerBotTick(db: Db) {
         spread: r.spread ?? r.yes_ask - r.yes_bid,
         vol: r.vol ?? 0,
       } as KalshiMarket;
+      marketAt[r.pair as PairId] = new Date(r.ts).getTime();
     }
   }
+
 
 
   const heartbeat = async (msg: string) => {
