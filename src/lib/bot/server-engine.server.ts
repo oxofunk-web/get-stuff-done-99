@@ -247,13 +247,15 @@ async function fetchSpots(): Promise<Partial<Record<PairId, number>>> {
   return out;
 }
 
-async function fetchAllMarkets(): Promise<Partial<Record<PairId, KalshiMarket>>> {
+async function fetchAllMarkets(
+  spots: Partial<Record<PairId, number>> = {},
+): Promise<Partial<Record<PairId, KalshiMarket>>> {
   const results = await Promise.all(
     PAIRS.map(async (p) => {
       // One flaky pair must never blank the whole round: a thrown request used
       // to reject the batch, which showed up as "no open market" for all pairs.
       try {
-        const raw = await fetchOpenMarket(p.series);
+        const raw = await fetchOpenMarket(p.series, spots[p.id] ?? null);
         if (!raw) return null;
         return { pair: p.id, ...normalizeMarket(raw) } as KalshiMarket;
       } catch {
