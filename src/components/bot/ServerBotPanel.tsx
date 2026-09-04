@@ -38,16 +38,11 @@ export function ServerBotPanel() {
   }, []);
 
   const enabled = state?.enabled ?? false;
-  const live = state?.effectiveMode === "live";
   const status = !state
     ? { text: "…", cls: "border-wire bg-surface-2 text-dim" }
-    : !enabled
-      ? { text: "OFF", cls: "border-wire bg-surface-2 text-dim" }
-      : live
-        ? { text: "LIVE", cls: "border-no/50 bg-no/10 text-no" }
-        : state.liveConfirmed || state.requestedMode === "live"
-          ? { text: "PAPER · WARMUP", cls: "border-gold/50 bg-gold/10 text-gold" }
-          : { text: "PAPER", cls: "border-yes/40 bg-yes/10 text-yes" };
+    : enabled
+      ? { text: "LIVE", cls: "border-no/50 bg-no/10 text-no" }
+      : { text: "OFF", cls: "border-wire bg-surface-2 text-dim" };
 
   return (
     <section className="panel">
