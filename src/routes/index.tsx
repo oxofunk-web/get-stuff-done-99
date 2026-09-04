@@ -4,7 +4,7 @@ import { Dashboard } from "@/components/bot/Dashboard";
 
 const title = "Kalshi Auto 15M Bot — BRTI Lag Engine";
 const description =
-  "Automated 15-minute Kalshi crypto trading console: real-time BRTI spot feed, live YES/NO orderbooks, 80%+ confidence signals, paper and live order execution.";
+  "Automated 15-minute Kalshi crypto trading console: real-time BRTI spot feed, live YES/NO orderbooks, 80%+ confidence signals, live-only order execution with managed exits.";
 
 export const Route = createFileRoute("/")({
   head: () => ({

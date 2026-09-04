@@ -74,7 +74,6 @@ export interface TradeLogEntry {
 }
 
 export interface OrderResult {
-  paper: boolean;
   orderId?: string;
   status?: string;
   contracts?: number;
