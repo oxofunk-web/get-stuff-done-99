@@ -84,7 +84,7 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
 
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] tracking-widest text-muted-foreground">
                     <span>
-                      PRICE <b className="text-foreground">{(s.yesMid * 100).toFixed(0)}¢</b>
+                      LEG COST <b className="text-foreground">{(s.entry * 100).toFixed(0)}¢</b>
                     </span>
                     <span>
                       SPREAD <b className="text-foreground">{(s.spread * 100).toFixed(1)}¢</b>

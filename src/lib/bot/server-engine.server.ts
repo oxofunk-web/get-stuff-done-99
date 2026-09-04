@@ -12,8 +12,7 @@
  * Kalshi order or a recorded reason why it did not. The single ON/OFF switch in
  * `bot_settings.enabled` arms real money immediately. All durable state lives in
  * Supabase — workers are stateless, so nothing important is kept in module
- * memory. Filled positions are managed every tick: take profit, stop out, or
- * let them settle.
+ * memory. Filled positions are held until the candle settles.
  */
 import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
@@ -519,6 +518,7 @@ async function runOwnedServerBotTick(db: Db) {
   let candleId = -1;
   let remaining = 0;
   const tradedPairs = new Set<string>();
+  const attemptsByPair = new Map<string, number>();
 
   while (Date.now() < deadline) {
     rounds += 1;
@@ -575,11 +575,15 @@ async function runOwnedServerBotTick(db: Db) {
       candleId = c.id;
       const { data: existing } = await db
         .from("trade_log")
-        .select("pair")
+        .select("pair, status")
         .eq("candle_id", c.id)
-        .eq("status", "placed");
+        .eq("source", "server");
       tradedPairs.clear();
-      for (const r of (existing ?? []) as { pair: string }[]) tradedPairs.add(r.pair);
+      attemptsByPair.clear();
+      for (const r of (existing ?? []) as { pair: string; status: string }[]) {
+        attemptsByPair.set(r.pair, (attemptsByPair.get(r.pair) ?? 0) + 1);
+        if (r.status === "placed") tradedPairs.add(r.pair);
+      }
       remaining = Math.max(0, settings.max_trades - tradedPairs.size);
       // Tape retention: one sweep per candle, keep a week of snapshots.
       if (c.elapsed < 60) {
@@ -699,6 +703,15 @@ async function runOwnedServerBotTick(db: Db) {
           });
           continue;
         }
+        const priorAttempts = attemptsByPair.get(sig.pair) ?? 0;
+        if (priorAttempts >= MAX_ORDER_ATTEMPTS) {
+          logRows.push({
+            candle_id: c.id, seconds_in: slot, pair: sig.pair, verdict: "skipped",
+            reason: `order retry limit reached — ${MAX_ORDER_ATTEMPTS} attempts this candle`, source: "server",
+            dir: sig.dir, conf: sig.conf, entry_price: sig.entry, ev: sig.ev,
+          });
+          continue;
+        }
         const skip = (reason: string) => {
           logRows.push({
             candle_id: c.id,
@@ -738,9 +751,17 @@ async function runOwnedServerBotTick(db: Db) {
           skip("no live quote at the touch");
           continue;
         }
-        const drift = Math.round((freshEntry - sig.entry) * 100);
-        if (drift > MAX_SLIPPAGE_CENTS) {
-          skip(`price ran away — ${drift}¢ worse than the signal`);
+        // Keep chasing bounded by BOTH economics and an absolute safety cap.
+        // EV = probability / price - 1, so the highest price that still clears
+        // the saved EV margin is probability / (1 + margin).
+        const valueCeiling = sig.calibrated / (1 + settings.ev_margin);
+        const chaseCeiling = sig.entry + MAX_CHASE_CENTS / 100;
+        const maxEntry = Math.min(0.99, valueCeiling, chaseCeiling);
+        const maxPriceCents = Math.max(1, Math.min(99, Math.floor(maxEntry * 100)));
+        if (freshEntry * 100 > maxPriceCents + 0.0001) {
+          skip(
+            `price ran past value — ${Math.round(freshEntry * 100)}¢ live, ${maxPriceCents}¢ max`,
+          );
           continue;
         }
         const priceCents = Math.max(1, Math.min(99, Math.round(freshEntry * 100)));
@@ -788,9 +809,10 @@ async function runOwnedServerBotTick(db: Db) {
                 side: sig.dir === "YES" ? "yes" : "no",
                 priceCents,
                 count,
-                maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+                maxPriceCents,
               },
             );
+            attemptsByPair.set(sig.pair, priorAttempts + 1);
             if (res.ok) {
               contracts = res.filled;
               entry = res.priceCents / 100;

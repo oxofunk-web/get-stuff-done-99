@@ -196,6 +196,12 @@ export interface AccuracyStats {
   total: number;
   wins: number;
   winRate: number;
+  /** Direction-only score from unique monitor signals, not executed trades. */
+  monitorTotal: number;
+  monitorWins: number;
+  monitorWinRate: number;
+  /** Hypothetical return per $1 risked at each unique monitor signal's price. */
+  monitorNetPerDollar: number;
   /** Settled rejected signals graded as counterfactuals — calibration fuel. */
   counterfactual: number;
   table: CalibrationTable;
@@ -220,6 +226,10 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     total: 0,
     wins: 0,
     winRate: 0,
+    monitorTotal: 0,
+    monitorWins: 0,
+    monitorWinRate: 0,
+    monitorNetPerDollar: 0,
     counterfactual: 0,
     table: emptyTable(),
     pairTable: {},
@@ -232,7 +242,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const db = await admin();
     const { data, error } = await db
       .from("signal_log")
-      .select("ts, pair, dir, conf, seconds_in, outcome, verdict, entry_price")
+      .select("ts, candle_id, pair, dir, conf, seconds_in, outcome, verdict, entry_price, source")
       .not("outcome", "is", null)
       .order("ts", { ascending: false })
       .limit(20000);
@@ -240,6 +250,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
 
     const all = (data ?? []) as {
       ts: string;
+      candle_id: number;
       pair: string;
       dir: string;
       conf: number | null;
@@ -247,7 +258,17 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       outcome: string;
       verdict: string;
       entry_price: number | null;
+      source: "client" | "server";
     }[];
+
+    // Re-scoring every few seconds must not turn one opportunity into eight
+    // wins. Keep the newest decision for each candle/pair/direction/source.
+    const unique = new Map<string, (typeof all)[number]>();
+    for (const r of all) {
+      const key = `${r.candle_id}:${r.pair}:${r.dir}:${r.source}:${r.verdict}`;
+      if (!unique.has(key)) unique.set(key, r);
+    }
+    const decisions = [...unique.values()];
 
     // Realized dollars per pair, from the orders that actually filled.
     const { data: tradeRows } = await db
@@ -266,9 +287,10 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       money.set(t.pair, m);
     }
 
-    // Calibration spans every settled decision; the headline win rate is the
-    // trades that were actually taken.
-    const rows = all.filter((r) => r.verdict === "fired");
+    // Calibration spans unique decisions. Headline accuracy comes from actual
+    // settled server fills below, never from browser-only monitor signals.
+    const rows = decisions.filter((r) => r.verdict === "fired" && r.source === "server");
+    const monitorRows = decisions.filter((r) => r.verdict === "fired" && r.source === "client");
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
@@ -279,7 +301,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     >();
     let wins = 0;
 
-    for (const r of all) {
+    for (const r of decisions) {
       const won = r.outcome === "win";
       const conf = r.conf ?? 0;
       const band = table.find((b) => conf >= b.lo && conf < b.hi);
@@ -338,13 +360,26 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       }))
       .sort((a, b) => b.n - a.n);
 
+    const monitorWins = monitorRows.filter((r) => r.outcome === "win").length;
+    const monitorReturns = monitorRows
+      .filter((r) => r.entry_price != null && r.entry_price > 0)
+      .map((r) =>
+        r.outcome === "win" ? (1 - (r.entry_price ?? 1)) / (r.entry_price ?? 1) : -1,
+      );
+
 
     return {
       ok: true,
       total: rows.length,
       wins,
       winRate: rows.length ? (wins / rows.length) * 100 : 0,
-      counterfactual: all.length - rows.length,
+      monitorTotal: monitorRows.length,
+      monitorWins,
+      monitorWinRate: monitorRows.length ? (monitorWins / monitorRows.length) * 100 : 0,
+      monitorNetPerDollar: monitorReturns.length
+        ? monitorReturns.reduce((sum, value) => sum + value, 0) / monitorReturns.length
+        : 0,
+      counterfactual: decisions.filter((r) => r.verdict !== "fired").length,
       table,
       pairTable,
       pairEdge,
