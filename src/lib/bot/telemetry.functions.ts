@@ -273,10 +273,21 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     // Realized dollars per pair, from the orders that actually filled.
     const { data: tradeRows } = await db
       .from("trade_log")
-      .select("pair, pnl, outcome, entry_price")
+      .select("ts, candle_id, pair, dir, conf, pnl, outcome, entry_price, status")
       .limit(20000);
     const money = new Map<string, { pnl: number; trades: number }>();
-    for (const t of (tradeRows ?? []) as { pair: string; pnl: number | null }[]) {
+    const settledTrades = ((tradeRows ?? []) as {
+      ts: string;
+      candle_id: number;
+      pair: string;
+      dir: string;
+      conf: number | null;
+      pnl: number | null;
+      outcome: string | null;
+      entry_price: number | null;
+      status: string;
+    }[]).filter((t) => t.status === "placed" && t.outcome != null && t.pnl != null);
+    for (const t of settledTrades) {
       // Only settled orders count: failed attempts and unsettled fills carry no
       // realized P&L, and counting them would judge a pair on orders that never
       // had a chance to win or lose.
@@ -289,7 +300,6 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
 
     // Calibration spans unique decisions. Headline accuracy comes from actual
     // settled server fills below, never from browser-only monitor signals.
-    const rows = decisions.filter((r) => r.verdict === "fired" && r.source === "server");
     const monitorRows = decisions.filter((r) => r.verdict === "fired" && r.source === "client");
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
@@ -299,7 +309,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       string,
       { n: number; wins: number; fired: number; firedWins: number; entrySum: number; entryN: number }
     >();
-    let wins = 0;
+    const wins = settledTrades.filter((t) => t.outcome === "win").length;
 
     for (const r of decisions) {
       const won = r.outcome === "win";
@@ -332,19 +342,14 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       }
       edge.set(r.pair, e);
 
-      if (r.verdict !== "fired") continue;
-      if (won) wins += 1;
+    }
 
-      const p = pairMap.get(r.pair) ?? { n: 0, wins: 0 };
+    for (const t of settledTrades) {
+      const won = t.outcome === "win";
+      const p = pairMap.get(t.pair) ?? { n: 0, wins: 0 };
       p.n += 1;
       if (won) p.wins += 1;
-      pairMap.set(r.pair, p);
-
-      const minute = Math.floor((r.seconds_in ?? 0) / 60);
-      const m = minMap.get(minute) ?? { n: 0, wins: 0 };
-      m.n += 1;
-      if (won) m.wins += 1;
-      minMap.set(minute, m);
+      pairMap.set(t.pair, p);
     }
 
     const pairEdge: PairEdgeRow[] = [...edge.entries()]
@@ -370,9 +375,9 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
 
     return {
       ok: true,
-      total: rows.length,
+      total: settledTrades.length,
       wins,
-      winRate: rows.length ? (wins / rows.length) * 100 : 0,
+      winRate: settledTrades.length ? (wins / settledTrades.length) * 100 : 0,
       monitorTotal: monitorRows.length,
       monitorWins,
       monitorWinRate: monitorRows.length ? (monitorWins / monitorRows.length) * 100 : 0,
@@ -387,12 +392,12 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       byMinute: [...minMap.entries()]
         .map(([minute, v]) => ({ minute, ...v }))
         .sort((a, b) => a.minute - b.minute),
-      recent: rows.slice(0, 12).map((r) => ({
-        ts: r.ts,
-        pair: r.pair,
-        dir: r.dir,
-        conf: r.conf ?? 0,
-        outcome: r.outcome,
+      recent: settledTrades.slice(0, 12).map((t) => ({
+        ts: t.ts,
+        pair: t.pair,
+        dir: t.dir,
+        conf: t.conf ?? 0,
+        outcome: t.outcome ?? "",
       })),
     };
 
