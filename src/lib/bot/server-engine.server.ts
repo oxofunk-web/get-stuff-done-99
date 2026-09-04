@@ -645,15 +645,25 @@ async function runOwnedServerBotTick(db: Db) {
             ev: sig.ev,
           });
         };
-        // Always re-price off a freshly pulled book: the scoring market may be a
-        // cached/seeded quote, and we never send an order on a stale price.
-        const fresh = (await fetchOneMarket(sig.pair)) ?? markets[sig.pair];
-        if (fresh) markets[sig.pair] = fresh;
+        // Always re-price off a freshly pulled book, and make sure it is the SAME
+        // market the signal was scored on. Scoring one candle and ordering in the
+        // next is what produced the "quote moved 17¢" skips.
+        const scoredTicker = markets[sig.pair]?.ticker ?? null;
+        const fresh = await fetchOneMarket(sig.pair);
+        if (fresh) {
+          markets[sig.pair] = fresh;
+          marketAt[sig.pair] = Date.now();
+        }
         const m = fresh;
         if (!m?.ticker) {
           skip("no open market ticker this round");
           continue;
         }
+        if (scoredTicker && scoredTicker !== m.ticker) {
+          skip("candle rolled over — re-scoring on the new market instead of chasing");
+          continue;
+        }
+
 
         const freshEntry = sig.dir === "YES" ? m.yesAsk : 1 - m.yesBid;
         if (!Number.isFinite(freshEntry) || freshEntry <= 0 || freshEntry >= 1) {
