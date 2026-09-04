@@ -41,7 +41,9 @@ import type { KalshiMarket, SpotState, SpotTick } from "./types";
  */
 const SAMPLE_GAP_MS = 2500;
 /** Time budget per tick — under a minute so consecutive cron ticks never overlap. */
-const TICK_BUDGET_MS = 52_000;
+const TICK_BUDGET_MS = 22_000;
+/** Lease is longer than the work budget, but shorter than the next cron wake-up. */
+const RUN_LEASE_SECONDS = 50;
 /** Server bot must paper-trade this long before live can be armed. */
 export const WARMUP_MS = 24 * 3600 * 1000;
 const TAPE_RETENTION_MS = 7 * 24 * 3600 * 1000;
@@ -59,6 +61,8 @@ export interface ServerBotRow {
   last_tick_at: string | null;
   last_tick_msg: string | null;
   daily_loss_cap: number;
+  run_lease_id?: string | null;
+  run_lease_until?: string | null;
 }
 
 type Db = Awaited<ReturnType<typeof admin>>;
@@ -327,9 +331,8 @@ interface SignalInsert {
  * order is written to `signal_log` as a `skipped` row, so "good signals but no
  * trades" is never invisible again.
  */
-export async function runServerBotTick() {
+async function runOwnedServerBotTick(db: Db) {
   const startedAt = Date.now();
-  const db = await admin();
   const settings = await loadSettings(db);
   const deadline = startedAt + TICK_BUDGET_MS;
 
@@ -552,8 +555,22 @@ export async function runServerBotTick() {
       lastMsg = `max ${settings.max_trades} trades already placed this candle`;
     } else {
       for (const sig of signals) {
-        if (remaining <= 0) break;
-        if (tradedPairs.has(sig.pair)) continue;
+        if (remaining <= 0) {
+          logRows.push({
+            candle_id: c.id, seconds_in: slot, pair: sig.pair, verdict: "skipped",
+            reason: `candle cap reached — ${settings.max_trades} placed`, source: "server",
+            dir: sig.dir, conf: sig.conf, entry_price: sig.entry, ev: sig.ev,
+          });
+          continue;
+        }
+        if (tradedPairs.has(sig.pair)) {
+          logRows.push({
+            candle_id: c.id, seconds_in: slot, pair: sig.pair, verdict: "skipped",
+            reason: "duplicate blocked — pair already traded this candle", source: "server",
+            dir: sig.dir, conf: sig.conf, entry_price: sig.entry, ev: sig.ev,
+          });
+          continue;
+        }
         const m = markets[sig.pair];
         const skip = (reason: string) => {
           logRows.push({
@@ -600,24 +617,42 @@ export async function runServerBotTick() {
             status = "failed";
             msg = "Live keys not configured on the server.";
           } else {
-            const res = await placeLiveOrder(
-              { keyId, pem },
-              {
-                ticker: m.ticker,
-                side: sig.dir === "YES" ? "yes" : "no",
-                priceCents,
-                count,
-                maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
-              },
-            );
-            if (res.ok) {
-              contracts = res.filled;
-              entry = res.priceCents / 100;
-              orderId = res.orderId;
-              msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
-            } else {
+            // A tick may place more than one order. Re-check funds immediately
+            // before every submission so an earlier fill cannot starve a later one.
+            let freshBalance: number | null = null;
+            try {
+              freshBalance = await fetchLiveBalance({ keyId, pem });
+            } catch {
               status = "failed";
-              msg = res.error ?? "Order rejected";
+              msg = "Balance recheck failed — no live order was sent.";
+            }
+            const required = count * sig.entry;
+            if (freshBalance !== null && freshBalance + 0.0001 < required) {
+              status = "failed";
+              msg = `Insufficient Kalshi balance — $${freshBalance.toFixed(2)} available, $${required.toFixed(2)} required.`;
+            }
+            if (status === "failed") {
+              // The failed attempt is persisted below as the terminal result.
+            } else {
+              const res = await placeLiveOrder(
+                { keyId, pem },
+                {
+                  ticker: m.ticker,
+                  side: sig.dir === "YES" ? "yes" : "no",
+                  priceCents,
+                  count,
+                  maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+                },
+              );
+              if (res.ok) {
+                contracts = res.filled;
+                entry = res.priceCents / 100;
+                orderId = res.orderId;
+                msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
+              } else {
+                status = "failed";
+                msg = res.error ?? "Order rejected";
+              }
             }
           }
         }
@@ -669,5 +704,32 @@ export async function runServerBotTick() {
   }
   if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks`);
   return { ok: true, sampled, rounds, signals: lastSignals, placed: placedNow, msg: lastMsg };
+}
+
+/**
+ * Public scheduled entrypoint. The database update is atomic, so concurrent
+ * HTTP/cron invocations cannot both trade the same candle.
+ */
+export async function runServerBotTick() {
+  const db = await admin();
+  const leaseId = crypto.randomUUID();
+  const { data: acquired, error } = await db.rpc("acquire_bot_run_lease", {
+    p_lease_id: leaseId,
+    p_lease_seconds: RUN_LEASE_SECONDS,
+  });
+  if (error) throw error;
+  if (!acquired) {
+    return { ok: true, sampled: 0, rounds: 0, signals: 0, placed: 0, msg: "runner busy — overlapping tick skipped" };
+  }
+
+  try {
+    return await runOwnedServerBotTick(db);
+  } finally {
+    await db
+      .from("bot_settings")
+      .update({ run_lease_id: null, run_lease_until: null })
+      .eq("id", true)
+      .eq("run_lease_id", leaseId);
+  }
 }
 
