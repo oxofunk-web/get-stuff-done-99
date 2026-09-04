@@ -43,6 +43,7 @@ const signalRow = z.object({
   sigma_dist: z.number().nullable().default(null),
   spot: z.number().nullable().default(null),
   strike: z.number().nullable().default(null),
+  source: z.enum(["client", "server"]).default("client"),
 });
 
 const tradeRow = z.object({
