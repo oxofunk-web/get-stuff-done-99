@@ -205,6 +205,50 @@ export function EnginePanel({
           </p>
         </div>
 
+        <div className="mt-2 rounded-md border border-wire bg-surface-2 px-3 py-2">
+          <div className="mb-1.5 text-[7px] tracking-[0.2em] text-dim">
+            EXIT MANAGEMENT · WHILE A TRADE IS OPEN
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] tracking-[0.2em] text-yes">TAKE PROFIT</span>
+            <span className="font-sans text-[12px] font-extrabold text-yes tabular-nums">
+              +{takeProfitCents}¢
+            </span>
+          </div>
+          <input
+            type="range"
+            min={2}
+            max={40}
+            step={1}
+            value={takeProfitCents}
+            aria-label="Take profit in cents"
+            onChange={(e) => onTakeProfitCents(Number(e.target.value))}
+            className="mt-1 w-full accent-[var(--yes)]"
+          />
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="text-[8px] tracking-[0.2em] text-no">STOP OUT</span>
+            <span className="font-sans text-[12px] font-extrabold text-no tabular-nums">
+              −{stopLossCents}¢
+            </span>
+          </div>
+          <input
+            type="range"
+            min={2}
+            max={40}
+            step={1}
+            value={stopLossCents}
+            aria-label="Stop out in cents"
+            onChange={(e) => onStopLossCents(Number(e.target.value))}
+            className="mt-1 w-full accent-[var(--no)]"
+          />
+          <p className="mt-1 text-[8px] leading-relaxed text-dim">
+            The server watches every fill each tick and closes early when the price moves this far
+            for or against you — or when the signal flips. Otherwise the contract settles.
+          </p>
+        </div>
+
+
+
         <div
           className={`mt-2 rounded-md border px-3 py-2 ${
             capHit ? "border-no/50 bg-no/10" : "border-wire bg-surface-2"
