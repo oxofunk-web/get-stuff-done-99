@@ -132,8 +132,11 @@ export interface ServerBotState {
     outcome: string | null;
     pnl: number | null;
   }[];
+  /** Newest reason per pair a server-seen signal did NOT become an order. */
+  skips: { pair: string; reason: string; ts: string }[];
   error?: string;
 }
+
 
 export async function getServerBotState(db: Db): Promise<ServerBotState> {
   const s = await loadSettings(db);
