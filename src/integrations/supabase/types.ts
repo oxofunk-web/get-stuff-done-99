@@ -280,7 +280,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      acquire_bot_run_lease: {
+        Args: { p_lease_id: string; p_lease_seconds?: number }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
