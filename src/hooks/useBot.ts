@@ -179,8 +179,6 @@ export function useBot() {
   const maxTrades = server?.maxTrades ?? MAX_TRADES_PER_CANDLE;
   const dailyLossCap = server?.dailyLossCap ?? DAILY_LOSS_CAP_DEFAULT;
   const evMargin = server?.evMargin ?? 0.08;
-  const takeProfitCents = server?.takeProfitCents ?? 12;
-  const stopLossCents = server?.stopLossCents ?? 10;
 
   // One switch, live money. Turning it on arms real orders immediately.
   const toggleBot = useCallback(() => {
@@ -212,14 +210,6 @@ export function useBot() {
   );
   const setEvMargin = useCallback(
     (n: number) => void applyServer(() => updateServerBot({ data: { evMargin: n } })),
-    [applyServer],
-  );
-  const setTakeProfitCents = useCallback(
-    (n: number) => void applyServer(() => updateServerBot({ data: { takeProfitCents: n } })),
-    [applyServer],
-  );
-  const setStopLossCents = useCallback(
-    (n: number) => void applyServer(() => updateServerBot({ data: { stopLossCents: n } })),
     [applyServer],
   );
 
@@ -478,7 +468,6 @@ export function useBot() {
         conf: 0,
         status: t.status === "placed" ? "placed" : "failed",
         msg: t.msg ?? "",
-        exitReason: t.exit_reason,
         pnl: t.pnl,
       })),
     [serverTrades],
@@ -522,10 +511,6 @@ export function useBot() {
     history: historyRef.current,
     signals,
     candle,
-    takeProfitCents,
-    setTakeProfitCents,
-    stopLossCents,
-    setStopLossCents,
     botOn,
     toggleBot,
     betSize,

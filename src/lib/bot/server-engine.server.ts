@@ -47,8 +47,6 @@ const TICK_BUDGET_MS = 22_000;
 /** Lease is longer than the work budget, but shorter than the next cron wake-up. */
 const RUN_LEASE_SECONDS = 50;
 /** Fallback exit thresholds, in cents, when settings are unreadable. */
-export const TAKE_PROFIT_CENTS_DEFAULT = 12;
-export const STOP_LOSS_CENTS_DEFAULT = 10;
 const TAPE_RETENTION_MS = 7 * 24 * 3600 * 1000;
 
 
@@ -65,8 +63,6 @@ export interface ServerBotRow {
   last_tick_at: string | null;
   last_tick_msg: string | null;
   daily_loss_cap: number;
-  take_profit_cents: number;
-  stop_loss_cents: number;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
 }
@@ -95,8 +91,6 @@ export async function loadSettings(db: Db): Promise<ServerBotRow> {
     last_tick_at: null,
     last_tick_msg: null,
     daily_loss_cap: DAILY_LOSS_CAP_DEFAULT,
-    take_profit_cents: TAKE_PROFIT_CENTS_DEFAULT,
-    stop_loss_cents: STOP_LOSS_CENTS_DEFAULT,
   };
   const { data: inserted } = await db
     .from("bot_settings")
@@ -114,8 +108,6 @@ export interface ServerBotState {
   evMargin: number;
   maxTrades: number;
   dailyLossCap: number;
-  takeProfitCents: number;
-  stopLossCents: number;
   lastTickAt: string | null;
   lastTickMsg: string | null;
   recentTrades: {
@@ -127,8 +119,6 @@ export interface ServerBotState {
     msg: string | null;
     outcome: string | null;
     pnl: number | null;
-    exit_reason: string | null;
-    exit_price: number | null;
   }[];
   /** Newest reason per pair a server-seen signal did NOT become an order. */
   skips: { pair: string; reason: string; ts: string }[];
@@ -140,7 +130,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
   const s = await loadSettings(db);
   const { data: recent } = await db
     .from("trade_log")
-    .select("ts, candle_id, pair, dir, status, msg, outcome, pnl, exit_reason, exit_price")
+    .select("ts, candle_id, pair, dir, status, msg, outcome, pnl")
     .eq("source", "server")
     .order("ts", { ascending: false })
     .limit(8);
@@ -166,8 +156,6 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     evMargin: s.ev_margin,
     maxTrades: s.max_trades,
     dailyLossCap: s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT,
-    takeProfitCents: s.take_profit_cents ?? TAKE_PROFIT_CENTS_DEFAULT,
-    stopLossCents: s.stop_loss_cents ?? STOP_LOSS_CENTS_DEFAULT,
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
     recentTrades: (recent ?? []) as ServerBotState["recentTrades"],
@@ -216,15 +204,35 @@ async function fetchSpots(): Promise<Partial<Record<PairId, number>>> {
 async function fetchAllMarkets(): Promise<Partial<Record<PairId, KalshiMarket>>> {
   const results = await Promise.all(
     PAIRS.map(async (p) => {
-      const raw = await fetchOpenMarket(p.series);
-      if (!raw) return null;
-      return { pair: p.id, ...normalizeMarket(raw) } as KalshiMarket;
+      // One flaky pair must never blank the whole round: a thrown request used
+      // to reject the batch, which showed up as "no open market" for all pairs.
+      try {
+        const raw = await fetchOpenMarket(p.series);
+        if (!raw) return null;
+        return { pair: p.id, ...normalizeMarket(raw) } as KalshiMarket;
+      } catch {
+        return null;
+      }
     }),
   );
   const out: Partial<Record<PairId, KalshiMarket>> = {};
   for (const m of results) if (m) out[m.pair] = m;
   return out;
 }
+
+/** Fresh single-pair quote, used to re-price right before an order goes out. */
+async function fetchOneMarket(pair: PairId): Promise<KalshiMarket | null> {
+  const p = PAIRS.find((x) => x.id === pair);
+  if (!p) return null;
+  try {
+    const raw = await fetchOpenMarket(p.series);
+    if (!raw) return null;
+    return { pair: p.id, ...normalizeMarket(raw) } as KalshiMarket;
+  } catch {
+    return null;
+  }
+}
+
 
 /**
  * Calibration from settled signal outcomes — same bands as the client, plus the
@@ -315,106 +323,8 @@ interface SignalInsert {
   strike?: number | null;
 }
 
-interface OpenTradeRow {
-  id: string;
-  candle_id: number;
-  pair: string;
-  dir: "YES" | "NO";
-  contracts: number | null;
-  entry_price: number | null;
-}
 
-/**
- * Managed exits. Every tick, each filled position from the current candle is
- * marked against the live book and closed early when it has run far enough one
- * way — take profit, stop out, or the signal flipped against it. Anything else
- * is left to settle at the candle's close.
- *
- * Closing a YES position means buying NO (and vice versa): the pair nets to $1,
- * so the realized move is `sellValue - entry` where `sellValue` is the bid on
- * the side we hold. Exits reuse `placeLiveOrder`, so they get the same fresh
- * quote, depth check, slippage cap and IOC discipline as entries.
- */
-async function manageExits(
-  db: Db,
-  settings: ServerBotRow,
-  markets: Partial<Record<PairId, KalshiMarket>>,
-  scored: { pair: PairId; dir: "YES" | "NO" }[],
-  candleId: number,
-) {
-  const keyId = process.env["KALSHI_API_KEY_ID"];
-  const pem = process.env["KALSHI_PRIVATE_KEY"];
-  if (!keyId || !pem) return 0;
 
-  const tp = (settings.take_profit_cents ?? TAKE_PROFIT_CENTS_DEFAULT) / 100;
-  const sl = (settings.stop_loss_cents ?? STOP_LOSS_CENTS_DEFAULT) / 100;
-
-  const { data } = await db
-    .from("trade_log")
-    .select("id, candle_id, pair, dir, contracts, entry_price")
-    .eq("source", "server")
-    .eq("status", "placed")
-    .eq("candle_id", candleId)
-    .is("exit_at", null)
-    .limit(20);
-
-  let closed = 0;
-  for (const pos of (data ?? []) as unknown as OpenTradeRow[]) {
-    const m = markets[pos.pair as PairId];
-    const count = Math.floor(pos.contracts ?? 0);
-    const entry = pos.entry_price ?? 0;
-    if (!m?.ticker || count < 1 || entry <= 0) continue;
-
-    // What we could sell the position for right now, in dollars per contract.
-    const sellValue = pos.dir === "YES" ? m.yesBid : 1 - m.yesAsk;
-    const move = sellValue - entry;
-    const flipped = scored.some((s) => s.pair === pos.pair && s.dir !== pos.dir);
-
-    let reason: string | null = null;
-    if (move >= tp) reason = `take profit +${(move * 100).toFixed(0)}¢`;
-    else if (move <= -sl) reason = `stop out ${(move * 100).toFixed(0)}¢`;
-    else if (flipped && move < 0) reason = `signal flipped — cut at ${(move * 100).toFixed(0)}¢`;
-    if (!reason) continue;
-
-    // Close by taking the other side of the same market.
-    const closeSide: "yes" | "no" = pos.dir === "YES" ? "no" : "yes";
-    const closeAskCents = Math.round((closeSide === "yes" ? m.yesAsk : 1 - m.yesBid) * 100);
-    const priceCents = Math.max(1, Math.min(99, closeAskCents));
-    const depth = restingDepth(m, closeSide === "yes" ? "YES" : "NO");
-    if (depth < 1) continue;
-
-    const res = await placeLiveOrder(
-      { keyId, pem },
-      {
-        ticker: m.ticker,
-        side: closeSide,
-        priceCents,
-        count: Math.min(count, depth),
-        maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
-      },
-    );
-    if (!res.ok) continue;
-
-    const exitValue = 1 - res.priceCents / 100;
-    const pnl = (exitValue - entry) * res.filled;
-    await db
-      .from("trade_log")
-      .update({
-        exit_at: new Date().toISOString(),
-        exit_price: exitValue,
-        exit_reason: reason,
-        exit_order_id: res.orderId,
-        exit_contracts: res.filled,
-        outcome: pnl >= 0 ? "win" : "loss",
-        pnl,
-        settled_at: new Date().toISOString(),
-        msg: `CLOSED EARLY · ${reason} · ${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`,
-      })
-      .eq("id", pos.id);
-    closed += 1;
-  }
-  return closed;
-}
 
 
 /**
@@ -431,6 +341,44 @@ async function runOwnedServerBotTick(db: Db) {
 
   const markets: Partial<Record<PairId, KalshiMarket>> = {};
   const latestSpots: Partial<Record<PairId, number>> = {};
+
+  // Each scheduled run starts with an empty process, so seed the last known book
+  // from the recorded tape. Without this the first rounds of every run scored
+  // "no market" and nothing could ever fire; orders always re-price off a fresh
+  // pull anyway, so a seeded quote is only ever used for scoring.
+  {
+    const since = new Date(Date.now() - 180_000).toISOString();
+    const { data: warm } = await db
+      .from("market_snapshots")
+      .select("pair, ticker, strike, yes_bid, yes_ask, yes_mid, spread, vol, ts")
+      .gte("ts", since)
+      .not("ticker", "is", null)
+      .order("ts", { ascending: true })
+      .limit(2000);
+    for (const r of (warm ?? []) as {
+      pair: string;
+      ticker: string | null;
+      strike: number | null;
+      yes_bid: number | null;
+      yes_ask: number | null;
+      yes_mid: number | null;
+      spread: number | null;
+      vol: number | null;
+    }[]) {
+      if (!r.ticker || r.yes_bid == null || r.yes_ask == null) continue;
+      markets[r.pair as PairId] = {
+        pair: r.pair as PairId,
+        ticker: r.ticker,
+        strike: r.strike ?? 0,
+        yesBid: r.yes_bid,
+        yesAsk: r.yes_ask,
+        yesMid: r.yes_mid ?? (r.yes_bid + r.yes_ask) / 2,
+        spread: r.spread ?? r.yes_ask - r.yes_bid,
+        vol: r.vol ?? 0,
+      } as KalshiMarket;
+    }
+  }
+
 
   const heartbeat = async (msg: string) => {
     await db
@@ -491,7 +439,6 @@ async function runOwnedServerBotTick(db: Db) {
 
   let sampled = 0;
   let placedNow = 0;
-  let exitedNow = 0;
   let rounds = 0;
   let lastSignals = 0;
   let lastMsg = "watching · outside trade window";
@@ -633,11 +580,6 @@ async function runOwnedServerBotTick(db: Db) {
       });
     }
 
-    // ---- 4b. Manage anything already filled this candle -------------------
-    if (settings.enabled) {
-      const closedNow = await manageExits(db, settings, markets, scored, c.id);
-      if (closedNow > 0) exitedNow += closedNow;
-    }
 
     // ---- 5. Trade, only when enabled and inside the window ----------------
     const inWindow = c.elapsed >= GATE_SECS && c.elapsed < CLOSE_SECS;
@@ -669,7 +611,6 @@ async function runOwnedServerBotTick(db: Db) {
           });
           continue;
         }
-        const m = markets[sig.pair];
         const skip = (reason: string) => {
           logRows.push({
             candle_id: c.id,
@@ -684,12 +625,27 @@ async function runOwnedServerBotTick(db: Db) {
             ev: sig.ev,
           });
         };
+        // Always re-price off a freshly pulled book: the scoring market may be a
+        // cached/seeded quote, and we never send an order on a stale price.
+        const fresh = (await fetchOneMarket(sig.pair)) ?? markets[sig.pair];
+        if (fresh) markets[sig.pair] = fresh;
+        const m = fresh;
         if (!m?.ticker) {
           skip("no open market ticker this round");
           continue;
         }
 
-        const priceCents = Math.max(1, Math.min(99, Math.round(sig.entry * 100)));
+        const freshEntry = sig.dir === "YES" ? m.yesAsk : 1 - m.yesBid;
+        if (!Number.isFinite(freshEntry) || freshEntry <= 0 || freshEntry >= 1) {
+          skip("no live quote at the touch");
+          continue;
+        }
+        const drift = Math.round((freshEntry - sig.entry) * 100);
+        if (drift > MAX_SLIPPAGE_CENTS) {
+          skip(`price ran away — ${drift}¢ worse than the signal`);
+          continue;
+        }
+        const priceCents = Math.max(1, Math.min(99, Math.round(freshEntry * 100)));
         // Skip pairs with nothing resting at the touch; shrink to available size.
         const depth = restingDepth(m, sig.dir);
         if (depth < MIN_RESTING_DEPTH) {
@@ -698,12 +654,12 @@ async function runOwnedServerBotTick(db: Db) {
         }
         const count = Math.max(
           1,
-          Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, sig.entry))),
+          Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, freshEntry))),
         );
         let status = "placed";
         let msg = "";
         let contracts = count;
-        let entry = sig.entry;
+        let entry = freshEntry;
         let orderId: string | null = null;
 
         const keyId = process.env["KALSHI_API_KEY_ID"];
@@ -721,7 +677,7 @@ async function runOwnedServerBotTick(db: Db) {
             status = "failed";
             msg = "Balance recheck failed — no live order was sent.";
           }
-          const required = count * sig.entry;
+          const required = count * freshEntry;
           if (freshBalance !== null && freshBalance + 0.0001 < required) {
             status = "failed";
             msg = `Insufficient Kalshi balance — $${freshBalance.toFixed(2)} available, $${required.toFixed(2)} required.`;
@@ -794,15 +750,13 @@ async function runOwnedServerBotTick(db: Db) {
     await heartbeat("feeds unavailable — no spot prices this tick");
     return { ok: false, error: "no spot prices", ms: Date.now() - startedAt };
   }
-  const exitNote = exitedNow > 0 ? ` · closed ${exitedNow} early` : "";
-  if (fundsOk) await heartbeat(`${lastMsg}${exitNote} · ${rounds} looks`);
+  if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks`);
   return {
     ok: true,
     sampled,
     rounds,
     signals: lastSignals,
     placed: placedNow,
-    exited: exitedNow,
     msg: lastMsg,
   };
 }

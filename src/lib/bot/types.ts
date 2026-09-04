@@ -68,8 +68,6 @@ export interface TradeLogEntry {
   conf: number;
   status: TradeStatus;
   msg: string;
-  /** Set when the runner closed the position early (take profit / stop out). */
-  exitReason?: string | null;
   pnl?: number | null;
 }
 
