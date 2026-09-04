@@ -27,6 +27,8 @@ export type Database = {
           live_confirmed_at: string | null
           max_trades: number
           mode: string
+          run_lease_id: string | null
+          run_lease_until: string | null
           updated_at: string
         }
         Insert: {
@@ -41,6 +43,8 @@ export type Database = {
           live_confirmed_at?: string | null
           max_trades?: number
           mode?: string
+          run_lease_id?: string | null
+          run_lease_until?: string | null
           updated_at?: string
         }
         Update: {
@@ -55,6 +59,8 @@ export type Database = {
           live_confirmed_at?: string | null
           max_trades?: number
           mode?: string
+          run_lease_id?: string | null
+          run_lease_until?: string | null
           updated_at?: string
         }
         Relationships: []
