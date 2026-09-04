@@ -286,7 +286,12 @@ export function useBot() {
     let stop = false;
     const pull = async () => {
       try {
-        const res = await getMarkets();
+        const spots: Record<string, number> = {};
+        for (const p of PAIRS) {
+          const px = spotRef.current[p.id]?.price;
+          if (px) spots[p.id] = px;
+        }
+        const res = await getMarkets({ data: spots });
         if (stop) return;
         const next: Partial<Record<PairId, KalshiMarket>> = {};
         for (const m of res.markets) {
