@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AccuracyPanel } from "./AccuracyPanel";
 import { BrtiPanel } from "./BrtiPanel";
 import { ClockPanel } from "./ClockPanel";
@@ -10,9 +11,20 @@ import { ServerBotPanel } from "./ServerBotPanel";
 import { SignalsPanel } from "./SignalsPanel";
 import { useBot } from "@/hooks/useBot";
 
+type Workspace = "overview" | "control" | "trades" | "analytics";
+
+const WORKSPACES: { id: Workspace; label: string; short: string }[] = [
+  { id: "overview", label: "Overview", short: "Home" },
+  { id: "control", label: "Bot Control", short: "Control" },
+  { id: "trades", label: "Trades & P&L", short: "Trades" },
+  { id: "analytics", label: "Analytics", short: "Analytics" },
+];
+
 export function Dashboard() {
   const bot = useBot();
   const ticker = bot.markets.BTC?.ticker ?? null;
+  const [workspace, setWorkspace] = useState<Workspace>("overview");
+  const pnl = bot.realized + bot.unrealized;
 
   return (
     <div className="relative z-1 min-h-screen">
@@ -51,42 +63,41 @@ export function Dashboard() {
         </div>
       ) : null}
 
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-wire bg-background/95 px-3.5 py-2.5 backdrop-blur">
-        <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-40 border-b border-wire bg-background/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
           <span
             className={`size-1.5 rounded-full ${bot.botOn ? "animate-blink bg-yes" : "bg-dim"}`}
           />
           <div>
-            <h1 className="font-sans text-[14px] font-extrabold text-hi">KALSHI AUTO · 15M BOT</h1>
+            <h1 className="truncate font-sans text-[15px] font-extrabold text-hi">KALSHI AUTO</h1>
             <p className="text-[7px] tracking-[0.25em] text-muted-foreground">
-              BRTI LAG ENGINE · {bot.mode === "live" ? "LIVE MONEY" : "PAPER"}
+              15M EXECUTION DESK · {bot.mode === "live" ? "LIVE MONEY" : "PAPER"}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap justify-end gap-x-4 gap-y-1">
-          {[
-            { v: String(bot.sigCount), l: "SIGNALS" },
-            { v: String(bot.placedCount), l: "PLACED" },
-            { v: `$${bot.exposure}`, l: "EXPOSURE" },
-            {
-              v: `${bot.realized + bot.unrealized < 0 ? "-" : "+"}$${Math.abs(bot.realized + bot.unrealized).toFixed(2)}`,
-              l: "P&L",
-            },
-            {
-              v: bot.walletBalance !== null ? `$${bot.walletBalance.toFixed(2)}` : "—",
-              l: "WALLET",
-            },
-          ].map((s) => (
-            <div key={s.l} className="text-center">
-              <div className="font-sans text-[15px] font-extrabold leading-none text-hi">{s.v}</div>
-              <div className="mt-0.5 text-[7px] tracking-[0.2em] text-dim">{s.l}</div>
-            </div>
-          ))}
+        <div className={`shrink-0 rounded-md border px-2.5 py-1 font-sans text-[9px] font-extrabold tracking-wider ${bot.botOn ? "border-yes/40 bg-yes/10 text-yes" : "border-wire bg-surface-2 text-dim"}`}>
+          {bot.botOn ? "BOT ACTIVE" : "BOT OFF"}
+        </div>
+        </div>
+        <div className="border-t border-wire/70 bg-surface/70">
+          <div className="mx-auto grid max-w-[1180px] grid-cols-5">
+            <div className="border-r border-wire px-3 py-2.5"><div className="font-sans text-[16px] font-extrabold leading-none text-hi">{bot.walletBalance !== null ? `$${bot.walletBalance.toFixed(2)}` : "—"}</div><div className="mt-1 text-[7px] font-bold tracking-[.18em] text-dim">WALLET</div></div>
+            <div className="border-r border-wire px-3 py-2.5"><div className={`font-sans text-[16px] font-extrabold leading-none ${pnl < 0 ? "text-no" : "text-yes"}`}>{pnl < 0 ? "−" : "+"}${Math.abs(pnl).toFixed(2)}</div><div className="mt-1 text-[7px] font-bold tracking-[.18em] text-dim">TOTAL P&amp;L</div></div>
+            <div className="border-r border-wire px-3 py-2.5"><div className="font-sans text-[16px] font-extrabold leading-none text-hi">{bot.sigCount}</div><div className="mt-1 text-[7px] font-bold tracking-[.18em] text-dim">SIGNALS</div></div>
+            <div className="border-r border-wire px-3 py-2.5"><div className="font-sans text-[16px] font-extrabold leading-none text-hi">{bot.placedCount}</div><div className="mt-1 text-[7px] font-bold tracking-[.18em] text-dim">PLACED</div></div>
+            <div className="px-3 py-2.5"><div className="font-sans text-[16px] font-extrabold leading-none text-gold">${bot.exposure}</div><div className="mt-1 text-[7px] font-bold tracking-[.18em] text-dim">EXPOSURE</div></div>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[960px] gap-3 p-3 md:grid-cols-2">
-        <div className="flex flex-col gap-3">
+      <nav className="mx-auto hidden max-w-[1180px] gap-1 px-4 pt-4 sm:flex" aria-label="Dashboard workspaces">
+        {WORKSPACES.map((item) => <button key={item.id} type="button" onClick={() => setWorkspace(item.id)} className={`rounded-md px-4 py-2 font-sans text-[10px] font-bold tracking-wider transition-colors ${workspace === item.id ? "bg-hi text-background" : "border border-wire bg-surface text-dim hover:text-hi"}`}>{item.label}</button>)}
+      </nav>
+
+      <main className="mx-auto max-w-[1180px] p-3 pb-24 sm:p-4 sm:pb-8">
+        {workspace === "overview" ? <div className="grid gap-3 lg:grid-cols-12">
+          <div className="flex flex-col gap-3 lg:col-span-7">
           <BrtiPanel
             spot={bot.spot}
             markets={bot.markets}
@@ -95,7 +106,27 @@ export function Dashboard() {
             source={bot.feedSource}
           />
           <ClockPanel candle={bot.candle} ticker={ticker} />
-          <PnlPanel
+          <MarketsPanel markets={bot.markets} ok={bot.marketsOk} mode={bot.mode} />
+          </div>
+          <div className="flex flex-col gap-3 lg:col-span-5">
+            <ServerBotPanel />
+            <SignalsPanel signals={bot.signals} candle={bot.candle} pairStatus={bot.pairStatus} />
+          </div>
+        </div> : null}
+
+        {workspace === "control" ? <div className="grid gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-7"><EnginePanel
+            candle={bot.candle} mode={bot.mode} onModeChange={(m) => void bot.switchMode(m)} botOn={bot.botOn}
+            onToggle={bot.toggleBot} betSize={bot.betSize} onBetSize={bot.setBetSize} maxTrades={bot.maxTrades}
+            onMaxTrades={bot.setMaxTrades} placedCount={bot.placedCount} exposure={bot.exposure} lastTrade={bot.lastTrade}
+            tradedThisCandle={bot.tradedThisCandle} live={bot.live} evMargin={bot.evMargin} onEvMargin={bot.setEvMargin}
+            dayPnl={bot.dayPnl} dailyLossCap={bot.dailyLossCap} capHit={bot.capHit} onResetDay={bot.resetDay}
+          /></div>
+          <div className="flex flex-col gap-3 lg:col-span-5"><ServerBotPanel /><ClockPanel candle={bot.candle} ticker={ticker} /></div>
+        </div> : null}
+
+        {workspace === "trades" ? <div className="grid gap-3 lg:grid-cols-12">
+          <div className="lg:col-span-7"><PnlPanel
             mode={bot.mode}
             portfolio={bot.portfolio}
             balance={bot.walletBalance}
@@ -109,51 +140,31 @@ export function Dashboard() {
             wins={bot.wins}
             losses={bot.losses}
             onRefresh={() => void bot.refreshPortfolio()}
-          />
-          <MarketsPanel markets={bot.markets} ok={bot.marketsOk} mode={bot.mode} />
-        </div>
+          /></div>
+          <div className="flex flex-col gap-3 lg:col-span-5"><LogPanel log={bot.log} /><ServerBotPanel /></div>
+        </div> : null}
 
-        <div className="flex flex-col gap-3">
-          <EnginePanel
-            candle={bot.candle}
-            mode={bot.mode}
-            onModeChange={(m) => void bot.switchMode(m)}
-            botOn={bot.botOn}
-            onToggle={bot.toggleBot}
-            betSize={bot.betSize}
-            onBetSize={bot.setBetSize}
-            maxTrades={bot.maxTrades}
-            onMaxTrades={bot.setMaxTrades}
-            placedCount={bot.placedCount}
-            exposure={bot.exposure}
-            lastTrade={bot.lastTrade}
-            tradedThisCandle={bot.tradedThisCandle}
-            live={bot.live}
-            evMargin={bot.evMargin}
-            onEvMargin={bot.setEvMargin}
-            dayPnl={bot.dayPnl}
-            dailyLossCap={bot.dailyLossCap}
-            capHit={bot.capHit}
-            onResetDay={bot.resetDay}
-          />
-          <ServerBotPanel />
+        {workspace === "analytics" ? <div className="grid gap-3 lg:grid-cols-12">
+          <div className="flex flex-col gap-3 lg:col-span-7">
           <SignalsPanel
             signals={bot.signals}
             candle={bot.candle}
             pairStatus={bot.pairStatus}
           />
           <PairEdgePanel accuracy={bot.accuracy} betSize={bot.betSize} />
+          </div>
+          <div className="flex flex-col gap-3 lg:col-span-5">
           <AccuracyPanel
             accuracy={bot.accuracy}
             rejections={bot.rejections}
             onRefresh={() => void bot.refreshAccuracy()}
           />
-
           <LogPanel log={bot.log} />
-        </div>
+          </div>
+        </div> : null}
       </main>
 
-      <footer className="mx-auto max-w-[960px] px-3 pb-6">
+      <footer className="mx-auto max-w-[1180px] px-3 pb-24 sm:pb-6">
         <p className="rounded-md border border-wire bg-surface p-3 text-[9px] leading-relaxed text-muted-foreground">
           ⚠️ <strong className="text-foreground">AUTO-TRADING:</strong> real-time BRTI proxy via
           Binance WebSocket (a constituent exchange), Kalshi REST for the YES/NO orderbook. One
@@ -164,6 +175,10 @@ export function Dashboard() {
           server-side. Not financial advice. Kalshi is CFTC-regulated.
         </p>
       </footer>
+
+      <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-wire bg-background/98 px-1 pb-[max(.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur sm:hidden" aria-label="Dashboard workspaces">
+        {WORKSPACES.map((item) => <button key={item.id} type="button" onClick={() => setWorkspace(item.id)} className={`rounded-md px-1 py-2.5 font-sans text-[8px] font-bold tracking-wide ${workspace === item.id ? "bg-hi text-background" : "text-dim"}`}>{item.short}</button>)}
+      </nav>
     </div>
   );
 }
