@@ -87,11 +87,16 @@ export async function fetchOpenMarket(series: string, spot?: number | null): Pro
       // tradable, which is what silenced the engine.
       const soonest = upcoming[0]!.close;
       const candle = upcoming.filter((x) => x.close === soonest).map((x) => x.m);
+      // Rank by how balanced the book is, not raw strike distance: late in a
+      // candle the nearest strike can still be a 1¢ certainty, while a slightly
+      // further strike is the one actually priced in a tradable range.
       const score = (m: RawMarket) => {
-        const strike = m.floor_strike ?? m.cap_strike ?? null;
-        if (spot && strike != null) return Math.abs(strike - spot) / spot;
         const n = normalizeMarket(m);
-        return Math.abs(n.yesMid - 0.5);
+        const quoted = n.yesBid > 0 || n.yesAsk > 0;
+        if (quoted) return Math.abs(n.yesMid - 0.5);
+        const strike = m.floor_strike ?? m.cap_strike ?? null;
+        if (spot && strike != null) return 0.5 + Math.abs(strike - spot) / spot;
+        return 1;
       };
       return candle.reduce((best, m) => (score(m) < score(best) ? m : best), candle[0]!);
     } catch {
