@@ -85,7 +85,10 @@ export const recordSignals = createServerFn({ method: "POST" })
     const db = await admin();
     const { error } = await db
       .from("signal_log")
-      .upsert(data.rows, { onConflict: "candle_id,pair,verdict,seconds_in", ignoreDuplicates: true });
+      .upsert(data.rows, {
+        onConflict: "candle_id,pair,verdict,seconds_in,source",
+        ignoreDuplicates: true,
+      });
     if (error) return { ok: false, inserted: 0, error: error.message };
     return { ok: true, inserted: data.rows.length };
   });
