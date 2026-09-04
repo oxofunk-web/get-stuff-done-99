@@ -65,6 +65,17 @@ export function ServerBotPanel() {
           places orders; the controls in Auto-Trade Engine above drive it. It records the tape even
           while off.
         </p>
+        {state?.skips?.length ? (
+          <div className="mt-2 space-y-0.5 border-t border-wire pt-2">
+            <p className="text-[8px] font-bold tracking-widest text-dim">WHY NO ORDER</p>
+            {state.skips.slice(0, 5).map((s) => (
+              <p key={s.pair} className="flex justify-between gap-2 text-[8px] text-dim">
+                <span className="font-bold text-fg">{s.pair}</span>
+                <span className="truncate text-right">{s.reason}</span>
+              </p>
+            ))}
+          </div>
+        ) : null}
         {live ? (
           <p className="mt-1.5 rounded-md border border-no/40 bg-no/10 px-3 py-2 text-[9px] font-bold text-no">
             SERVER IS PLACING REAL ORDERS — even with the app closed.
