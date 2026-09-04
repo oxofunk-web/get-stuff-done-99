@@ -307,6 +307,8 @@ interface PlaceLiveOrderInput {
   count: number;
   /** Hard slippage ceiling. Defaults to scored price + MAX_SLIPPAGE_CENTS. */
   maxPriceCents?: number | undefined;
+  /** Exact ticker quote already refreshed by the engine immediately before submission. */
+  quote?: ReturnType<typeof normalizeMarket> | undefined;
 }
 
 interface CreateOrderResponse {
@@ -344,8 +346,8 @@ export async function placeLiveOrder(
       99,
       Math.max(1, input.maxPriceCents ?? input.priceCents + MAX_SLIPPAGE_CENTS),
     );
-    const fresh = await fetchMarket(input.ticker);
-    const market = fresh ? normalizeMarket(fresh) : null;
+    const fresh = input.quote ? null : await fetchMarket(input.ticker);
+    const market = input.quote ?? (fresh ? normalizeMarket(fresh) : null);
     const quoteCents = market
       ? Math.round((input.side === "yes" ? market.yesAsk : market.noAsk) * 100)
       : 0;
@@ -360,7 +362,7 @@ export async function placeLiveOrder(
     const limitCents = Math.min(ceiling, Math.max(1, Math.max(quoteCents, input.priceCents)));
     // Depth resting at the touch on the side we're taking, in contracts.
     const restingSize = Math.floor(
-      Number((input.side === "yes" ? fresh?.yes_ask_size_fp : fresh?.yes_bid_size_fp) ?? 0),
+      input.side === "yes" ? market?.yesAskSize ?? 0 : market?.yesBidSize ?? 0,
     );
     if (restingSize === 0) {
       return {

@@ -20,7 +20,7 @@ function toneFor(pct: number, n: number) {
 
 export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
   const a = accuracy;
-  const has = Boolean(a?.ok && (a.total > 0 || a.counterfactual > 0));
+  const has = Boolean(a?.ok && (a.total > 0 || a.monitorTotal > 0 || a.counterfactual > 0));
 
 
   return (
@@ -52,11 +52,11 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
           <>
             <div className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-wire bg-wire">
               <div className="bg-surface-2 p-2">
-                <div className="text-[7px] tracking-[0.2em] text-dim">SIGNALS</div>
+                <div className="text-[7px] tracking-[0.2em] text-dim">LIVE FILLS</div>
                 <div className="font-sans text-[15px] font-extrabold text-hi tabular-nums">
                   {a!.total}
                 </div>
-                <div className="text-[8px] text-muted-foreground">settled</div>
+                <div className="text-[8px] text-muted-foreground">server trades</div>
               </div>
               <div className="bg-surface-2 p-2">
                 <div className="text-[7px] tracking-[0.2em] text-dim">WIN RATE</div>
@@ -75,6 +75,12 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
                 <div className="text-[8px] text-muted-foreground">bands live</div>
               </div>
             </div>
+
+            {a!.monitorTotal ? (
+              <div className="mt-2 rounded-md border border-gold/40 bg-gold/10 p-2 text-[8px] text-gold">
+                MONITOR ONLY — {a!.monitorWins}/{a!.monitorTotal} directions right after de-duplication · hypothetical {a!.monitorNetPerDollar >= 0 ? "+" : ""}{(a!.monitorNetPerDollar * 100).toFixed(1)}¢ per $1 risked. These were not trades.
+              </div>
+            ) : null}
 
             <div className="mt-2.5 text-[7px] tracking-[0.2em] text-dim">
               BY CONFIDENCE BAND · {a!.counterfactual} counterfactual samples included
