@@ -277,6 +277,30 @@ interface SnapshotInsert {
   vol: number | null;
 }
 
+/** A `signal_log` row written by the server runner (source = "server"). */
+interface SignalInsert {
+  candle_id: number;
+  seconds_in: number;
+  pair: string;
+  verdict: string;
+  reason: string | null;
+  source: "server";
+  dir?: string | null;
+  conf?: number | null;
+  calibrated?: number | null;
+  entry_price?: number | null;
+  ev?: number | null;
+  yes_mid?: number | null;
+  spread?: number | null;
+  skew?: number | null;
+  spot_mom?: number | null;
+  k_mom?: number | null;
+  sigma_dist?: number | null;
+  spot?: number | null;
+  strike?: number | null;
+}
+
+
 /**
  * One tick = continuous sampling for most of a minute. Every round records the
  * tape, re-scores the engine, and (inside the trade window, when enabled)
