@@ -37,7 +37,7 @@ import { dropVetoed, rankSignals, setPairEdge } from "./ranking";
 import type { PairEdgeRow } from "./telemetry.functions";
 import { resetTuning, setTuning } from "./tuning";
 import { restingDepth } from "./order-map";
-import { fetchLiveBalance, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
+import { fetchLiveBalance, fetchMarket, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
 
 /**
@@ -272,14 +272,12 @@ async function fetchAllMarkets(
   return out;
 }
 
-/** Fresh single-pair quote, used to re-price right before an order goes out. */
-async function fetchOneMarket(pair: PairId, spot?: number | null): Promise<KalshiMarket | null> {
-  const p = PAIRS.find((x) => x.id === pair);
-  if (!p) return null;
+/** Refresh the exact ticker that produced the signal; never switch strikes here. */
+async function fetchOneMarket(pair: PairId, ticker: string): Promise<KalshiMarket | null> {
   try {
-    const raw = await fetchOpenMarket(p.series, spot ?? null);
+    const raw = await fetchMarket(ticker);
     if (!raw) return null;
-    return { pair: p.id, ...normalizeMarket(raw) } as KalshiMarket;
+    return { pair, ...normalizeMarket(raw) } as KalshiMarket;
   } catch {
     return null;
   }
@@ -729,7 +727,11 @@ async function runOwnedServerBotTick(db: Db) {
         // market the signal was scored on. Scoring one candle and ordering in the
         // next is what produced the "quote moved 17¢" skips.
         const scoredTicker = markets[sig.pair]?.ticker ?? null;
-        const fresh = await fetchOneMarket(sig.pair, latestSpots[sig.pair] ?? null);
+        if (!scoredTicker) {
+          skip("no scored market ticker this round");
+          continue;
+        }
+        const fresh = await fetchOneMarket(sig.pair, scoredTicker);
         if (fresh) {
           markets[sig.pair] = fresh;
           marketAt[sig.pair] = Date.now();
@@ -809,6 +811,7 @@ async function runOwnedServerBotTick(db: Db) {
                 priceCents,
                 count,
                 maxPriceCents,
+                quote: m,
               },
             );
             attemptsByPair.set(sig.pair, priorAttempts + 1);
