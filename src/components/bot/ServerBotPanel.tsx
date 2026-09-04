@@ -60,9 +60,9 @@ export function ServerBotPanel() {
 
       <div className="p-3">
         <p className="text-[8px] leading-relaxed text-dim">
-          Last tick {ago(state?.lastTickAt ?? null)}
+          Heartbeat {ago(state?.lastTickAt ?? null)}
           {state?.lastTickMsg ? ` — ${state.lastTickMsg}` : ""}. This is the only engine that
-          places orders; the controls in Auto-Trade Engine above drive it. It records the tape even
+          places orders; the controls in Bot Control drive it. It records the tape even
           while off.
         </p>
         {state?.skips?.length ? (

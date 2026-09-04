@@ -634,25 +634,25 @@ async function runOwnedServerBotTick(db: Db) {
             if (status === "failed") {
               // The failed attempt is persisted below as the terminal result.
             } else {
-            const res = await placeLiveOrder(
-              { keyId, pem },
-              {
-                ticker: m.ticker,
-                side: sig.dir === "YES" ? "yes" : "no",
-                priceCents,
-                count,
-                maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
-              },
-            );
-            if (res.ok) {
-              contracts = res.filled;
-              entry = res.priceCents / 100;
-              orderId = res.orderId;
-              msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
-            } else {
-              status = "failed";
-              msg = res.error ?? "Order rejected";
-            }
+              const res = await placeLiveOrder(
+                { keyId, pem },
+                {
+                  ticker: m.ticker,
+                  side: sig.dir === "YES" ? "yes" : "no",
+                  priceCents,
+                  count,
+                  maxPriceCents: Math.min(99, priceCents + MAX_SLIPPAGE_CENTS),
+                },
+              );
+              if (res.ok) {
+                contracts = res.filled;
+                entry = res.priceCents / 100;
+                orderId = res.orderId;
+                msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
+              } else {
+                status = "failed";
+                msg = res.error ?? "Order rejected";
+              }
             }
           }
         }

@@ -166,8 +166,8 @@ export function Dashboard() {
 
       <footer className="mx-auto max-w-[1180px] px-3 pb-24 sm:pb-6">
         <p className="rounded-md border border-wire bg-surface p-3 text-[9px] leading-relaxed text-muted-foreground">
-          ⚠️ <strong className="text-foreground">AUTO-TRADING:</strong> real-time BRTI proxy via
-          Binance WebSocket (a constituent exchange), Kalshi REST for the YES/NO orderbook. One
+          <strong className="text-foreground">AUTO-TRADING:</strong> real-time spot via Coinbase
+          Exchange with Binance fallback, plus Kalshi REST for the YES/NO orderbook. One
           engine places trades: the server bot, which keeps running even with this app closed. It
           fires after the 10:00 mark at ≥86% confidence, up to one per pair (4 max) per 15-minute
           candle. Lag detection compares BRTI spot momentum against Kalshi price direction —
