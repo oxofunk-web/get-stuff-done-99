@@ -31,15 +31,19 @@ Unchanged safety: one trade per pair per candle, orderbook depth check, slippage
 - Run the test suite and type checks.
 - Publish, since only the published build is what the every-minute schedule executes.
 
-## 5. What else is worth improving
+## 5. Exit management (included)
 
-Ranked, not included unless you say so:
+Today an entry is fire-and-forget until the candle settles, so a winning position can give everything back before close. Adding managed exits:
 
-1. **Exit management** — today entries are fire-and-forget until settlement. Selling into a favourable move would cut give-back on the losing tail.
-2. **Per-pair auto-throttle** — automatically shrink or pause a pair whose measured edge goes negative over its last N settled trades, instead of only the cooldown rule.
-3. **Time-of-day filter** — the tape can show hours where the edge is negative; skipping those is usually the cheapest win available.
-4. **Alerts** — a push/email on every fill, rejection, and cap hit so you don't have to watch the dashboard.
-5. **Runner watchdog** — flag it loudly in the UI when the heartbeat goes stale for more than two minutes.
+- After a fill, the runner keeps watching that position every tick until the candle closes.
+- **Take profit:** if the contract's bid rises far enough above the entry price, sell into the move and bank the gain.
+- **Stop out:** if the bid falls far enough below entry, or the signal's direction has clearly flipped, exit early rather than riding it to zero.
+- **Let it settle:** if neither trigger hits, the position rides to settlement as it does now.
+- Exits use the same protections as entries: fresh quote, depth check, slippage limit, immediate-or-cancel order.
+- Both thresholds are adjustable from Bot Control, and each exit is recorded with its trigger and realized P&L so the tape shows whether exits helped.
+
+Other ideas (per-pair auto-throttle, time-of-day filter, alerts, runner watchdog) are noted but out of scope for now.
+
 
 ## Technical notes
 
