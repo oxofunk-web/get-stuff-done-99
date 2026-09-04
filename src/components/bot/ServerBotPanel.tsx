@@ -71,9 +71,10 @@ export function ServerBotPanel() {
             ))}
           </div>
         ) : null}
-        {live ? (
+        {enabled ? (
           <p className="mt-1.5 rounded-md border border-no/40 bg-no/10 px-3 py-2 text-[9px] font-bold text-no">
-            SERVER IS PLACING REAL ORDERS — even with the app closed.
+            SERVER IS PLACING REAL ORDERS — even with the app closed. Exits: take profit +
+            {state?.takeProfitCents ?? 12}¢ / stop out −{state?.stopLossCents ?? 10}¢.
           </p>
         ) : null}
       </div>
