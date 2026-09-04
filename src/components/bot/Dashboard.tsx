@@ -72,7 +72,7 @@ export function Dashboard() {
           <div>
             <h1 className="truncate font-sans text-[15px] font-extrabold text-hi">KALSHI AUTO</h1>
             <p className="text-[7px] tracking-[0.25em] text-muted-foreground">
-              15M EXECUTION DESK · {bot.mode === "live" ? "LIVE MONEY" : "PAPER"}
+              15M EXECUTION DESK · LIVE MONEY
             </p>
           </div>
         </div>
@@ -106,7 +106,7 @@ export function Dashboard() {
             source={bot.feedSource}
           />
           <ClockPanel candle={bot.candle} ticker={ticker} />
-          <MarketsPanel markets={bot.markets} ok={bot.marketsOk} mode={bot.mode} />
+          <MarketsPanel markets={bot.markets} ok={bot.marketsOk} />
           </div>
           <div className="flex flex-col gap-3 lg:col-span-5">
             <ServerBotPanel />
@@ -116,10 +116,12 @@ export function Dashboard() {
 
         {workspace === "control" ? <div className="grid gap-3 lg:grid-cols-12">
           <div className="lg:col-span-7"><EnginePanel
-            candle={bot.candle} mode={bot.mode} onModeChange={(m) => void bot.switchMode(m)} botOn={bot.botOn}
+            candle={bot.candle} botOn={bot.botOn}
             onToggle={bot.toggleBot} betSize={bot.betSize} onBetSize={bot.setBetSize} maxTrades={bot.maxTrades}
             onMaxTrades={bot.setMaxTrades} placedCount={bot.placedCount} exposure={bot.exposure} lastTrade={bot.lastTrade}
             tradedThisCandle={bot.tradedThisCandle} live={bot.live} evMargin={bot.evMargin} onEvMargin={bot.setEvMargin}
+            takeProfitCents={bot.takeProfitCents} onTakeProfitCents={bot.setTakeProfitCents}
+            stopLossCents={bot.stopLossCents} onStopLossCents={bot.setStopLossCents}
             dayPnl={bot.dayPnl} dailyLossCap={bot.dailyLossCap} capHit={bot.capHit} onResetDay={bot.resetDay}
           /></div>
           <div className="flex flex-col gap-3 lg:col-span-5"><ServerBotPanel /><ClockPanel candle={bot.candle} ticker={ticker} /></div>
@@ -127,7 +129,6 @@ export function Dashboard() {
 
         {workspace === "trades" ? <div className="grid gap-3 lg:grid-cols-12">
           <div className="lg:col-span-7"><PnlPanel
-            mode={bot.mode}
             portfolio={bot.portfolio}
             balance={bot.walletBalance}
             realized={bot.realized}

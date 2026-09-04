@@ -38,16 +38,11 @@ export function ServerBotPanel() {
   }, []);
 
   const enabled = state?.enabled ?? false;
-  const live = state?.effectiveMode === "live";
   const status = !state
     ? { text: "…", cls: "border-wire bg-surface-2 text-dim" }
-    : !enabled
-      ? { text: "OFF", cls: "border-wire bg-surface-2 text-dim" }
-      : live
-        ? { text: "LIVE", cls: "border-no/50 bg-no/10 text-no" }
-        : state.liveConfirmed || state.requestedMode === "live"
-          ? { text: "PAPER · WARMUP", cls: "border-gold/50 bg-gold/10 text-gold" }
-          : { text: "PAPER", cls: "border-yes/40 bg-yes/10 text-yes" };
+    : enabled
+      ? { text: "LIVE", cls: "border-no/50 bg-no/10 text-no" }
+      : { text: "OFF", cls: "border-wire bg-surface-2 text-dim" };
 
   return (
     <section className="panel">
@@ -76,9 +71,10 @@ export function ServerBotPanel() {
             ))}
           </div>
         ) : null}
-        {live ? (
+        {enabled ? (
           <p className="mt-1.5 rounded-md border border-no/40 bg-no/10 px-3 py-2 text-[9px] font-bold text-no">
-            SERVER IS PLACING REAL ORDERS — even with the app closed.
+            SERVER IS PLACING REAL ORDERS — even with the app closed. Exits: take profit +
+            {state?.takeProfitCents ?? 12}¢ / stop out −{state?.stopLossCents ?? 10}¢.
           </p>
         ) : null}
       </div>

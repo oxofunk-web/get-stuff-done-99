@@ -1,8 +1,7 @@
 import { PAIRS } from "@/lib/bot/constants";
-import type { Mode, OpenPosition, Portfolio } from "@/hooks/useBot";
+import type { OpenPosition, Portfolio } from "@/hooks/useBot";
 
 interface Props {
-  mode: Mode;
   portfolio: Portfolio;
   balance: number | null;
   realized: number;
@@ -26,7 +25,6 @@ function tone(n: number) {
 }
 
 export function PnlPanel({
-  mode,
   portfolio,
   balance,
   realized,
@@ -74,7 +72,7 @@ export function PnlPanel({
 
         <div className="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-wire bg-wire">
           {[
-            { label: "REALIZED", value: money(realized), t: tone(realized), sub: mode === "live" ? "kalshi" : "paper" },
+            { label: "REALIZED", value: money(realized), t: tone(realized), sub: "kalshi" },
             { label: "OPEN P&L", value: money(unrealized), t: tone(unrealized), sub: "mark-to-market" },
             { label: "NET", value: money(total), t: tone(total), sub: "session" },
           ].map((c) => (
@@ -93,7 +91,7 @@ export function PnlPanel({
         >
           <div className="flex items-baseline justify-between">
             <span className="text-[7px] tracking-[0.25em] text-dim">
-              TODAY&apos;S REAL P&amp;L {mode === "live" ? "· KALSHI" : "· PAPER"}
+              TODAY&apos;S REAL P&amp;L · KALSHI
             </span>
             <span className={`font-sans text-[18px] font-extrabold tabular-nums ${tone(dayPnl)}`}>
               {money(dayPnl)}
@@ -168,11 +166,6 @@ export function PnlPanel({
                     </b>
                     <span className={p.dir === "YES" ? "text-yes" : "text-no"}>{p.dir}</span>
                     <span className="text-dim">×{p.count}</span>
-                    {p.paper ? (
-                      <span className="rounded border border-wire px-1 text-[7px] tracking-widest text-dim">
-                        PAPER
-                      </span>
-                    ) : null}
                   </span>
                   <span className="tabular-nums text-muted-foreground">
                     @ {(p.entry * 100).toFixed(0)}¢ · ${p.stake.toFixed(2)}

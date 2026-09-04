@@ -29,6 +29,8 @@ export type Database = {
           mode: string
           run_lease_id: string | null
           run_lease_until: string | null
+          stop_loss_cents: number
+          take_profit_cents: number
           updated_at: string
         }
         Insert: {
@@ -45,6 +47,8 @@ export type Database = {
           mode?: string
           run_lease_id?: string | null
           run_lease_until?: string | null
+          stop_loss_cents?: number
+          take_profit_cents?: number
           updated_at?: string
         }
         Update: {
@@ -61,6 +65,8 @@ export type Database = {
           mode?: string
           run_lease_id?: string | null
           run_lease_until?: string | null
+          stop_loss_cents?: number
+          take_profit_cents?: number
           updated_at?: string
         }
         Relationships: []
@@ -220,6 +226,11 @@ export type Database = {
           contracts: number | null
           dir: string
           entry_price: number | null
+          exit_at: string | null
+          exit_contracts: number | null
+          exit_order_id: string | null
+          exit_price: number | null
+          exit_reason: string | null
           id: string
           mode: string
           msg: string | null
@@ -240,6 +251,11 @@ export type Database = {
           contracts?: number | null
           dir: string
           entry_price?: number | null
+          exit_at?: string | null
+          exit_contracts?: number | null
+          exit_order_id?: string | null
+          exit_price?: number | null
+          exit_reason?: string | null
           id?: string
           mode: string
           msg?: string | null
@@ -260,6 +276,11 @@ export type Database = {
           contracts?: number | null
           dir?: string
           entry_price?: number | null
+          exit_at?: string | null
+          exit_contracts?: number | null
+          exit_order_id?: string | null
+          exit_price?: number | null
+          exit_reason?: string | null
           id?: string
           mode?: string
           msg?: string | null
