@@ -23,6 +23,23 @@ export const getServerBot = createServerFn({ method: "GET" }).handler(async (): 
   return getServerBotState(db);
 });
 
+interface SettingsPatch {
+  enabled?: boolean;
+  first_enabled_at?: string;
+  bet_size?: number;
+  ev_margin?: number;
+  max_trades?: number;
+  daily_loss_cap?: number;
+  threshold?: number;
+  min_yes_mid?: number;
+  max_yes_mid?: number;
+  min_skew?: number;
+  max_spread?: number;
+  min_sigma_dist?: number;
+  gate_preset?: string;
+  updated_at: string;
+}
+
 export const updateServerBot = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z
@@ -32,21 +49,21 @@ export const updateServerBot = createServerFn({ method: "POST" })
         evMargin: z.number().min(0).max(0.5).optional(),
         maxTrades: z.number().int().min(1).max(7).optional(),
         dailyLossCap: z.number().min(1).max(1000).optional(),
+        // Signal gates
+        threshold: z.number().min(50).max(99).optional(),
+        minYesMid: z.number().min(0.01).max(0.5).optional(),
+        maxYesMid: z.number().min(0.5).max(0.99).optional(),
+        minSkew: z.number().min(0).max(0.2).optional(),
+        maxSpread: z.number().min(0.01).max(0.2).optional(),
+        minSigmaDist: z.number().min(0).max(2).optional(),
+        gatePreset: z.enum(["strict", "balanced", "aggressive", "custom"]).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data }): Promise<ServerBotState> => {
     const db = await admin();
     const cur = await loadSettings(db);
-    const patch: {
-      enabled?: boolean;
-      first_enabled_at?: string;
-      bet_size?: number;
-      ev_margin?: number;
-      max_trades?: number;
-      daily_loss_cap?: number;
-      updated_at: string;
-    } = { updated_at: new Date().toISOString() };
+    const patch: SettingsPatch = { updated_at: new Date().toISOString() };
     if (data.enabled !== undefined) {
       patch.enabled = data.enabled;
       if (data.enabled && !cur.first_enabled_at) {
@@ -57,6 +74,23 @@ export const updateServerBot = createServerFn({ method: "POST" })
     if (data.evMargin !== undefined) patch.ev_margin = data.evMargin;
     if (data.maxTrades !== undefined) patch.max_trades = data.maxTrades;
     if (data.dailyLossCap !== undefined) patch.daily_loss_cap = data.dailyLossCap;
+    if (data.threshold !== undefined) patch.threshold = data.threshold;
+    if (data.minYesMid !== undefined) patch.min_yes_mid = data.minYesMid;
+    if (data.maxYesMid !== undefined) patch.max_yes_mid = data.maxYesMid;
+    if (data.minSkew !== undefined) patch.min_skew = data.minSkew;
+    if (data.maxSpread !== undefined) patch.max_spread = data.maxSpread;
+    if (data.minSigmaDist !== undefined) patch.min_sigma_dist = data.minSigmaDist;
+    if (data.gatePreset !== undefined) patch.gate_preset = data.gatePreset;
+    // Hand-tuning any single gate means the saved preset no longer describes it.
+    const touchedGate =
+      data.threshold !== undefined ||
+      data.evMargin !== undefined ||
+      data.minYesMid !== undefined ||
+      data.maxYesMid !== undefined ||
+      data.minSkew !== undefined ||
+      data.maxSpread !== undefined ||
+      data.minSigmaDist !== undefined;
+    if (touchedGate && data.gatePreset === undefined) patch.gate_preset = "custom";
     await db.from("bot_settings").update(patch).eq("id", true);
     return getServerBotState(db);
   });

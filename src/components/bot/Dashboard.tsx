@@ -120,6 +120,8 @@ export function Dashboard() {
             onToggle={bot.toggleBot} betSize={bot.betSize} onBetSize={bot.setBetSize} maxTrades={bot.maxTrades}
             onMaxTrades={bot.setMaxTrades} placedCount={bot.placedCount} exposure={bot.exposure} lastTrade={bot.lastTrade}
             tradedThisCandle={bot.tradedThisCandle} live={bot.live} evMargin={bot.evMargin} onEvMargin={bot.setEvMargin}
+            gates={bot.gates} gatePreset={bot.gatePreset} onGatePreset={bot.setGatePreset} onGate={bot.setGate}
+            blocks={bot.server?.blocks ?? []}
             dayPnl={bot.dayPnl} dailyLossCap={bot.dailyLossCap} capHit={bot.capHit} onResetDay={bot.resetDay}
           /></div>
           <div className="flex flex-col gap-3 lg:col-span-5"><ServerBotPanel /><ClockPanel candle={bot.candle} ticker={ticker} /></div>

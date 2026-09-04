@@ -1,6 +1,16 @@
 import { mmss } from "@/lib/bot/candle";
-import { CLOSE_SECS, GATE_SECS } from "@/lib/bot/constants";
+import { CLOSE_SECS, GATE_SECS, type GatePresetName } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
+
+export interface Gates {
+  threshold: number;
+  evMargin: number;
+  minYesMid: number;
+  maxYesMid: number;
+  minSkew: number;
+  maxSpread: number;
+  minSigmaDist: number;
+}
 
 interface Props {
   candle: CandleInfo;
@@ -17,6 +27,11 @@ interface Props {
   live: { configured: boolean; balance: number | null; error: string | null };
   evMargin: number;
   onEvMargin: (n: number) => void;
+  gates: Gates;
+  gatePreset: string;
+  onGatePreset: (name: GatePresetName) => void;
+  onGate: (patch: Partial<Gates>) => void;
+  blocks?: { pair: string; reason: string }[];
   dayPnl: number;
   dailyLossCap: number;
   capHit: boolean;
@@ -38,6 +53,11 @@ export function EnginePanel({
   live,
   evMargin,
   onEvMargin,
+  gates,
+  gatePreset,
+  onGatePreset,
+  onGate,
+  blocks,
   dayPnl,
   dailyLossCap,
   capHit,
@@ -57,7 +77,7 @@ export function EnginePanel({
       : el >= CLOSE_SECS
         ? { text: "🔴 Closing zone — too late for a new entry", tone: "border-no/30 bg-no/10 text-no" }
         : {
-            text: `🟢 Trade window OPEN — the bot fires the best ${maxTrades} signals at 86%+`,
+            text: `🟢 Trade window OPEN — the bot fires the best ${maxTrades} signals at ${gates.threshold}%+`,
             tone: "border-yes/40 bg-yes/10 text-yes",
           };
 
@@ -196,6 +216,131 @@ export function EnginePanel({
             Higher = fewer, better-priced trades. Blocks expensive contracts with little left to win.
           </p>
         </div>
+
+        {/* Every filter that can stop a trade, tunable, plus what is blocking now. */}
+        <div className="mt-2 rounded-md border border-wire bg-surface-2 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] tracking-[0.2em] text-muted-foreground">SIGNAL GATES</span>
+            <span className="font-sans text-[9px] font-bold tracking-widest text-gold">
+              {gatePreset.toUpperCase()}
+            </span>
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            {(["strict", "balanced", "aggressive"] as GatePresetName[]).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onGatePreset(n)}
+                className={`rounded-md border py-1.5 text-[9px] tracking-widest transition-colors ${
+                  gatePreset === n
+                    ? "border-yes/60 bg-yes/10 font-bold text-yes"
+                    : "border-wire text-muted-foreground hover:border-dim"
+                }`}
+              >
+                {n.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-2 space-y-2">
+            {[
+              {
+                key: "threshold" as const,
+                label: "MIN CONFIDENCE",
+                value: gates.threshold,
+                display: `${gates.threshold.toFixed(0)}%`,
+                min: 60,
+                max: 95,
+                step: 1,
+                toValue: (v: number) => v,
+              },
+              {
+                key: "maxSpread" as const,
+                label: "MAX SPREAD",
+                value: Math.round(gates.maxSpread * 100),
+                display: `${(gates.maxSpread * 100).toFixed(0)}¢`,
+                min: 2,
+                max: 15,
+                step: 1,
+                toValue: (v: number) => v / 100,
+              },
+              {
+                key: "minSkew" as const,
+                label: "MIN BOOK LEAN",
+                value: Math.round(gates.minSkew * 100),
+                display: `${(gates.minSkew * 100).toFixed(0)}¢`,
+                min: 0,
+                max: 10,
+                step: 1,
+                toValue: (v: number) => v / 100,
+              },
+              {
+                key: "minYesMid" as const,
+                label: "PRICE BAND — LOW",
+                value: Math.round(gates.minYesMid * 100),
+                display: `${(gates.minYesMid * 100).toFixed(0)}¢`,
+                min: 1,
+                max: 40,
+                step: 1,
+                toValue: (v: number) => v / 100,
+              },
+              {
+                key: "maxYesMid" as const,
+                label: "PRICE BAND — HIGH",
+                value: Math.round(gates.maxYesMid * 100),
+                display: `${(gates.maxYesMid * 100).toFixed(0)}¢`,
+                min: 60,
+                max: 99,
+                step: 1,
+                toValue: (v: number) => v / 100,
+              },
+              {
+                key: "minSigmaDist" as const,
+                label: "STRIKE CUSHION",
+                value: Math.round(gates.minSigmaDist * 100),
+                display: `${gates.minSigmaDist.toFixed(2)}σ`,
+                min: 0,
+                max: 150,
+                step: 5,
+                toValue: (v: number) => v / 100,
+              },
+            ].map((g) => (
+              <div key={g.key}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] tracking-[0.15em] text-dim">{g.label}</span>
+                  <span className="font-sans text-[11px] font-extrabold text-hi tabular-nums">
+                    {g.display}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={g.min}
+                  max={g.max}
+                  step={g.step}
+                  value={g.value}
+                  aria-label={g.label}
+                  onChange={(e) => onGate({ [g.key]: g.toValue(Number(e.target.value)) })}
+                  className="mt-1 w-full accent-[var(--gold)]"
+                />
+              </div>
+            ))}
+          </div>
+
+          {blocks?.length ? (
+            <div className="mt-2 space-y-0.5 border-t border-wire pt-2">
+              <p className="text-[8px] font-bold tracking-widest text-dim">BLOCKING RIGHT NOW</p>
+              {blocks.slice(0, 7).map((b) => (
+                <p key={b.pair} className="flex justify-between gap-2 text-[8px] text-dim">
+                  <span className="font-bold text-fg">{b.pair}</span>
+                  <span className="truncate text-right">{b.reason}</span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+
 
 
 

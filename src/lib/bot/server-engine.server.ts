@@ -22,8 +22,14 @@ import {
   DAILY_LOSS_CAP_DEFAULT,
   GATE_SECS,
   MAX_SLIPPAGE_CENTS,
+  MAX_SPREAD,
+  MAX_YES_MID,
   MIN_RESTING_DEPTH,
+  MIN_SIGMA_DIST,
+  MIN_SKEW,
+  MIN_YES_MID,
   PAIRS,
+  THRESHOLD,
   type PairId,
 } from "./constants";
 import { computeSignals, getSignalTrace, setCalibration } from "./signals";
@@ -63,6 +69,14 @@ export interface ServerBotRow {
   last_tick_at: string | null;
   last_tick_msg: string | null;
   daily_loss_cap: number;
+  /** Signal gates, tunable from the dashboard. */
+  threshold?: number | null;
+  min_yes_mid?: number | null;
+  max_yes_mid?: number | null;
+  min_skew?: number | null;
+  max_spread?: number | null;
+  min_sigma_dist?: number | null;
+  gate_preset?: string | null;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
 }
@@ -108,6 +122,14 @@ export interface ServerBotState {
   evMargin: number;
   maxTrades: number;
   dailyLossCap: number;
+  /** Signal gates, as the runner will use them on the next tick. */
+  threshold: number;
+  minYesMid: number;
+  maxYesMid: number;
+  minSkew: number;
+  maxSpread: number;
+  minSigmaDist: number;
+  gatePreset: string;
   lastTickAt: string | null;
   lastTickMsg: string | null;
   recentTrades: {
@@ -122,6 +144,8 @@ export interface ServerBotState {
   }[];
   /** Newest reason per pair a server-seen signal did NOT become an order. */
   skips: { pair: string; reason: string; ts: string }[];
+  /** Newest gate that blocked each pair (rejected OR skipped) on the server. */
+  blocks: { pair: string; reason: string; verdict: string; ts: string }[];
   error?: string;
 }
 
@@ -134,20 +158,34 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     .eq("source", "server")
     .order("ts", { ascending: false })
     .limit(8);
-  // Why the server didn't trade a signal it liked: newest skip per pair.
-  const { data: skipRows } = await db
+  // Why the server didn't trade: newest decision per pair. Rejections come from
+  // the gates, skips from the order path — both matter when nothing fires.
+  const { data: decisionRows } = await db
     .from("signal_log")
-    .select("ts, pair, reason")
+    .select("ts, pair, reason, verdict")
     .eq("source", "server")
-    .eq("verdict", "skipped")
+    .in("verdict", ["skipped", "rejected"])
     .order("ts", { ascending: false })
-    .limit(60);
-  const seen = new Set<string>();
+    .limit(200);
+  const rows = (decisionRows ?? []) as {
+    ts: string;
+    pair: string;
+    reason: string | null;
+    verdict: string;
+  }[];
+  const seenSkip = new Set<string>();
   const skips: ServerBotState["skips"] = [];
-  for (const r of (skipRows ?? []) as { ts: string; pair: string; reason: string | null }[]) {
-    if (seen.has(r.pair)) continue;
-    seen.add(r.pair);
-    skips.push({ pair: r.pair, reason: r.reason ?? "skipped", ts: r.ts });
+  const seenBlock = new Set<string>();
+  const blocks: ServerBotState["blocks"] = [];
+  for (const r of rows) {
+    if (!seenBlock.has(r.pair)) {
+      seenBlock.add(r.pair);
+      blocks.push({ pair: r.pair, reason: r.reason ?? r.verdict, verdict: r.verdict, ts: r.ts });
+    }
+    if (r.verdict === "skipped" && !seenSkip.has(r.pair)) {
+      seenSkip.add(r.pair);
+      skips.push({ pair: r.pair, reason: r.reason ?? "skipped", ts: r.ts });
+    }
   }
   return {
     ok: true,
@@ -156,10 +194,18 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     evMargin: s.ev_margin,
     maxTrades: s.max_trades,
     dailyLossCap: s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT,
+    threshold: s.threshold ?? THRESHOLD,
+    minYesMid: s.min_yes_mid ?? MIN_YES_MID,
+    maxYesMid: s.max_yes_mid ?? MAX_YES_MID,
+    minSkew: s.min_skew ?? MIN_SKEW,
+    maxSpread: s.max_spread ?? MAX_SPREAD,
+    minSigmaDist: s.min_sigma_dist ?? MIN_SIGMA_DIST,
+    gatePreset: s.gate_preset ?? "balanced",
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
     recentTrades: (recent ?? []) as ServerBotState["recentTrades"],
     skips,
+    blocks,
   };
 }
 
@@ -399,7 +445,17 @@ async function runOwnedServerBotTick(db: Db) {
 
   // ---- Engine inputs that only change per tick ----------------------------
   resetTuning();
-  setTuning({ evMargin: settings.ev_margin });
+  // Every gate the dashboard exposes is applied here, so what you set is
+  // literally what the runner filters on (not just the EV margin).
+  setTuning({
+    evMargin: settings.ev_margin,
+    threshold: settings.threshold ?? THRESHOLD,
+    minYesMid: settings.min_yes_mid ?? MIN_YES_MID,
+    maxYesMid: settings.max_yes_mid ?? MAX_YES_MID,
+    minSkew: settings.min_skew ?? MIN_SKEW,
+    maxSpread: settings.max_spread ?? MAX_SPREAD,
+    minSigmaDist: settings.min_sigma_dist ?? MIN_SIGMA_DIST,
+  });
   const cal = await loadCalibration(db);
   setCalibration(cal.table, cal.pairTable);
   setPairEdge(cal.pairEdge);
