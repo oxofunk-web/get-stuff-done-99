@@ -146,6 +146,21 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     .eq("source", "server")
     .order("ts", { ascending: false })
     .limit(8);
+  // Why the server didn't trade a signal it liked: newest skip per pair.
+  const { data: skipRows } = await db
+    .from("signal_log")
+    .select("ts, pair, reason")
+    .eq("source", "server")
+    .eq("verdict", "skipped")
+    .order("ts", { ascending: false })
+    .limit(60);
+  const seen = new Set<string>();
+  const skips: ServerBotState["skips"] = [];
+  for (const r of (skipRows ?? []) as { ts: string; pair: string; reason: string | null }[]) {
+    if (seen.has(r.pair)) continue;
+    seen.add(r.pair);
+    skips.push({ pair: r.pair, reason: r.reason ?? "skipped", ts: r.ts });
+  }
   return {
     ok: true,
     enabled: s.enabled,
@@ -160,6 +175,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
     recentTrades: (recent ?? []) as ServerBotState["recentTrades"],
+    skips,
   };
 }
 
