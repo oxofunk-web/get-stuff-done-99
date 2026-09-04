@@ -84,72 +84,55 @@ export function EnginePanel({
   return (
     <section className="panel">
       <div className="panel-head">
-        <span>Auto-Trade Engine</span>
+        <span>Live Auto-Trade Engine</span>
         <span className="text-[8px] tracking-widest text-dim">
-          {mode === "live"
-            ? live.balance !== null
-              ? `BALANCE $${live.balance.toFixed(2)}`
-              : "LIVE"
-            : "PAPER"}
+          {live.balance !== null ? `BALANCE $${live.balance.toFixed(2)}` : "LIVE"}
         </span>
       </div>
 
       <div className="p-3">
-        <div className="grid grid-cols-2 gap-1.5">
-          {(["paper", "live"] as Mode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => onModeChange(m)}
-              className={`rounded-md border px-2 py-2 font-sans text-[11px] font-bold tracking-widest transition-colors ${
-                mode === m
-                  ? m === "live"
-                    ? "border-no/60 bg-no/15 text-no"
-                    : "border-yes/60 bg-yes/15 text-yes"
-                  : "border-wire text-muted-foreground hover:border-dim"
-              }`}
-            >
-              {m === "paper" ? "PAPER" : "LIVE MONEY"}
-            </button>
-          ))}
-        </div>
-        {mode === "live" ? (
-          <p className="mt-1.5 text-[8px] leading-relaxed text-no">
-            Real orders will be submitted to your Kalshi account by the server — even with this app
-            closed.
-          </p>
-        ) : !live.configured ? (
-          <p className="mt-1.5 text-[8px] leading-relaxed text-dim">
-            Add your Kalshi API key on the server to unlock live money mode.
-          </p>
-        ) : null}
-
-        <div className="mt-3 flex items-center justify-between rounded-md border border-wire bg-surface-2 px-3 py-2.5">
-          <span className="text-[8px] tracking-[0.2em] text-muted-foreground">BOT STATUS</span>
+        <div
+          className={`flex items-center justify-between rounded-md border px-3 py-2.5 ${
+            botOn ? "border-no/60 bg-no/10" : "border-wire bg-surface-2"
+          }`}
+        >
+          <span
+            className={`font-sans text-[11px] font-bold tracking-[0.2em] ${botOn ? "text-no" : "text-muted-foreground"}`}
+          >
+            LIVE TRADING
+          </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               role="switch"
               aria-checked={botOn}
-              aria-label="Toggle auto-trading"
+              aria-label="Toggle live trading"
               onClick={onToggle}
               className={`relative h-5 w-10 rounded-full border transition-colors ${
-                botOn ? "border-yes bg-yes/25" : "border-wire bg-surface-3"
+                botOn ? "border-no bg-no/30" : "border-wire bg-surface-3"
               }`}
             >
               <span
                 className={`absolute top-0.5 size-3.5 rounded-full transition-all ${
-                  botOn ? "left-[22px] bg-yes" : "left-0.5 bg-dim"
+                  botOn ? "left-[22px] bg-no" : "left-0.5 bg-dim"
                 }`}
               />
             </button>
             <span
-              className={`font-sans text-[11px] font-bold tracking-widest ${botOn ? "text-yes" : "text-dim"}`}
+              className={`font-sans text-[11px] font-bold tracking-widest ${botOn ? "text-no" : "text-dim"}`}
             >
               {botOn ? "ON" : "OFF"}
             </span>
           </div>
         </div>
+        <p className={`mt-1.5 text-[8px] leading-relaxed ${botOn ? "text-no" : "text-dim"}`}>
+          {botOn
+            ? "REAL MONEY ARMED — the server submits real Kalshi orders right away, even with this app closed. There is no paper mode."
+            : !live.configured
+              ? "Add your Kalshi API key on the server before switching this on."
+              : "Off — no orders are placed. Switching on arms real money immediately."}
+        </p>
+
 
         <div className="mt-2 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-wire bg-wire">
           {cells.map((c) => (
