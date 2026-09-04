@@ -7,4 +7,5 @@
 - [x] Remove exit management (take profit / stop out) — positions just settle
 - [x] De-duplicate browser signal accuracy and label it monitor-only
 - [x] Use a value-based chase ceiling with at most two order attempts per pair/candle
-- [ ] Flip LIVE TRADING ON, then verify the runner trades by itself across a full trade window; typecheck + tests
+- [x] Flip LIVE TRADING ON and verify settings/heartbeat; typecheck + tests
+- [ ] Publish the latest execution fixes, then verify an autonomous fill in the next qualifying window
