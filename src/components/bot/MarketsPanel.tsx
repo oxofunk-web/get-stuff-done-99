@@ -4,10 +4,9 @@ import type { KalshiMarket } from "@/lib/bot/types";
 interface Props {
   markets: Partial<Record<PairId, KalshiMarket>>;
   ok: boolean | null;
-  mode: "paper" | "live";
 }
 
-export function MarketsPanel({ markets, ok, mode }: Props) {
+export function MarketsPanel({ markets, ok }: Props) {
   const rows = PAIRS.filter((p) => markets[p.id]);
 
   return (
@@ -72,17 +71,11 @@ export function MarketsPanel({ markets, ok, mode }: Props) {
           className={`flex items-center gap-1 rounded-full border px-2 py-px text-[7px] tracking-widest ${
             ok === false
               ? "border-no/30 bg-no/10 text-no"
-              : mode === "paper"
-                ? "border-gold/30 bg-gold/10 text-gold"
-                : "border-yes/30 bg-yes/10 text-yes"
+              : "border-yes/30 bg-yes/10 text-yes"
           }`}
         >
           <span className="size-1 rounded-full bg-current animate-blink" />
-          {ok === false
-            ? "KALSHI ERR — RETRYING"
-            : mode === "paper"
-              ? "KALSHI LIVE · PAPER FILLS"
-              : "KALSHI LIVE · REAL ORDERS"}
+          {ok === false ? "KALSHI ERR — RETRYING" : "KALSHI LIVE · REAL ORDERS"}
         </span>
       </div>
     </section>

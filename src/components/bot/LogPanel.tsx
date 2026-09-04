@@ -28,12 +28,12 @@ export function LogPanel({ log }: { log: TradeLogEntry[] }) {
                     className={`ml-auto rounded-full border px-1.5 py-px text-[7px] tracking-widest ${
                       t.status === "failed"
                         ? "border-no/30 bg-no/10 text-no"
-                        : t.paper
+                        : t.exitReason
                           ? "border-gold/30 bg-gold/10 text-gold"
                           : "border-yes/30 bg-yes/10 text-yes"
                     }`}
                   >
-                    {t.status === "failed" ? "FAILED" : t.paper ? "PAPER" : "LIVE"}
+                    {t.status === "failed" ? "FAILED" : t.exitReason ? "CLOSED" : "LIVE"}
                   </span>
                 </div>
                 <div className="mt-0.5 truncate text-[8px] text-muted-foreground">{t.msg}</div>
