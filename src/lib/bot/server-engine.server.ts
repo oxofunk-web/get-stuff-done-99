@@ -42,7 +42,7 @@ import {
   advanceStableSignal,
   freshMarketSupportsSignal,
   ORDER_CUTOFF_BUFFER_SECS,
-  REQUIRED_STABLE_SAMPLES,
+  isStable,
   type StableSignalCandidate,
 } from "./stability";
 import { fetchLiveBalance, fetchMarket, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
@@ -549,6 +549,12 @@ async function runOwnedServerBotTick(db: Db) {
   const attemptsByPair = new Map<string, number>();
   const lockedTickers = new Map<PairId, string>();
   const stableCandidates = new Map<PairId, StableSignalCandidate>();
+  /**
+   * One decision per pair per candle. Without this the runner re-scored the
+   * same opportunity ~16 times per candle, so every accuracy number counted a
+   * single opportunity as sixteen.
+   */
+  const decidedPairs = new Set<string>();
 
   while (Date.now() < deadline) {
     rounds += 1;
@@ -568,6 +574,7 @@ async function runOwnedServerBotTick(db: Db) {
       attemptsByPair.clear();
       lockedTickers.clear();
       stableCandidates.clear();
+      decidedPairs.clear();
       for (const r of (existing ?? []) as { pair: string; status: string }[]) {
         attemptsByPair.set(r.pair, (attemptsByPair.get(r.pair) ?? 0) + 1);
         if (r.status === "placed") tradedPairs.add(r.pair);
@@ -680,20 +687,34 @@ async function runOwnedServerBotTick(db: Db) {
       const ticker = markets[signal.pair]?.ticker;
       if (!ticker) continue;
       const key = `${ticker}:${signal.dir}`;
-      const next = advanceStableSignal(stableCandidates.get(signal.pair), key, now, SAMPLE_GAP_MS - 250);
+      const next = advanceStableSignal(
+        stableCandidates.get(signal.pair),
+        key,
+        now,
+        SAMPLE_GAP_MS - 250,
+        signal.sigmaDist,
+      );
       stableCandidates.set(signal.pair, next);
-      if (next.count >= REQUIRED_STABLE_SAMPLES) stablePairs.add(signal.pair);
+      if (isStable(next)) stablePairs.add(signal.pair);
     }
     for (const pair of [...stableCandidates.keys()]) {
       if (!rankedSignals.some((signal) => signal.pair === pair)) stableCandidates.delete(pair);
     }
-    const signals = rankedSignals.filter((signal) => stablePairs.has(signal.pair));
+    const signals = rankedSignals.filter(
+      (signal) => stablePairs.has(signal.pair) && !decidedPairs.has(signal.pair),
+    );
+    // Record this candle's single decision for each pair that just confirmed.
+    for (const signal of signals) decidedPairs.add(signal.pair);
     const trace = getSignalTrace();
     lastSignals = signals.length;
 
     const slot = Math.floor(candleInfo(now).elapsed / 5) * 5;
     const fired = new Map(signals.map((s) => [s.pair, s]));
-    const awaiting = new Map(rankedSignals.filter((s) => !stablePairs.has(s.pair)).map((s) => [s.pair, s]));
+    const awaiting = new Map(
+      rankedSignals
+        .filter((s) => !stablePairs.has(s.pair) && !decidedPairs.has(s.pair))
+        .map((s) => [s.pair, s]),
+    );
     // Junk samples are not decisions: writing "outside the trade window" and
     // "not enough live data yet" for every pair every 5 seconds buried the real
     // signals (11k rows in 6h) and polluted what the dashboard calls a signal.
@@ -701,6 +722,7 @@ async function runOwnedServerBotTick(db: Db) {
     const isNoise = (verdict: string, reason: string | null) =>
       verdict === "rejected" && !!reason && NOISE_REASONS.some((n) => reason.startsWith(n));
     const logRows: SignalInsert[] = trace
+      .filter((t) => !decidedPairs.has(t.pair) || fired.has(t.pair))
       .filter((t) => !isNoise(t.verdict, t.reason) || fired.has(t.pair) || awaiting.has(t.pair))
       .map((t) => {
 

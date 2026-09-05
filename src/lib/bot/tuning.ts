@@ -9,6 +9,8 @@ import {
   THRESHOLD,
   EV_MARGIN,
   MIN_SIGMA_DIST,
+  MAX_SIGMA_DIST,
+  MAX_ENTRY_PRICE,
 } from "./constants";
 
 /**
@@ -29,6 +31,10 @@ export interface Tuning {
   evMargin: number;
   /** Minimum cushion between spot and strike, in standard deviations. */
   minSigmaDist: number;
+  /** Upper edge of the cushion band — past this the contract is fully priced. */
+  maxSigmaDist: number;
+  /** Highest price per contract the engine will pay for the leg it buys. */
+  maxEntry: number;
 }
 
 const defaults: Tuning = {
@@ -42,6 +48,8 @@ const defaults: Tuning = {
   closeSecs: CLOSE_SECS,
   evMargin: EV_MARGIN,
   minSigmaDist: MIN_SIGMA_DIST,
+  maxSigmaDist: MAX_SIGMA_DIST,
+  maxEntry: MAX_ENTRY_PRICE,
 };
 
 let current: Tuning = { ...defaults };

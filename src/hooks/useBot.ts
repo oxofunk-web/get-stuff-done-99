@@ -20,7 +20,7 @@ import {
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { pairVetoed, setPairEdge } from "@/lib/bot/ranking";
-import { advanceStableSignal, REQUIRED_STABLE_SAMPLES, type StableSignalCandidate } from "@/lib/bot/stability";
+import { advanceStableSignal, isStable, type StableSignalCandidate } from "@/lib/bot/stability";
 import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
@@ -437,9 +437,10 @@ export function useBot() {
         `${ticker}:${signal.dir}`,
         now,
         1_000,
+        signal.sigmaDist,
       );
       displayCandidates.current.set(signal.pair, next);
-      return next.count >= REQUIRED_STABLE_SAMPLES;
+      return isStable(next);
     });
     for (const pair of [...displayCandidates.current.keys()]) {
       if (!active.has(pair)) displayCandidates.current.delete(pair);

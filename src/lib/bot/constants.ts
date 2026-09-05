@@ -1,6 +1,6 @@
 export const GATE_SECS = 600; // trade window opens at the 10:00 mark (5 min before settle)
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
-export const THRESHOLD = 78; // minimum confidence to fire (BALANCED preset)
+export const THRESHOLD = 72; // minimum score to fire (BALANCED preset, de-saturated curve)
 export const MAX_TRADES_PER_CANDLE = 4; // up to one trade per pair per 15m candle
 export const MAX_SLIPPAGE_CENTS = 3; // floor for the value-based slippage cap
 /**
@@ -38,6 +38,23 @@ export const MIN_TICKS = 24; // enough spot history to trust momentum
 export const EV_MARGIN = 0.04;
 /** Minimum cushion between spot and strike, in standard deviations of movement. */
 export const MIN_SIGMA_DIST = 0.35;
+/**
+ * Upper end of the cushion band. Beyond this the contract is a near-certainty
+ * the book has already priced: 23 of 248 recorded live reads sat past 3σ and
+ * were bought at 78¢ average, where one miss erases several wins.
+ */
+export const MAX_SIGMA_DIST = 3.0;
+/** Cushion (in sigma) where the score peaks before decaying toward the band edge. */
+export const CUSHION_PEAK_SIGMA = 1.5;
+/** Highest price per contract the engine will pay for the leg it buys. */
+export const MAX_ENTRY_PRICE = 0.8;
+/** Score curve: 50 + SPAN * strength/(strength + HALF) — soft, never saturates. */
+export const SCORE_SPAN = 45;
+export const SCORE_HALF = 0.45;
+/** Display ceilings so a raw score can never be shown as a certainty. */
+export const SCORE_CAP_PROVEN = 95;
+export const SCORE_CAP_UNPROVEN = 90;
+
 
 /** Gate presets exposed on the dashboard. */
 export interface GatePreset {
@@ -52,7 +69,7 @@ export interface GatePreset {
 
 export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePreset> = {
   strict: {
-    threshold: 86,
+    threshold: 78,
     evMargin: 0.08,
     minYesMid: 0.12,
     maxYesMid: 0.9,
@@ -61,7 +78,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
     minSigmaDist: 0.55,
   },
   balanced: {
-    threshold: 78,
+    threshold: 72,
     evMargin: 0.04,
     minYesMid: 0.08,
     maxYesMid: 0.94,
@@ -70,7 +87,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
     minSigmaDist: 0.35,
   },
   aggressive: {
-    threshold: 70,
+    threshold: 66,
     evMargin: 0.02,
     minYesMid: 0.05,
     maxYesMid: 0.97,

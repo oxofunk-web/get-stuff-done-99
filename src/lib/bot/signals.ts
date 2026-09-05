@@ -9,7 +9,17 @@ import {
 } from "./calibration";
 import { candleInfo } from "./candle";
 import { ORDER_CUTOFF_BUFFER_SECS } from "./stability";
-import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
+import {
+  CUSHION_PEAK_SIGMA,
+  GATE_SECS,
+  LAG_PCT,
+  MIN_RESTING_DEPTH,
+  PAIRS,
+  SCORE_CAP_PROVEN,
+  SCORE_CAP_UNPROVEN,
+  SCORE_HALF,
+  SCORE_SPAN,
+} from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
 import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
@@ -209,6 +219,20 @@ export function computeSignals(
       );
       continue;
     }
+    // Depth belongs with the other cheap book checks, before any scoring: an
+    // unfillable book is not an opportunity in the first place.
+    if (Math.max(km.yesAskSize ?? 0, km.yesBidSize ?? 0) < MIN_RESTING_DEPTH) {
+      note(
+        p.id,
+        "rejected",
+        "nothing resting in the book",
+        { yesAskSize: km.yesAskSize ?? 0, yesBidSize: km.yesBidSize ?? 0, min: MIN_RESTING_DEPTH },
+        leanDir,
+      );
+      continue;
+    }
+
+
 
     const spotMom = spotMomentum(s);
     const spotMidMom = midMomentum(s);
@@ -242,15 +266,31 @@ export function computeSignals(
       sDir === skDir && skDir === kDir ? 1.35 : sDir === skDir || skDir === kDir ? 1.05 : 0.6;
 
     const lagBoost = lagDetected ? 1.3 : 1.0;
+    // Cushion is a BAND, not "more is better". Below the floor it is a coin
+    // flip; far beyond the band the outcome is a near-certainty the book has
+    // already priced, so the score decays instead of pinning at the top.
+    const absCushion = Math.abs(sigmaDist);
+    const cushionScore =
+      absCushion <= CUSHION_PEAK_SIGMA
+        ? absCushion / CUSHION_PEAK_SIGMA
+        : Math.max(
+            0,
+            1 -
+              ((absCushion - CUSHION_PEAK_SIGMA) /
+                Math.max(0.01, T.maxSigmaDist - CUSHION_PEAK_SIGMA)) *
+                0.7,
+          );
     const raw =
       Math.abs(skew) * 0.4 +
       Math.min(Math.abs(momZ), 2) * 0.2 +
       (Math.abs(kMom) / 0.008) * 0.15 +
-      // Cushion: spot already a standard deviation clear of the strike is the
-      // single strongest predictor for a short-dated binary.
-      Math.min(Math.abs(sigmaDist) / 1.5, 1) * 0.25;
+      cushionScore * 0.25;
     const strength = raw * agreement * liq * tFac * lagBoost;
-    const conf = 50 + Math.min(strength / 0.35, 1) * 49;
+    // Soft-saturating score: with the old hard cap 210 of 248 live reads all
+    // read 99, so the threshold could not discriminate at all. This curve keeps
+    // spreading as evidence grows and never reaches the ceiling.
+    const conf = 50 + SCORE_SPAN * (strength / (strength + SCORE_HALF));
+
 
     // Direction is resolved before the gates so every rejection below records
     // the trade it would have been.
@@ -320,6 +360,19 @@ export function computeSignals(
       continue;
     }
 
+    // Upper edge of the cushion band: a contract this far in the money is a
+    // near-certainty the book has already paid for, so there is no room left.
+    if (km.strike != null && sigma > 0 && Math.abs(sigmaDist) > T.maxSigmaDist) {
+      note(
+        p.id,
+        "rejected",
+        "already too deep in the money to be worth its price",
+        { sigmaDist: Number(sigmaDist.toFixed(2)), max: T.maxSigmaDist },
+        dir,
+      );
+      continue;
+    }
+
     // Price the trade honestly: calibrated probability vs. what we actually pay.
     const entry = Math.min(
       0.99,
@@ -328,6 +381,33 @@ export function computeSignals(
     const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
     const calibrationReady = (bucketFor(conf, calibration)?.n ?? 0) >= MIN_SAMPLES;
     const ev = evPerDollar(calibrated, entry);
+
+    // The leg we would actually buy must have something resting on it.
+    const legDepth = dir === "YES" ? (km.yesAskSize ?? 0) : (km.yesBidSize ?? 0);
+    if (legDepth < MIN_RESTING_DEPTH) {
+      note(
+        p.id,
+        "rejected",
+        "no depth on the side we would buy",
+        { legDepth, min: MIN_RESTING_DEPTH },
+        dir,
+      );
+      continue;
+    }
+
+    // Hard ceiling on what the leg may cost. Average recorded entry was 78¢,
+    // where a single loss wipes out several wins.
+    if (entry > T.maxEntry + 1e-9) {
+      note(
+        p.id,
+        "rejected",
+        "leg costs too much to leave any room",
+        { entry: Number(entry.toFixed(2)), max: T.maxEntry },
+        dir,
+      );
+      continue;
+    }
+
 
     if (calibrationReady && ev < T.evMargin) {
       note(
@@ -374,7 +454,9 @@ export function computeSignals(
       id: `${p.id}-${Math.floor(c.elapsed / 5)}-${dir}`,
       pair: p.id,
       dir,
-      conf: Math.min(conf, 99),
+      // Never present a raw score as a certainty: the ceiling depends on
+      // whether real settled fills back this confidence band.
+      conf: Math.min(conf, calibrationReady ? SCORE_CAP_PROVEN : SCORE_CAP_UNPROVEN),
       yesMid: ym,
       spread: km.spread,
       spotMom,
@@ -386,7 +468,7 @@ export function computeSignals(
       ev,
       sigmaDist,
       skew,
-      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · probability unproven`} · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
+      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
       elapsed: c.elapsed,
       remain: c.remain,
     });
