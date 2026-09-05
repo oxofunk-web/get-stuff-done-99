@@ -15,10 +15,10 @@ import {
   LAG_PCT,
   MIN_RESTING_DEPTH,
   PAIRS,
-  SCORE_CAP_PROVEN,
-  SCORE_CAP_UNPROVEN,
+  displayScore,
   SCORE_HALF,
   SCORE_SPAN,
+
 } from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
@@ -289,7 +289,13 @@ export function computeSignals(
     // Soft-saturating score: with the old hard cap 210 of 248 live reads all
     // read 99, so the threshold could not discriminate at all. This curve keeps
     // spreading as evidence grows and never reaches the ceiling.
-    const conf = 50 + SCORE_SPAN * (strength / (strength + SCORE_HALF));
+    const rawScore = 50 + SCORE_SPAN * (strength / (strength + SCORE_HALF));
+    // Bucket on the raw curve, then judge and DISPLAY the same compressed
+    // number, so the dial can never be compared against a value the panel
+    // does not show.
+    const calibrationSamples = bucketFor(rawScore, calibration)?.n ?? 0;
+    const calibrationReady = calibrationSamples >= MIN_SAMPLES;
+    const conf = displayScore(rawScore, calibrationReady);
 
 
     // Direction is resolved before the gates so every rejection below records
@@ -304,10 +310,11 @@ export function computeSignals(
       note(
         p.id,
         "rejected",
-        "confidence below threshold",
+        `confidence below threshold — missed by ${(T.threshold - conf).toFixed(1)}`,
         {
           conf: Number(conf.toFixed(1)),
           threshold: T.threshold,
+          missedBy: Number((T.threshold - conf).toFixed(1)),
           agreement,
           liq,
           sigmaDist: Number(sigmaDist.toFixed(2)),
@@ -316,6 +323,7 @@ export function computeSignals(
       );
       continue;
     }
+
 
     // Spot momentum must not fight the chosen direction.
     const momDir = Math.sign(spotMom || spotMidMom);
@@ -378,8 +386,8 @@ export function computeSignals(
       0.99,
       Math.max(0.01, (dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2)),
     );
-    const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
-    const calibrationReady = (bucketFor(conf, calibration)?.n ?? 0) >= MIN_SAMPLES;
+    const calibrated = calibrateFor(p.id, rawScore, calibration, pairCalibration);
+
     const ev = evPerDollar(calibrated, entry);
 
     // The leg we would actually buy must have something resting on it.
@@ -454,9 +462,9 @@ export function computeSignals(
       id: `${p.id}-${Math.floor(c.elapsed / 5)}-${dir}`,
       pair: p.id,
       dir,
-      // Never present a raw score as a certainty: the ceiling depends on
-      // whether real settled fills back this confidence band.
-      conf: Math.min(conf, calibrationReady ? SCORE_CAP_PROVEN : SCORE_CAP_UNPROVEN),
+      // Already compressed into the band its evidence earns, not clamped.
+      conf,
+
       yesMid: ym,
       spread: km.spread,
       spotMom,
@@ -464,6 +472,8 @@ export function computeSignals(
       lagDetected,
       calibrated,
         calibrationReady,
+      calibrationSamples,
+
       entry,
       ev,
       sigmaDist,

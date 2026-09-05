@@ -1,5 +1,5 @@
 import { mmss } from "@/lib/bot/candle";
-import { CLOSE_SECS, GATE_SECS, type GatePresetName } from "@/lib/bot/constants";
+import { CLOSE_SECS, GATE_SECS, SCORE_DIAL_MAX, type GatePresetName } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
 
 export interface Gates {
@@ -251,10 +251,11 @@ export function EnginePanel({
                 value: gates.threshold,
                 display: `${gates.threshold.toFixed(0)}%`,
                 min: 60,
-                max: 95,
+                max: SCORE_DIAL_MAX,
                 step: 1,
                 toValue: (v: number) => v,
               },
+
               {
                 key: "maxSpread" as const,
                 label: "MAX SPREAD",
