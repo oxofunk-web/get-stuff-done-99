@@ -51,9 +51,29 @@ export const MAX_ENTRY_PRICE = 0.8;
 /** Score curve: 50 + SPAN * strength/(strength + HALF) — soft, never saturates. */
 export const SCORE_SPAN = 45;
 export const SCORE_HALF = 0.45;
+/** Asymptote of the raw curve — the score approaches but never reaches it. */
+export const SCORE_ASYMPTOTE = 50 + SCORE_SPAN;
 /** Display ceilings so a raw score can never be shown as a certainty. */
 export const SCORE_CAP_PROVEN = 95;
 export const SCORE_CAP_UNPROVEN = 90;
+/**
+ * Highest value the minimum-confidence dial may be set to. A dial above what
+ * the curve can reach is a dead zone where nothing can ever fire — that is
+ * exactly what an 88 setting did against a 90 display ceiling.
+ */
+export const SCORE_DIAL_MAX = SCORE_CAP_UNPROVEN - 4;
+
+/**
+ * Compress the raw score into the band its evidence earns, WITHOUT clamping:
+ * a hard Math.min collapsed every strong read onto the same number, which is
+ * the saturation problem all over again. This keeps every read distinct.
+ */
+export function displayScore(raw: number, calibrationReady: boolean) {
+  const cap = calibrationReady ? SCORE_CAP_PROVEN : SCORE_CAP_UNPROVEN;
+  const t = Math.max(0, Math.min(1, (raw - 50) / (SCORE_ASYMPTOTE - 50)));
+  return 50 + (cap - 50) * t;
+}
+
 
 
 /** Gate presets exposed on the dashboard. */
