@@ -69,6 +69,9 @@ export interface TradeLogEntry {
   status: TradeStatus;
   msg: string;
   pnl?: number | null;
+  /** Exact contract identity for audit and settlement. */
+  ticker?: string | null;
+  strike?: number | null;
 }
 
 export interface OrderResult {

@@ -274,6 +274,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     const { data: tradeRows } = await db
       .from("trade_log")
       .select("ts, candle_id, pair, dir, conf, pnl, outcome, entry_price, status")
+      .eq("source", "server")
       .limit(20000);
     const money = new Map<string, { pnl: number; trades: number }>();
     const settledTrades = ((tradeRows ?? []) as {

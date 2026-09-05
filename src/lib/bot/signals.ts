@@ -6,6 +6,7 @@ import {
   type PairCalibration,
 } from "./calibration";
 import { candleInfo } from "./candle";
+import { ORDER_CUTOFF_BUFFER_SECS } from "./stability";
 import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
@@ -161,12 +162,12 @@ export function computeSignals(
   const T = getTuning();
   const { gateSecs: GATE, closeSecs: CLOSE } = T;
   const c = candleInfo(now);
-  if (c.elapsed < GATE || c.elapsed >= CLOSE) {
+  if (c.elapsed < GATE || c.elapsed >= CLOSE - ORDER_CUTOFF_BUFFER_SECS) {
     for (const p of PAIRS)
       note(p.id, "rejected", "outside the trade window", {
         elapsed: c.elapsed,
         gate: GATE,
-        close: CLOSE,
+        close: CLOSE - ORDER_CUTOFF_BUFFER_SECS,
       });
     flush();
     return [];

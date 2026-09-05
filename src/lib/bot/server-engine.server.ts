@@ -300,18 +300,27 @@ async function loadCalibration(db: Db) {
   const pairTable: PairCalibration = {};
   const { data } = await db
     .from("signal_log")
-    .select("pair, conf, outcome, verdict, entry_price")
+    .select("candle_id, pair, dir, conf, outcome, verdict, entry_price")
+    .eq("source", "server")
     .not("outcome", "is", null)
     .not("conf", "is", null)
     .limit(20000);
   const edge = new Map<string, PairEdgeRow>();
-  for (const r of (data ?? []) as {
+  type CalibrationRow = {
+    candle_id: number;
     pair: string;
+    dir: string | null;
     conf: number;
     outcome: string;
     verdict: string;
     entry_price: number | null;
-  }[]) {
+  };
+  const unique = new Map<string, CalibrationRow>();
+  for (const r of (data ?? []) as CalibrationRow[]) {
+    const key = `${r.candle_id}:${r.pair}:${r.dir}:${r.verdict}`;
+    if (!unique.has(key)) unique.set(key, r);
+  }
+  for (const r of unique.values()) {
     const won = r.outcome === "win";
     const band = table.find((b) => r.conf >= b.lo && r.conf < b.hi);
     if (band) {
@@ -483,6 +492,7 @@ async function runOwnedServerBotTick(db: Db) {
     const { data: dayRows } = await db
       .from("trade_log")
       .select("pnl")
+      .eq("source", "server")
       .gte("ts", dayStart.toISOString())
       .not("pnl", "is", null);
     const dayPnl = ((dayRows ?? []) as { pnl: number }[]).reduce((a, r) => a + r.pnl, 0);
@@ -532,6 +542,31 @@ async function runOwnedServerBotTick(db: Db) {
 
     // ---- 1. Sample the feeds and record the tape --------------------------
     const c = candleInfo();
+    // Reset durable per-candle state before reading feeds. A feed outage on the
+    // first round must not leave the previous candle's locks/caps in memory.
+    if (c.id !== candleId) {
+      candleId = c.id;
+      const { data: existing } = await db
+        .from("trade_log")
+        .select("pair, status")
+        .eq("candle_id", c.id)
+        .eq("source", "server");
+      tradedPairs.clear();
+      attemptsByPair.clear();
+      lockedTickers.clear();
+      stableCandidates.clear();
+      for (const r of (existing ?? []) as { pair: string; status: string }[]) {
+        attemptsByPair.set(r.pair, (attemptsByPair.get(r.pair) ?? 0) + 1);
+        if (r.status === "placed") tradedPairs.add(r.pair);
+      }
+      remaining = Math.max(0, settings.max_trades - tradedPairs.size);
+      if (c.elapsed < 60) {
+        await db
+          .from("market_snapshots")
+          .delete()
+          .lt("ts", new Date(Date.now() - TAPE_RETENTION_MS).toISOString());
+      }
+    }
     // A dashboard OFF command takes effect during this run. Turning ON waits
     // for the next run so balance and loss-cap checks cannot be bypassed.
     settings = await loadSettings(db);
@@ -585,31 +620,7 @@ async function runOwnedServerBotTick(db: Db) {
       });
     }
 
-    // ---- 2. Candle bookkeeping (once per candle) --------------------------
-    if (c.id !== candleId) {
-      candleId = c.id;
-      const { data: existing } = await db
-        .from("trade_log")
-        .select("pair, status")
-        .eq("candle_id", c.id)
-        .eq("source", "server");
-      tradedPairs.clear();
-      attemptsByPair.clear();
-      lockedTickers.clear();
-      stableCandidates.clear();
-      for (const r of (existing ?? []) as { pair: string; status: string }[]) {
-        attemptsByPair.set(r.pair, (attemptsByPair.get(r.pair) ?? 0) + 1);
-        if (r.status === "placed") tradedPairs.add(r.pair);
-      }
-      remaining = Math.max(0, settings.max_trades - tradedPairs.size);
-      // Tape retention: one sweep per candle, keep a week of snapshots.
-      if (c.elapsed < 60) {
-        await db
-          .from("market_snapshots")
-          .delete()
-          .lt("ts", new Date(Date.now() - TAPE_RETENTION_MS).toISOString());
-      }
-    }
+    // ---- 2. Persist this round's tape -------------------------------------
     if (!snapshotRows.length) {
       lastMsg = "feeds unavailable — no spot prices this round";
       await sleep(SAMPLE_GAP_MS);
