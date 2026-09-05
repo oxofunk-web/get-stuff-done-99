@@ -38,6 +38,23 @@ export const MIN_TICKS = 24; // enough spot history to trust momentum
 export const EV_MARGIN = 0.04;
 /** Minimum cushion between spot and strike, in standard deviations of movement. */
 export const MIN_SIGMA_DIST = 0.35;
+/**
+ * Upper end of the cushion band. Beyond this the contract is a near-certainty
+ * the book has already priced: 23 of 248 recorded live reads sat past 3σ and
+ * were bought at 78¢ average, where one miss erases several wins.
+ */
+export const MAX_SIGMA_DIST = 3.0;
+/** Cushion (in sigma) where the score peaks before decaying toward the band edge. */
+export const CUSHION_PEAK_SIGMA = 1.5;
+/** Highest price per contract the engine will pay for the leg it buys. */
+export const MAX_ENTRY_PRICE = 0.8;
+/** Score curve: 50 + SPAN * strength/(strength + HALF) — soft, never saturates. */
+export const SCORE_SPAN = 45;
+export const SCORE_HALF = 0.45;
+/** Display ceilings so a raw score can never be shown as a certainty. */
+export const SCORE_CAP_PROVEN = 95;
+export const SCORE_CAP_UNPROVEN = 90;
+
 
 /** Gate presets exposed on the dashboard. */
 export interface GatePreset {
