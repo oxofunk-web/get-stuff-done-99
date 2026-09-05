@@ -8,4 +8,9 @@
 - [x] De-duplicate browser signal accuracy and label it monitor-only
 - [x] Use a value-based chase ceiling with at most two order attempts per pair/candle
 - [x] Flip LIVE TRADING ON and verify settings/heartbeat; typecheck + tests
+- [x] Diagnose wrong signals: mixed contract streams, duplicate calibration, cutoff race, ambiguous settlement
+- [ ] Lock one contract per pair/candle and require stable repeated signals
+- [ ] Calibrate from unique server decisions and settle fills by exact contract
+- [ ] Reset contaminated signal/snapshot telemetry and restore conservative controls
+- [ ] Run safeguards and observe the bot while OFF across a trade window
 - [ ] Publish the latest execution fixes, then verify an autonomous fill in the next qualifying window
