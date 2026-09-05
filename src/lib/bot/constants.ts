@@ -1,6 +1,6 @@
 export const GATE_SECS = 600; // trade window opens at the 10:00 mark (5 min before settle)
 export const CLOSE_SECS = 840; // 14:00 — closing zone, no new entries
-export const THRESHOLD = 78; // minimum confidence to fire (BALANCED preset)
+export const THRESHOLD = 72; // minimum score to fire (BALANCED preset, de-saturated curve)
 export const MAX_TRADES_PER_CANDLE = 4; // up to one trade per pair per 15m candle
 export const MAX_SLIPPAGE_CENTS = 3; // floor for the value-based slippage cap
 /**
@@ -69,7 +69,7 @@ export interface GatePreset {
 
 export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePreset> = {
   strict: {
-    threshold: 86,
+    threshold: 78,
     evMargin: 0.08,
     minYesMid: 0.12,
     maxYesMid: 0.9,
@@ -78,7 +78,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
     minSigmaDist: 0.55,
   },
   balanced: {
-    threshold: 78,
+    threshold: 72,
     evMargin: 0.04,
     minYesMid: 0.08,
     maxYesMid: 0.94,
@@ -87,7 +87,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
     minSigmaDist: 0.35,
   },
   aggressive: {
-    threshold: 70,
+    threshold: 66,
     evMargin: 0.02,
     minYesMid: 0.05,
     maxYesMid: 0.97,
