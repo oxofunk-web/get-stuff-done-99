@@ -11,6 +11,6 @@
 - [x] Diagnose wrong signals: mixed contract streams, duplicate calibration, cutoff race, ambiguous settlement
 - [x] Lock one contract per pair/candle and require stable repeated signals
 - [x] Calibrate from unique server decisions and settle fills by exact contract
-- [ ] Reset contaminated signal/snapshot telemetry and restore conservative controls
+- [x] Reset contaminated signal/snapshot telemetry and restore conservative controls
 - [ ] Run safeguards and observe the bot while OFF across a trade window
 - [ ] Publish the latest execution fixes, then verify an autonomous fill in the next qualifying window

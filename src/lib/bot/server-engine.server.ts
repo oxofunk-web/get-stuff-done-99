@@ -707,7 +707,9 @@ async function runOwnedServerBotTick(db: Db) {
     });
     // Pairs the engine fired but selection dropped (cooldown) — visible, not silent.
     for (const s of scored) {
-      if (fired.has(s.pair)) continue;
+      // Stable and still-confirming candidates are already represented above.
+      // Only signals removed by ranking/cooldown belong in this branch.
+      if (rankedSignals.some((ranked) => ranked.pair === s.pair)) continue;
       logRows.push({
         candle_id: c.id,
         seconds_in: slot,

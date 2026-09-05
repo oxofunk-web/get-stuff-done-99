@@ -22,6 +22,15 @@ export interface Final {
   spot: number;
 }
 
+export function gradeContract(
+  dir: "YES" | "NO",
+  finalSpot: number,
+  strike: number,
+) {
+  const yesWon = finalSpot >= strike;
+  return dir === "YES" ? yesWon : !yesWon;
+}
+
 /** Last recorded spot (and strike) per pair for a candle, straight off the tape. */
 export async function finalsFromTape(db: Db, candleId: number) {
   const { data } = await db
@@ -68,8 +77,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
     // Rejected rows carry the direction the engine *would* have taken, so the
     // counterfactual grades exactly like a real trade.
     if (spot == null || strike == null || !s.dir) continue;
-    const yesWon = spot >= strike;
-    const won = s.dir === "YES" ? yesWon : !yesWon;
+    const won = gradeContract(s.dir as "YES" | "NO", spot, strike);
     const { error: upErr } = await db
       .from("signal_log")
       .update({ outcome: won ? "win" : "loss", settled_spot: spot, settled_at: at })
@@ -100,8 +108,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
     // old tape-derived value so existing audit history remains settleable.
     const strike = t.strike ?? strikes.get(t.pair) ?? null;
     if (spot == null || strike == null) continue;
-    const yesWon = spot >= strike;
-    const won = t.dir === "YES" ? yesWon : !yesWon;
+    const won = gradeContract(t.dir as "YES" | "NO", spot, strike);
     const count = t.contracts ?? 0;
     const entry = t.entry_price ?? 0;
     const pnl = won ? count * (1 - entry) : -count * entry;

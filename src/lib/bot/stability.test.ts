@@ -7,6 +7,7 @@ import {
   marketMatchesActiveCandle,
 } from "./stability";
 import type { KalshiMarket, Signal } from "./types";
+import { gradeContract } from "./settle.server";
 
 const signal = { pair: "BTC", dir: "YES" } as Signal;
 const market = {
@@ -42,5 +43,11 @@ describe("signal stability", () => {
     expect(freshMarketSupportsSignal(signal, market, 101, 0.05)).toBe(true);
     expect(freshMarketSupportsSignal(signal, { ...market, yesMid: 0.49 }, 101, 0.05)).toBe(false);
     expect(freshMarketSupportsSignal(signal, market, 99, 0.05)).toBe(false);
+  });
+
+  it("grades a fill against its stored strike rather than another listed strike", () => {
+    expect(gradeContract("YES", 101, 100)).toBe(true);
+    expect(gradeContract("YES", 101, 102)).toBe(false);
+    expect(gradeContract("NO", 101, 102)).toBe(true);
   });
 });
