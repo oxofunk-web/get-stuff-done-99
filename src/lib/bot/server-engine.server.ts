@@ -393,7 +393,7 @@ interface SignalInsert {
   spot?: number | null;
   strike?: number | null;
   strike_type?: "floor" | "cap" | null;
-  strategy_version: string;
+  strategy_version?: string;
 }
 
 
