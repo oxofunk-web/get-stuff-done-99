@@ -37,6 +37,13 @@ import { dropVetoed, rankSignals, setPairEdge } from "./ranking";
 import type { PairEdgeRow } from "./telemetry.functions";
 import { resetTuning, setTuning } from "./tuning";
 import { restingDepth } from "./order-map";
+import {
+  advanceStableSignal,
+  freshMarketSupportsSignal,
+  ORDER_CUTOFF_BUFFER_SECS,
+  REQUIRED_STABLE_SAMPLES,
+  type StableSignalCandidate,
+} from "./stability";
 import { fetchLiveBalance, fetchMarket, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
 
@@ -293,18 +300,27 @@ async function loadCalibration(db: Db) {
   const pairTable: PairCalibration = {};
   const { data } = await db
     .from("signal_log")
-    .select("pair, conf, outcome, verdict, entry_price")
+    .select("candle_id, pair, dir, conf, outcome, verdict, entry_price")
+    .eq("source", "server")
     .not("outcome", "is", null)
     .not("conf", "is", null)
     .limit(20000);
   const edge = new Map<string, PairEdgeRow>();
-  for (const r of (data ?? []) as {
+  type CalibrationRow = {
+    candle_id: number;
     pair: string;
+    dir: string | null;
     conf: number;
     outcome: string;
     verdict: string;
     entry_price: number | null;
-  }[]) {
+  };
+  const unique = new Map<string, CalibrationRow>();
+  for (const r of (data ?? []) as CalibrationRow[]) {
+    const key = `${r.candle_id}:${r.pair}:${r.dir}:${r.verdict}`;
+    if (!unique.has(key)) unique.set(key, r);
+  }
+  for (const r of unique.values()) {
     const won = r.outcome === "win";
     const band = table.find((b) => r.conf >= b.lo && r.conf < b.hi);
     if (band) {
@@ -386,7 +402,8 @@ interface SignalInsert {
  */
 async function runOwnedServerBotTick(db: Db) {
   const startedAt = Date.now();
-  const settings = await loadSettings(db);
+  let settings = await loadSettings(db);
+  const armedAtStart = settings.enabled;
   const deadline = startedAt + TICK_BUDGET_MS;
 
   const markets: Partial<Record<PairId, KalshiMarket>> = {};
@@ -475,6 +492,7 @@ async function runOwnedServerBotTick(db: Db) {
     const { data: dayRows } = await db
       .from("trade_log")
       .select("pnl")
+      .eq("source", "server")
       .gte("ts", dayStart.toISOString())
       .not("pnl", "is", null);
     const dayPnl = ((dayRows ?? []) as { pnl: number }[]).reduce((a, r) => a + r.pnl, 0);
@@ -516,12 +534,52 @@ async function runOwnedServerBotTick(db: Db) {
   let remaining = 0;
   const tradedPairs = new Set<string>();
   const attemptsByPair = new Map<string, number>();
+  const lockedTickers = new Map<PairId, string>();
+  const stableCandidates = new Map<PairId, StableSignalCandidate>();
 
   while (Date.now() < deadline) {
     rounds += 1;
 
     // ---- 1. Sample the feeds and record the tape --------------------------
     const c = candleInfo();
+    // Reset durable per-candle state before reading feeds. A feed outage on the
+    // first round must not leave the previous candle's locks/caps in memory.
+    if (c.id !== candleId) {
+      candleId = c.id;
+      const { data: existing } = await db
+        .from("trade_log")
+        .select("pair, status")
+        .eq("candle_id", c.id)
+        .eq("source", "server");
+      tradedPairs.clear();
+      attemptsByPair.clear();
+      lockedTickers.clear();
+      stableCandidates.clear();
+      for (const r of (existing ?? []) as { pair: string; status: string }[]) {
+        attemptsByPair.set(r.pair, (attemptsByPair.get(r.pair) ?? 0) + 1);
+        if (r.status === "placed") tradedPairs.add(r.pair);
+      }
+      remaining = Math.max(0, settings.max_trades - tradedPairs.size);
+      if (c.elapsed < 60) {
+        await db
+          .from("market_snapshots")
+          .delete()
+          .lt("ts", new Date(Date.now() - TAPE_RETENTION_MS).toISOString());
+      }
+    }
+    // A dashboard OFF command takes effect during this run. Turning ON waits
+    // for the next run so balance and loss-cap checks cannot be bypassed.
+    settings = await loadSettings(db);
+    const enabledNow = armedAtStart && settings.enabled;
+    setTuning({
+      evMargin: settings.ev_margin,
+      threshold: settings.threshold ?? THRESHOLD,
+      minYesMid: settings.min_yes_mid ?? MIN_YES_MID,
+      maxYesMid: settings.max_yes_mid ?? MAX_YES_MID,
+      minSkew: settings.min_skew ?? MIN_SKEW,
+      maxSpread: settings.max_spread ?? MAX_SPREAD,
+      minSigmaDist: settings.min_sigma_dist ?? MIN_SIGMA_DIST,
+    });
     // Spot first: the strike nearest spot is the only tradable one of the many
     // strikes each candle lists, so the market pull needs the price.
     const spots = await fetchSpots();
@@ -530,8 +588,11 @@ async function runOwnedServerBotTick(db: Db) {
     const snapshotRows: SnapshotInsert[] = [];
     const roundAt = Date.now();
     for (const p of PAIRS) {
-      const m = mkts[p.id];
+      const candidate = mkts[p.id];
+      const lockedTicker = lockedTickers.get(p.id);
+      const m = candidate && (!lockedTicker || candidate.ticker === lockedTicker) ? candidate : undefined;
       if (m) {
+        if (!lockedTicker) lockedTickers.set(p.id, m.ticker);
         markets[p.id] = m;
         marketAt[p.id] = roundAt;
       } else if (roundAt - (marketAt[p.id] ?? 0) > MAX_QUOTE_AGE_MS) {
@@ -559,6 +620,7 @@ async function runOwnedServerBotTick(db: Db) {
       });
     }
 
+    // ---- 2. Persist this round's tape -------------------------------------
     if (!snapshotRows.length) {
       lastMsg = "feeds unavailable — no spot prices this round";
       await sleep(SAMPLE_GAP_MS);
@@ -566,30 +628,6 @@ async function runOwnedServerBotTick(db: Db) {
     }
     await db.from("market_snapshots").insert(snapshotRows);
     sampled += snapshotRows.length;
-
-    // ---- 2. Candle bookkeeping (once per candle) --------------------------
-    if (c.id !== candleId) {
-      candleId = c.id;
-      const { data: existing } = await db
-        .from("trade_log")
-        .select("pair, status")
-        .eq("candle_id", c.id)
-        .eq("source", "server");
-      tradedPairs.clear();
-      attemptsByPair.clear();
-      for (const r of (existing ?? []) as { pair: string; status: string }[]) {
-        attemptsByPair.set(r.pair, (attemptsByPair.get(r.pair) ?? 0) + 1);
-        if (r.status === "placed") tradedPairs.add(r.pair);
-      }
-      remaining = Math.max(0, settings.max_trades - tradedPairs.size);
-      // Tape retention: one sweep per candle, keep a week of snapshots.
-      if (c.elapsed < 60) {
-        await db
-          .from("market_snapshots")
-          .delete()
-          .lt("ts", new Date(Date.now() - TAPE_RETENTION_MS).toISOString());
-      }
-    }
 
     // ---- 3. Rebuild the engine's inputs from this candle's tape -----------
     const { data: tape } = await db
@@ -621,27 +659,42 @@ async function runOwnedServerBotTick(db: Db) {
     // ---- 4. Same gates, same math as the dashboard ------------------------
     const now = Date.now();
     const scored = computeSignals(spot, markets, history, now);
-    const signals = rankSignals(dropVetoed(scored));
+    const rankedSignals = rankSignals(dropVetoed(scored));
+    const stablePairs = new Set<PairId>();
+    for (const signal of rankedSignals) {
+      const ticker = markets[signal.pair]?.ticker;
+      if (!ticker) continue;
+      const key = `${ticker}:${signal.dir}`;
+      const next = advanceStableSignal(stableCandidates.get(signal.pair), key, now, SAMPLE_GAP_MS - 250);
+      stableCandidates.set(signal.pair, next);
+      if (next.count >= REQUIRED_STABLE_SAMPLES) stablePairs.add(signal.pair);
+    }
+    for (const pair of [...stableCandidates.keys()]) {
+      if (!rankedSignals.some((signal) => signal.pair === pair)) stableCandidates.delete(pair);
+    }
+    const signals = rankedSignals.filter((signal) => stablePairs.has(signal.pair));
     const trace = getSignalTrace();
     lastSignals = signals.length;
 
     const slot = Math.floor(candleInfo(now).elapsed / 5) * 5;
     const fired = new Map(signals.map((s) => [s.pair, s]));
+    const awaiting = new Map(rankedSignals.filter((s) => !stablePairs.has(s.pair)).map((s) => [s.pair, s]));
     const logRows: SignalInsert[] = trace.map((t) => {
       const s = fired.get(t.pair);
+      const pending = awaiting.get(t.pair);
       const m = markets[t.pair];
       return {
         candle_id: c.id,
         seconds_in: slot,
         pair: t.pair as string,
-        verdict: t.verdict,
-        reason: t.reason,
+        verdict: pending ? "rejected" : t.verdict,
+        reason: pending ? "waiting for a second matching live sample" : t.reason,
         source: "server",
-        dir: s?.dir ?? t.dir ?? null,
-        conf: s?.conf ?? null,
-        calibrated: s?.calibrated ?? null,
-        entry_price: s?.entry ?? null,
-        ev: s?.ev ?? null,
+        dir: s?.dir ?? pending?.dir ?? t.dir ?? null,
+        conf: s?.conf ?? pending?.conf ?? null,
+        calibrated: s?.calibrated ?? pending?.calibrated ?? null,
+        entry_price: s?.entry ?? pending?.entry ?? null,
+        ev: s?.ev ?? pending?.ev ?? null,
         yes_mid: m?.yesMid ?? null,
         spread: m?.spread ?? null,
         skew: s?.skew ?? null,
@@ -654,7 +707,9 @@ async function runOwnedServerBotTick(db: Db) {
     });
     // Pairs the engine fired but selection dropped (cooldown) — visible, not silent.
     for (const s of scored) {
-      if (fired.has(s.pair)) continue;
+      // Stable and still-confirming candidates are already represented above.
+      // Only signals removed by ranking/cooldown belong in this branch.
+      if (rankedSignals.some((ranked) => ranked.pair === s.pair)) continue;
       logRows.push({
         candle_id: c.id,
         seconds_in: slot,
@@ -671,8 +726,8 @@ async function runOwnedServerBotTick(db: Db) {
 
 
     // ---- 5. Trade, only when enabled and inside the window ----------------
-    const inWindow = c.elapsed >= GATE_SECS && c.elapsed < CLOSE_SECS;
-    if (!settings.enabled) {
+    const inWindow = c.elapsed >= GATE_SECS && c.elapsed < CLOSE_SECS - ORDER_CUTOFF_BUFFER_SECS;
+    if (!enabledNow) {
       lastMsg = `tape ok · ${signals.length} live signal(s) · server bot OFF`;
     } else if (!inWindow) {
       lastMsg = "watching · outside trade window";
@@ -743,6 +798,11 @@ async function runOwnedServerBotTick(db: Db) {
         }
         if (scoredTicker && scoredTicker !== m.ticker) {
           skip("candle rolled over — re-scoring on the new market instead of chasing");
+          continue;
+        }
+        const liveSpot = latestSpots[sig.pair] ?? 0;
+        if (!freshMarketSupportsSignal(sig, m, liveSpot, settings.max_spread ?? MAX_SPREAD)) {
+          skip("direction no longer confirmed by the fresh book and strike");
           continue;
         }
 
@@ -840,6 +900,8 @@ async function runOwnedServerBotTick(db: Db) {
           status,
           msg,
           order_id: orderId,
+          ticker: m.ticker,
+          strike: m.strike,
           source: "server",
         });
 
