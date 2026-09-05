@@ -25,11 +25,22 @@ export const BANDS: [number, number][] = [
   [95, 101],
 ];
 
-/** Below this many settled samples a band keeps the raw score. */
-export const MIN_SAMPLES = 20;
+/** A score is not treated as a probability before this many real fills exist. */
+export const MIN_SAMPLES = 50;
 
-/** Pseudo-count pulling a thin bucket back toward the raw score. */
-const PRIOR = 5;
+/** Conservative one-sided Wilson lower bound (z≈1.64, 90% confidence). */
+export function conservativeWinRate(wins: number, n: number) {
+  if (n <= 0) return 0;
+  const z = 1.64;
+  const p = wins / n;
+  const z2 = z * z;
+  return clamp(
+    (p + z2 / (2 * n) - z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) /
+      (1 + z2 / n),
+    0.01,
+    0.99,
+  );
+}
 
 export function bandLabel(lo: number, hi: number) {
   return hi >= 101 ? `${lo}%+` : `${lo}–${hi}%`;
@@ -48,11 +59,11 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
 
 /** Raw confidence (0-100) → calibrated probability (0-1). */
 export function calibrate(conf: number, table?: CalibrationTable): number {
-  const raw = clamp(conf / 100, 0.01, 0.99);
   const b = bucketFor(conf, table);
-  if (!b || b.n < MIN_SAMPLES) return raw;
-  const blended = (b.wins + raw * PRIOR) / (b.n + PRIOR);
-  return clamp(blended, 0.01, 0.99);
+  // The hand-built score is not a probability. Before enough real fills exist,
+  // return a deliberately non-tradable estimate instead of calling 99 a 99% chance.
+  if (!b || b.n < MIN_SAMPLES) return 0.5;
+  return conservativeWinRate(b.wins, b.n);
 }
 
 /** Per-pair calibration tables, keyed by pair id. */
@@ -64,7 +75,7 @@ export type PairCalibration = Record<string, CalibrationTable>;
  * that it is pulled toward the global curve so 2-3 lucky trades cannot move the
  * probability.
  */
-export const PAIR_FULL_TRUST = 40;
+export const PAIR_FULL_TRUST = 100;
 
 /**
  * Calibrated probability that weights the pair's *own* settled record.
@@ -82,8 +93,8 @@ export function calibrateFor(
 ): number {
   const global = calibrate(conf, table);
   const pb = bucketFor(conf, pairTables?.[pair]);
-  if (!pb || pb.n <= 0) return global;
-  const pairRate = (pb.wins + global * PRIOR) / (pb.n + PRIOR);
+  if (!pb || pb.n < MIN_SAMPLES) return global;
+  const pairRate = conservativeWinRate(pb.wins, pb.n);
   const w = clamp(pb.n / PAIR_FULL_TRUST, 0, 1);
   return clamp(global * (1 - w) + pairRate * w, 0.01, 0.99);
 }

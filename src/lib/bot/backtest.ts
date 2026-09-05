@@ -19,6 +19,8 @@ export interface BacktestOptions {
   /** Extra cents paid over the ask to model crossing the touch. */
   slippageCents?: number;
   maxTradesPerCandle?: number;
+  /** Milliseconds between a signal and the book used for its simulated fill. */
+  orderDelayMs?: number;
 }
 
 export interface BacktestTrade {
@@ -72,6 +74,7 @@ export function runBacktest(frames: BacktestFrame[], options: BacktestOptions = 
   const betSize = options.betSize ?? 5;
   const slippage = options.slippageCents ?? 2;
   const maxTrades = options.maxTradesPerCandle ?? MAX_TRADES_PER_CANDLE;
+  const orderDelayMs = options.orderDelayMs ?? 500;
 
   const spotState: Partial<Record<PairId, SpotState>> = {};
   const history: Partial<Record<PairId, number[]>> = {};
@@ -131,11 +134,15 @@ export function runBacktest(frames: BacktestFrame[], options: BacktestOptions = 
     for (const sig of sigs) {
       if (tradesThisCandle >= maxTrades) break;
       if (pairsThisCandle.has(sig.pair)) continue;
-      const m = frame.markets[sig.pair];
+      const fillFrame = frames.find((candidate) => candidate.ts >= frame.ts + orderDelayMs);
+      const m = fillFrame?.markets[sig.pair];
       if (!m) continue;
       const ask = sig.dir === "YES" ? m.yesAsk : m.noAsk;
+      const depth = sig.dir === "YES" ? m.yesAskSize : m.yesBidSize;
+      if (!Number.isFinite(depth) || depth < 1) continue;
       const entryCents = Math.min(99, Math.max(1, Math.round(ask * 100) + slippage));
-      const count = Math.max(1, Math.floor(betSize / (entryCents / 100)));
+      const count = Math.min(Math.floor(depth), Math.floor(betSize / (entryCents / 100)));
+      if (count < 1) continue;
       openTrades.push({
         candleId,
         ts: frame.ts,

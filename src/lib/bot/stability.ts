@@ -29,8 +29,10 @@ export function freshMarketSupportsSignal(
   if (signal.dir === "YES" && skew < 0) return false;
   if (signal.dir === "NO" && skew > 0) return false;
   if (market.strike != null && spotPrice > 0) {
-    if (signal.dir === "YES" && spotPrice < market.strike) return false;
-    if (signal.dir === "NO" && spotPrice > market.strike) return false;
+    if (!market.strikeType) return false;
+    const yesInMoney = market.strikeType === "floor" ? spotPrice >= market.strike : spotPrice <= market.strike;
+    if (signal.dir === "YES" && !yesInMoney) return false;
+    if (signal.dir === "NO" && yesInMoney) return false;
   }
   return true;
 }
