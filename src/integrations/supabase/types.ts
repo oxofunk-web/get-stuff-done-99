@@ -115,10 +115,12 @@ export type Database = {
           candle_id: number
           id: number
           pair: string
+          quote_observed_at: string | null
           seconds_in: number
           spot: number
           spread: number | null
           strike: number | null
+          strike_type: string | null
           ticker: string | null
           ts: string
           vol: number | null
@@ -130,10 +132,12 @@ export type Database = {
           candle_id: number
           id?: number
           pair: string
+          quote_observed_at?: string | null
           seconds_in: number
           spot: number
           spread?: number | null
           strike?: number | null
+          strike_type?: string | null
           ticker?: string | null
           ts?: string
           vol?: number | null
@@ -145,10 +149,12 @@ export type Database = {
           candle_id?: number
           id?: number
           pair?: string
+          quote_observed_at?: string | null
           seconds_in?: number
           spot?: number
           spread?: number | null
           strike?: number | null
+          strike_type?: string | null
           ticker?: string | null
           ts?: string
           vol?: number | null
@@ -180,7 +186,9 @@ export type Database = {
           spot: number | null
           spot_mom: number | null
           spread: number | null
+          strategy_version: string
           strike: number | null
+          strike_type: string | null
           ts: string
           verdict: string
           yes_mid: number | null
@@ -206,7 +214,9 @@ export type Database = {
           spot?: number | null
           spot_mom?: number | null
           spread?: number | null
+          strategy_version?: string
           strike?: number | null
+          strike_type?: string | null
           ts?: string
           verdict: string
           yes_mid?: number | null
@@ -232,7 +242,9 @@ export type Database = {
           spot?: number | null
           spot_mom?: number | null
           spread?: number | null
+          strategy_version?: string
           strike?: number | null
+          strike_type?: string | null
           ts?: string
           verdict?: string
           yes_mid?: number | null
@@ -259,13 +271,18 @@ export type Database = {
           outcome: string | null
           pair: string
           pnl: number | null
+          quote_age_ms: number | null
+          requested_contracts: number | null
           settled_at: string | null
           source: string
           stake: number | null
           status: string
+          strategy_version: string
           strike: number | null
+          strike_type: string | null
           ticker: string | null
           ts: string
+          visible_depth: number | null
         }
         Insert: {
           calibrated?: number | null
@@ -286,13 +303,18 @@ export type Database = {
           outcome?: string | null
           pair: string
           pnl?: number | null
+          quote_age_ms?: number | null
+          requested_contracts?: number | null
           settled_at?: string | null
           source?: string
           stake?: number | null
           status: string
+          strategy_version?: string
           strike?: number | null
+          strike_type?: string | null
           ticker?: string | null
           ts?: string
+          visible_depth?: number | null
         }
         Update: {
           calibrated?: number | null
@@ -313,13 +335,18 @@ export type Database = {
           outcome?: string | null
           pair?: string
           pnl?: number | null
+          quote_age_ms?: number | null
+          requested_contracts?: number | null
           settled_at?: string | null
           source?: string
           stake?: number | null
           status?: string
+          strategy_version?: string
           strike?: number | null
+          strike_type?: string | null
           ticker?: string | null
           ts?: string
+          visible_depth?: number | null
         }
         Relationships: []
       }
