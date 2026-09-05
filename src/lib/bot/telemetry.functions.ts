@@ -273,7 +273,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     // Realized dollars per pair, from the orders that actually filled.
     const { data: tradeRows } = await db
       .from("trade_log")
-      .select("ts, candle_id, pair, dir, conf, pnl, outcome, entry_price, status")
+      .select("ts, candle_id, pair, dir, conf, pnl, outcome, entry_price, status, strategy_version")
       .eq("source", "server")
       .limit(20000);
     const money = new Map<string, { pnl: number; trades: number }>();
@@ -287,7 +287,9 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       outcome: string | null;
       entry_price: number | null;
       status: string;
+      strategy_version: string;
     }[]).filter((t) => t.status === "placed" && t.outcome != null && t.pnl != null);
+    const learningTrades = settledTrades.filter((t) => t.strategy_version === "stable-v2");
     for (const t of settledTrades) {
       // Only settled orders count: failed attempts and unsettled fills carry no
       // realized P&L, and counting them would judge a pair on orders that never
@@ -313,7 +315,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     >();
     const wins = settledTrades.filter((t) => t.outcome === "win").length;
 
-    for (const r of settledTrades) {
+    for (const r of learningTrades) {
       const won = r.outcome === "win";
       const conf = r.conf ?? 0;
       const band = table.find((b) => conf >= b.lo && conf < b.hi);

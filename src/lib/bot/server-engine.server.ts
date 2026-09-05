@@ -974,7 +974,7 @@ async function runOwnedServerBotTick(db: Db) {
     if (logRows.length) {
       await db
         .from("signal_log")
-        .upsert(logRows, {
+        .upsert(logRows.map((row) => ({ ...row, strategy_version: STRATEGY_VERSION })), {
           onConflict: "candle_id,pair,verdict,seconds_in,source",
           ignoreDuplicates: true,
         });

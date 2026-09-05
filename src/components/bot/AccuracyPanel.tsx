@@ -67,7 +67,7 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
                 <div className="text-[8px] text-muted-foreground">{a!.wins} wins</div>
               </div>
               <div className="bg-surface-2 p-2">
-                <div className="text-[7px] tracking-[0.2em] text-dim">CALIBRATED</div>
+                <div className="text-[7px] tracking-[0.2em] text-dim">PROVEN BANDS</div>
                 <div className="font-sans text-[15px] font-extrabold text-gold tabular-nums">
                   {a!.table.filter((b) => b.n >= MIN_SAMPLES).length}/{a!.table.length}
                 </div>

@@ -44,7 +44,10 @@ export async function finalsFromTape(db: Db, candleId: number) {
 
   const finals = new Map<string, number>();
   const strikes = new Map<string, number>();
-  for (const r of (data ?? []) as { pair: string; spot: number; strike: number | null }[]) {
+  for (const r of (data ?? []) as { pair: string; spot: number; strike: number | null; seconds_in: number }[]) {
+    // A mid-candle observation is not a settlement price. Leave the shadow row
+    // ungraded unless the tape reached the final 30 seconds of the contract.
+    if (r.seconds_in < 870) continue;
     if (!finals.has(r.pair) && Number.isFinite(r.spot) && r.spot > 0) finals.set(r.pair, r.spot);
     if (!strikes.has(r.pair) && r.strike != null) strikes.set(r.pair, r.strike);
   }
