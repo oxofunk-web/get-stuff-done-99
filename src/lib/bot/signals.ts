@@ -15,10 +15,10 @@ import {
   LAG_PCT,
   MIN_RESTING_DEPTH,
   PAIRS,
-  SCORE_CAP_PROVEN,
-  SCORE_CAP_UNPROVEN,
+  displayScore,
   SCORE_HALF,
   SCORE_SPAN,
+
 } from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
