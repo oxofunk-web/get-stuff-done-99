@@ -42,7 +42,7 @@ const inWindow = Math.floor(Date.now() / 900_000) * 900_000 + (GATE_SECS + 60) *
 describe("signal scoring", () => {
   it("spreads scores instead of pinning them at the ceiling", () => {
     resetTuning();
-    setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1 });
+    setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1, maxSigmaDist: 50 });
     const weak = computeSignals(
       { BTC: tape(101, 0.000002, 60, inWindow) },
       { BTC: market({ yesMid: 0.53, yesBid: 0.52, yesAsk: 0.54 }) },
