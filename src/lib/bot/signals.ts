@@ -386,8 +386,8 @@ export function computeSignals(
       0.99,
       Math.max(0.01, (dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2)),
     );
-    const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
-    const calibrationReady = (bucketFor(conf, calibration)?.n ?? 0) >= MIN_SAMPLES;
+    const calibrated = calibrateFor(p.id, rawScore, calibration, pairCalibration);
+
     const ev = evPerDollar(calibrated, entry);
 
     // The leg we would actually buy must have something resting on it.
