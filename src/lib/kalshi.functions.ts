@@ -43,9 +43,10 @@ export const getMarkets = createServerFn({ method: "GET" })
     const markets = results
       .map((r) => ("market" in r ? r.market : null))
       .filter((m): m is NonNullable<typeof m> => m != null);
-    const failures = results
-      .filter((r): r is { pair: string; error: string } => "error" in r)
-      .map((r) => ({ pair: r.pair, error: r.error }));
+    const failures = results.flatMap((r) =>
+      "error" in r && r.error ? [{ pair: r.pair as string, error: r.error }] : [],
+    );
+
     return {
       markets,
       failures,
