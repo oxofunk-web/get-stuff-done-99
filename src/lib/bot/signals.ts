@@ -13,6 +13,7 @@ import {
   CUSHION_PEAK_SIGMA,
   GATE_SECS,
   LAG_PCT,
+  MIN_RESTING_DEPTH,
   PAIRS,
   SCORE_CAP_PROVEN,
   SCORE_CAP_UNPROVEN,
@@ -380,6 +381,19 @@ export function computeSignals(
     const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
     const calibrationReady = (bucketFor(conf, calibration)?.n ?? 0) >= MIN_SAMPLES;
     const ev = evPerDollar(calibrated, entry);
+
+    // The leg we would actually buy must have something resting on it.
+    const legDepth = dir === "YES" ? (km.yesAskSize ?? 0) : (km.yesBidSize ?? 0);
+    if (legDepth < MIN_RESTING_DEPTH) {
+      note(
+        p.id,
+        "rejected",
+        "no depth on the side we would buy",
+        { legDepth, min: MIN_RESTING_DEPTH },
+        dir,
+      );
+      continue;
+    }
 
     // Hard ceiling on what the leg may cost. Average recorded entry was 78¢,
     // where a single loss wipes out several wins.
