@@ -22,3 +22,13 @@
 - [x] Count unsettled stake toward the daily loss cap and recheck the book immediately before sending
 - [x] Replace optimistic replay depth with no-fill behavior when depth was not recorded
 - [ ] Collect 100 independent settled shadow candidates before considering live approval
+
+## Signal stability pass (de-saturated scoring)
+- [x] Replace the hard confidence cap with a soft curve so scores spread instead of all reading 99.
+- [x] Treat cushion as a band with an upper edge; reject reads already far in the money.
+- [x] Cap the price of the leg we buy (80c) so one loss cannot erase several wins.
+- [x] Check book depth before scoring, and again on the exact side we would buy.
+- [x] Require three time-separated confirmations with a non-shrinking cushion.
+- [x] One decision per pair per candle in the server runner.
+- [x] Back on the strict profile: $5 stake, one trade per candle, live trading OFF.
+- [ ] Run shadow validation windows before considering live trading again.
