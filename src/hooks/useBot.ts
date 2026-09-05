@@ -640,6 +640,9 @@ export function useBot() {
     feedSource,
     markets,
     marketsOk,
+    marketsHealth,
+    retryMarkets,
+
     history: historyRef.current,
     signals,
     candle,

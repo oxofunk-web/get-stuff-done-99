@@ -4,10 +4,21 @@ import type { KalshiMarket } from "@/lib/bot/types";
 interface Props {
   markets: Partial<Record<PairId, KalshiMarket>>;
   ok: boolean | null;
+  /** Last good pull, the real error text, and any pairs that failed. */
+  health?: {
+    lastOkAt: number | null;
+    error: string | null;
+    failures: { pair: string; error: string }[];
+  };
+  onRetry?: () => void;
 }
 
-export function MarketsPanel({ markets, ok }: Props) {
+export function MarketsPanel({ markets, ok, health, onRetry }: Props) {
   const rows = PAIRS.filter((p) => markets[p.id]);
+  const failed = new Map((health?.failures ?? []).map((f) => [f.pair, f.error]));
+  const staleSecs =
+    health?.lastOkAt && ok === false ? Math.round((Date.now() - health.lastOkAt) / 1000) : null;
+  const down = ok === false && rows.length === 0;
 
   return (
     <section className="panel">
@@ -16,16 +27,42 @@ export function MarketsPanel({ markets, ok }: Props) {
         <span className="text-[8px] tracking-widest text-dim">YES / NO ORDERBOOK</span>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="p-5 text-center text-[11px] text-dim">
-          {ok === false ? "Kalshi feed unavailable — retrying…" : "Fetching orderbook…"}
+      {down ? (
+        <div className="p-5 text-center">
+          <div className="text-[11px] text-no">{health?.error ?? "Kalshi feed unavailable"}</div>
+          <div className="mt-1 text-[9px] text-dim">
+            {health?.lastOkAt
+              ? `Last good prices ${Math.round((Date.now() - health.lastOkAt) / 1000)}s ago`
+              : "No prices loaded yet"}
+          </div>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 rounded-md border border-no/50 bg-no/10 px-3 py-1.5 font-sans text-[10px] font-bold tracking-widest text-no"
+            >
+              RETRY NOW
+            </button>
+          ) : null}
         </div>
+      ) : rows.length === 0 ? (
+        <div className="p-5 text-center text-[11px] text-dim">Fetching orderbook…</div>
       ) : (
         <div className="divide-y divide-wire">
-          {rows.map((p) => {
-            const m = markets[p.id]!;
-            const tone =
-              m.spread < 0.02 ? "text-yes" : m.spread < 0.05 ? "text-gold" : "text-no";
+          {PAIRS.filter((p) => markets[p.id] || failed.has(p.id)).map((p) => {
+            const m = markets[p.id];
+            if (!m) {
+              return (
+                <div key={p.id} className="flex items-center gap-2 px-3 py-2">
+                  <span className="size-1.5 rounded-full" style={{ background: p.colorVar }} />
+                  <span className={`font-sans text-[11px] font-bold ${p.colorClass}`}>{p.id}</span>
+                  <span className="ml-auto truncate text-right text-[9px] text-no">
+                    {failed.get(p.id)} — retrying
+                  </span>
+                </div>
+              );
+            }
+            const tone = m.spread < 0.02 ? "text-yes" : m.spread < 0.05 ? "text-gold" : "text-no";
             return (
               <div key={p.id} className="grid grid-cols-[1.4fr_1fr_auto_auto_auto] items-center gap-2 px-3 py-2">
                 <div className="flex items-center gap-2">
@@ -70,13 +107,22 @@ export function MarketsPanel({ markets, ok }: Props) {
         <span
           className={`flex items-center gap-1 rounded-full border px-2 py-px text-[7px] tracking-widest ${
             ok === false
-              ? "border-no/30 bg-no/10 text-no"
+              ? staleSecs !== null && rows.length > 0
+                ? "border-gold/40 bg-gold/10 text-gold"
+                : "border-no/30 bg-no/10 text-no"
               : "border-yes/30 bg-yes/10 text-yes"
           }`}
         >
           <span className="size-1 rounded-full bg-current animate-blink" />
-          {ok === false ? "KALSHI ERR — RETRYING" : "KALSHI LIVE · REAL ORDERS"}
+          {ok === false
+            ? staleSecs !== null && rows.length > 0
+              ? `PRICES ${staleSecs}s OLD — RETRYING`
+              : "KALSHI ERR — RETRYING"
+            : "KALSHI LIVE · REAL ORDERS"}
         </span>
+        {ok === false && health?.error ? (
+          <span className="truncate text-[8px] text-dim">{health.error}</span>
+        ) : null}
       </div>
     </section>
   );
