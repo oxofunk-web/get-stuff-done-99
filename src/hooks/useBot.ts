@@ -90,11 +90,7 @@ export function useBot() {
   });
   const marketsHealthRef = useRef<MarketsHealth>({ lastOkAt: null, error: null, failures: [] });
 
-  const [marketsHealth, setMarketsHealth] = useState<{
-    lastOkAt: number | null;
-    error: string | null;
-    failures: { pair: string; error: string }[];
-  }>({ lastOkAt: null, error: null, failures: [] });
+
   const historyRef = useRef<Partial<Record<PairId, number[]>>>({});
   const marketsRef = useRef<Partial<Record<PairId, KalshiMarket>>>({});
 
