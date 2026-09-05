@@ -218,6 +218,20 @@ export function computeSignals(
       );
       continue;
     }
+    // Depth belongs with the other cheap book checks, before any scoring: an
+    // unfillable book is not an opportunity in the first place.
+    if (Math.max(km.yesAskSize ?? 0, km.yesBidSize ?? 0) < MIN_RESTING_DEPTH) {
+      note(
+        p.id,
+        "rejected",
+        "nothing resting in the book",
+        { yesAskSize: km.yesAskSize ?? 0, yesBidSize: km.yesBidSize ?? 0, min: MIN_RESTING_DEPTH },
+        leanDir,
+      );
+      continue;
+    }
+
+
 
     const spotMom = spotMomentum(s);
     const spotMidMom = midMomentum(s);
