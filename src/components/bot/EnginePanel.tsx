@@ -251,10 +251,11 @@ export function EnginePanel({
                 value: gates.threshold,
                 display: `${gates.threshold.toFixed(0)}%`,
                 min: 60,
-                max: 95,
+                max: SCORE_DIAL_MAX,
                 step: 1,
                 toValue: (v: number) => v,
               },
+
               {
                 key: "maxSpread" as const,
                 label: "MAX SPREAD",
