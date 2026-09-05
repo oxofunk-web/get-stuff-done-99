@@ -242,15 +242,31 @@ export function computeSignals(
       sDir === skDir && skDir === kDir ? 1.35 : sDir === skDir || skDir === kDir ? 1.05 : 0.6;
 
     const lagBoost = lagDetected ? 1.3 : 1.0;
+    // Cushion is a BAND, not "more is better". Below the floor it is a coin
+    // flip; far beyond the band the outcome is a near-certainty the book has
+    // already priced, so the score decays instead of pinning at the top.
+    const absCushion = Math.abs(sigmaDist);
+    const cushionScore =
+      absCushion <= CUSHION_PEAK_SIGMA
+        ? absCushion / CUSHION_PEAK_SIGMA
+        : Math.max(
+            0,
+            1 -
+              ((absCushion - CUSHION_PEAK_SIGMA) /
+                Math.max(0.01, T.maxSigmaDist - CUSHION_PEAK_SIGMA)) *
+                0.7,
+          );
     const raw =
       Math.abs(skew) * 0.4 +
       Math.min(Math.abs(momZ), 2) * 0.2 +
       (Math.abs(kMom) / 0.008) * 0.15 +
-      // Cushion: spot already a standard deviation clear of the strike is the
-      // single strongest predictor for a short-dated binary.
-      Math.min(Math.abs(sigmaDist) / 1.5, 1) * 0.25;
+      cushionScore * 0.25;
     const strength = raw * agreement * liq * tFac * lagBoost;
-    const conf = 50 + Math.min(strength / 0.35, 1) * 49;
+    // Soft-saturating score: with the old hard cap 210 of 248 live reads all
+    // read 99, so the threshold could not discriminate at all. This curve keeps
+    // spreading as evidence grows and never reaches the ceiling.
+    const conf = 50 + SCORE_SPAN * (strength / (strength + SCORE_HALF));
+
 
     // Direction is resolved before the gates so every rejection below records
     // the trade it would have been.
