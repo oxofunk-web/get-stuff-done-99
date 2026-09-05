@@ -47,18 +47,51 @@ export interface StableSignalCandidate {
   key: string;
   count: number;
   lastSeenAt: number;
+  firstSeenAt: number;
+  /** Best absolute cushion seen in this window, in sigma. */
+  bestCushion: number;
 }
 
-/** Two observations must agree, and they must be separated in time. */
+/**
+ * Several observations must agree on the same contract and direction, spread
+ * over time, AND the cushion must not be decaying toward the strike. A read
+ * that is shrinking is not stable no matter how often it repeats.
+ */
 export function advanceStableSignal(
   previous: StableSignalCandidate | undefined,
   key: string,
   now: number,
   minimumGapMs: number,
+  cushion?: number,
 ): StableSignalCandidate {
-  if (!previous || previous.key !== key || now - previous.lastSeenAt > 15_000) {
-    return { key, count: 1, lastSeenAt: now };
-  }
+  const abs = cushion == null ? 0 : Math.abs(cushion);
+  const restart = (): StableSignalCandidate => ({
+    key,
+    count: 1,
+    lastSeenAt: now,
+    firstSeenAt: now,
+    bestCushion: abs,
+  });
+  if (!previous || previous.key !== key || now - previous.lastSeenAt > 15_000) return restart();
   if (now - previous.lastSeenAt < minimumGapMs) return previous;
-  return { key, count: previous.count + 1, lastSeenAt: now };
+  if (cushion != null && abs < previous.bestCushion - CUSHION_DECAY_TOLERANCE) {
+    // Cushion is collapsing toward the strike — start the window over.
+    return restart();
+  }
+  return {
+    key,
+    count: previous.count + 1,
+    lastSeenAt: now,
+    firstSeenAt: previous.firstSeenAt,
+    bestCushion: Math.max(previous.bestCushion, abs),
+  };
+}
+
+/** A candidate only counts once it has enough samples across enough time. */
+export function isStable(candidate: StableSignalCandidate | undefined) {
+  if (!candidate) return false;
+  return (
+    candidate.count >= REQUIRED_STABLE_SAMPLES &&
+    candidate.lastSeenAt - candidate.firstSeenAt >= REQUIRED_STABLE_SPAN_MS
+  );
 }
