@@ -539,6 +539,8 @@ export function useBot() {
             sigma_dist: s?.sigmaDist ?? null,
             spot: spotRef.current[t.pair]?.price ?? null,
             strike: m?.strike ?? null,
+            strike_type: m?.strikeType ?? null,
+            strategy_version: "stable-v2",
           };
         });
       if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);

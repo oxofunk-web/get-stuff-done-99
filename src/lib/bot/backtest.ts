@@ -134,7 +134,10 @@ export function runBacktest(frames: BacktestFrame[], options: BacktestOptions = 
     for (const sig of sigs) {
       if (tradesThisCandle >= maxTrades) break;
       if (pairsThisCandle.has(sig.pair)) continue;
-      const fillFrame = frames.find((candidate) => candidate.ts >= frame.ts + orderDelayMs);
+      const fillFrame = frames.find(
+        (candidate) =>
+          candidate.ts >= frame.ts + orderDelayMs && candleInfo(candidate.ts).id === candleId,
+      );
       const m = fillFrame?.markets[sig.pair];
       if (!m) continue;
       const ask = sig.dir === "YES" ? m.yesAsk : m.noAsk;
@@ -234,6 +237,7 @@ export function makeSyntheticFrames(opts: {
           pair: p,
           ticker: `${p}-TEST`,
           strike: k,
+          strikeType: "floor",
           yesBid: Math.max(0.01, yesMid - half),
           yesAsk: Math.min(0.99, yesMid + half),
           noBid: Math.max(0.01, 1 - yesMid - half),

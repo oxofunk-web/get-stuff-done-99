@@ -3,7 +3,7 @@ import { COOLDOWN_CANDLES, VETO_MIN_TRADES, pairVetoed, pauseCandlesLeft } from 
 import type { AccuracyStats } from "@/lib/bot/telemetry.functions";
 
 /** Below this many settled samples a pair is still "learning", not judged. */
-const MIN_JUDGE = 12;
+const MIN_JUDGE = 30;
 
 interface Props {
   accuracy: AccuracyStats | null;
@@ -110,8 +110,8 @@ export function PairEdgePanel({ accuracy, betSize }: Props) {
                   {r.paused
                     ? `paused by the bot — ${r.trades} settled trades at ${money(r.pnl)} P&L; it re-arms automatically when the record recovers`
                     : !r.judged
-                      ? `learning — ${r.n} settled trades (needs ${Math.max(1, MIN_JUDGE - r.n)} more) · ${r.graded} graded samples already feeding the odds`
-                      : `edge ${r.edge >= 0 ? "+" : ""}${r.edge.toFixed(0)} pts vs. breakeven · ${r.graded} graded samples · engine weights ${r.pair} by this record`}
+                      ? `unproven — ${r.n} settled real fills (needs ${Math.max(1, MIN_JUDGE - r.n)} more); shadow signals do not affect the odds`
+                      : `conservative edge ${r.edge >= 0 ? "+" : ""}${r.edge.toFixed(0)} pts vs. breakeven · ${r.graded} real fills · engine weights ${r.pair} by this record`}
                 </div>
               </div>
             );
