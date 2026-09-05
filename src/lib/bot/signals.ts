@@ -462,9 +462,9 @@ export function computeSignals(
       id: `${p.id}-${Math.floor(c.elapsed / 5)}-${dir}`,
       pair: p.id,
       dir,
-      // Never present a raw score as a certainty: the ceiling depends on
-      // whether real settled fills back this confidence band.
-      conf: Math.min(conf, calibrationReady ? SCORE_CAP_PROVEN : SCORE_CAP_UNPROVEN),
+      // Already compressed into the band its evidence earns, not clamped.
+      conf,
+
       yesMid: ym,
       spread: km.spread,
       spotMom,
