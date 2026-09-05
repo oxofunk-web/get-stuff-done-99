@@ -43,6 +43,8 @@ import {
   freshMarketSupportsSignal,
   ORDER_CUTOFF_BUFFER_SECS,
   isStable,
+  REQUIRED_STABLE_SAMPLES,
+
   type StableSignalCandidate,
 } from "./stability";
 import { fetchLiveBalance, fetchMarket, fetchOpenMarket, normalizeMarket, placeLiveOrder } from "../kalshi.server";
