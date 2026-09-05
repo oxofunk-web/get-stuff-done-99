@@ -4,6 +4,7 @@ import {
   activeCandleCloseMs,
   advanceStableSignal,
   freshMarketSupportsSignal,
+  isStable,
   marketMatchesActiveCandle,
 } from "./stability";
 import type { KalshiMarket, Signal } from "./types";
@@ -30,14 +31,26 @@ describe("signal stability", () => {
     expect(marketMatchesActiveCandle("2026-09-05T02:30:00.000Z", now)).toBe(false);
   });
 
-  it("requires two time-separated observations of the same contract and direction", () => {
+  it("requires three time-separated observations spanning a real window", () => {
     const first = advanceStableSignal(undefined, "BTC:TICKER:YES", 1_000, 1_000);
     const tooSoon = advanceStableSignal(first, first.key, 1_200, 1_000);
-    const stable = advanceStableSignal(tooSoon, first.key, 2_100, 1_000);
+    const second = advanceStableSignal(tooSoon, first.key, 4_000, 1_000);
+    const third = advanceStableSignal(second, first.key, 7_100, 1_000);
     expect(first.count).toBe(1);
     expect(tooSoon.count).toBe(1);
-    expect(stable.count).toBe(2);
-    expect(advanceStableSignal(stable, "BTC:TICKER:NO", 3_200, 1_000).count).toBe(1);
+    expect(isStable(second)).toBe(false);
+    expect(third.count).toBe(3);
+    expect(isStable(third)).toBe(true);
+    expect(advanceStableSignal(third, "BTC:TICKER:NO", 9_200, 1_000).count).toBe(1);
+  });
+
+  it("restarts the window when the cushion is decaying toward the strike", () => {
+    const a = advanceStableSignal(undefined, "BTC:T:YES", 1_000, 1_000, 1.4);
+    const b = advanceStableSignal(a, a.key, 4_000, 1_000, 1.5);
+    expect(b.count).toBe(2);
+    const shrinking = advanceStableSignal(b, a.key, 7_000, 1_000, 1.1);
+    expect(shrinking.count).toBe(1);
+    expect(isStable(shrinking)).toBe(false);
   });
 
   it("rejects a fresh book that flips against the scored direction", () => {
