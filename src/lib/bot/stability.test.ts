@@ -14,6 +14,7 @@ const market = {
   pair: "BTC",
   ticker: "BTC-LOCKED",
   strike: 100,
+  strikeType: "floor",
   yesBid: 0.54,
   yesAsk: 0.55,
   yesMid: 0.545,
@@ -49,5 +50,11 @@ describe("signal stability", () => {
     expect(gradeContract("YES", 101, 100)).toBe(true);
     expect(gradeContract("YES", 101, 102)).toBe(false);
     expect(gradeContract("NO", 101, 102)).toBe(true);
+  });
+
+  it("handles cap contracts without reversing their result", () => {
+    expect(gradeContract("YES", 99, 100, "cap")).toBe(true);
+    expect(gradeContract("NO", 101, 100, "cap")).toBe(true);
+    expect(freshMarketSupportsSignal(signal, { ...market, strikeType: "cap" }, 99, 0.05)).toBe(true);
   });
 });

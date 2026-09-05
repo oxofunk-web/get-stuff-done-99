@@ -29,6 +29,7 @@ import {
   MIN_SKEW,
   MIN_YES_MID,
   PAIRS,
+  STRATEGY_VERSION,
   THRESHOLD,
   type PairId,
 } from "./constants";
@@ -299,9 +300,11 @@ async function loadCalibration(db: Db) {
   const table = emptyTable();
   const pairTable: PairCalibration = {};
   const { data } = await db
-    .from("signal_log")
-    .select("candle_id, pair, dir, conf, outcome, verdict, entry_price")
+    .from("trade_log")
+    .select("candle_id, pair, dir, conf, outcome, entry_price, pnl, status, strategy_version")
     .eq("source", "server")
+    .eq("status", "placed")
+    .eq("strategy_version", STRATEGY_VERSION)
     .not("outcome", "is", null)
     .not("conf", "is", null)
     .limit(20000);
@@ -312,12 +315,13 @@ async function loadCalibration(db: Db) {
     dir: string | null;
     conf: number;
     outcome: string;
-    verdict: string;
+    verdict?: string;
     entry_price: number | null;
+    pnl?: number | null;
   };
   const unique = new Map<string, CalibrationRow>();
   for (const r of (data ?? []) as CalibrationRow[]) {
-    const key = `${r.candle_id}:${r.pair}:${r.dir}:${r.verdict}`;
+    const key = `${r.candle_id}:${r.pair}`;
     if (!unique.has(key)) unique.set(key, r);
   }
   for (const r of unique.values()) {
@@ -332,14 +336,13 @@ async function loadCalibration(db: Db) {
       { pair: r.pair, n: 0, wins: 0, fired: 0, firedWins: 0, avgEntry: 0, pnl: 0, trades: 0 };
     e.n += 1;
     if (won) e.wins += 1;
-    if (r.verdict === "fired") {
-      e.fired += 1;
-      if (won) e.firedWins += 1;
-      if (r.entry_price != null && r.entry_price > 0) {
-        // Running mean of entry price = the breakeven win rate this pair pays.
-        e.avgEntry = e.avgEntry + (r.entry_price - e.avgEntry) / e.fired;
-      }
+    e.fired += 1;
+    if (won) e.firedWins += 1;
+    if (r.entry_price != null && r.entry_price > 0) {
+      e.avgEntry = e.avgEntry + (r.entry_price - e.avgEntry) / e.fired;
     }
+    e.pnl += r.pnl ?? 0;
+    e.trades += 1;
     edge.set(r.pair, e);
 
     const pt = (pairTable[r.pair] ??= emptyTable());
@@ -359,6 +362,8 @@ interface SnapshotInsert {
   ticker: string | null;
   spot: number;
   strike: number | null;
+  strike_type: "floor" | "cap" | null;
+  quote_observed_at: string | null;
   yes_bid: number | null;
   yes_ask: number | null;
   yes_mid: number | null;
@@ -387,6 +392,8 @@ interface SignalInsert {
   sigma_dist?: number | null;
   spot?: number | null;
   strike?: number | null;
+  strike_type?: "floor" | "cap" | null;
+  strategy_version: string;
 }
 
 
@@ -423,7 +430,7 @@ async function runOwnedServerBotTick(db: Db) {
     const since = new Date(Date.now() - MAX_QUOTE_AGE_MS).toISOString();
     const { data: warm } = await db
       .from("market_snapshots")
-      .select("pair, ticker, strike, yes_bid, yes_ask, yes_mid, spread, vol, ts")
+      .select("pair, ticker, strike, strike_type, yes_bid, yes_ask, yes_mid, spread, vol, ts")
       .eq("candle_id", seedCandle)
       .gte("ts", since)
       .not("ticker", "is", null)
@@ -433,6 +440,7 @@ async function runOwnedServerBotTick(db: Db) {
       pair: string;
       ticker: string | null;
       strike: number | null;
+      strike_type: "floor" | "cap" | null;
       yes_bid: number | null;
       yes_ask: number | null;
       yes_mid: number | null;
@@ -445,6 +453,7 @@ async function runOwnedServerBotTick(db: Db) {
         pair: r.pair as PairId,
         ticker: r.ticker,
         strike: r.strike ?? 0,
+        strikeType: r.strike_type,
         yesBid: r.yes_bid,
         yesAsk: r.yes_ask,
         yesMid: r.yes_mid ?? (r.yes_bid + r.yes_ask) / 2,
@@ -491,13 +500,17 @@ async function runOwnedServerBotTick(db: Db) {
     dayStart.setUTCHours(0, 0, 0, 0);
     const { data: dayRows } = await db
       .from("trade_log")
-      .select("pnl")
+      .select("pnl, stake, status, outcome")
       .eq("source", "server")
       .gte("ts", dayStart.toISOString())
-      .not("pnl", "is", null);
-    const dayPnl = ((dayRows ?? []) as { pnl: number }[]).reduce((a, r) => a + r.pnl, 0);
-    if (dayPnl <= -cap) {
-      const msg = `day stopped — loss cap $${cap.toFixed(0)} reached (${dayPnl.toFixed(2)} today)`;
+    const riskRows = (dayRows ?? []) as { pnl: number | null; stake: number | null; status: string; outcome: string | null }[];
+    const dayPnl = riskRows.reduce((a, r) => a + (r.pnl ?? 0), 0);
+    const openRisk = riskRows.reduce(
+      (a, r) => a + (r.status === "placed" && r.outcome == null ? Math.max(0, r.stake ?? 0) : 0),
+      0,
+    );
+    if (dayPnl - openRisk <= -cap) {
+      const msg = `day stopped — $${openRisk.toFixed(2)} open risk + ${dayPnl.toFixed(2)} settled P&L reaches the $${cap.toFixed(0)} cap`;
       await heartbeat(msg);
       return { ok: true, sampled: 0, signals: 0, placed: 0, msg };
     }
@@ -612,6 +625,8 @@ async function runOwnedServerBotTick(db: Db) {
         ticker: known?.ticker ?? null,
         spot: price,
         strike: known?.strike ?? null,
+        strike_type: known?.strikeType ?? null,
+        quote_observed_at: known ? new Date(marketAt[p.id] ?? roundAt).toISOString() : null,
         yes_bid: known?.yesBid ?? null,
         yes_ask: known?.yesAsk ?? null,
         yes_mid: known?.yesMid ?? null,
@@ -712,6 +727,8 @@ async function runOwnedServerBotTick(db: Db) {
         sigma_dist: s?.sigmaDist ?? null,
         spot: spot[t.pair]?.price ?? null,
         strike: m?.strike ?? null,
+        strike_type: m?.strikeType ?? null,
+        strategy_version: STRATEGY_VERSION,
       };
     });
     // Pairs the engine fired but selection dropped (cooldown) — visible, not silent.
@@ -828,6 +845,10 @@ async function runOwnedServerBotTick(db: Db) {
         const chaseCeiling = sig.entry + MAX_CHASE_CENTS / 100;
         const maxEntry = Math.min(0.99, valueCeiling, chaseCeiling);
         const maxPriceCents = Math.max(1, Math.min(99, Math.floor(maxEntry * 100)));
+        if (!sig.calibrationReady) {
+          skip("shadow only — real-fill probability is not proven yet");
+          continue;
+        }
         if (freshEntry * 100 > maxPriceCents + 0.0001) {
           skip(
             `price ran past value — ${Math.round(freshEntry * 100)}¢ live, ${maxPriceCents}¢ max`,
@@ -850,6 +871,9 @@ async function runOwnedServerBotTick(db: Db) {
         let contracts = count;
         let entry = freshEntry;
         let orderId: string | null = null;
+        let quoteAgeMs = Math.max(0, Date.now() - (marketAt[sig.pair] ?? Date.now()));
+        let visibleDepth = depth;
+        let submitMarket = m;
 
         const keyId = process.env["KALSHI_API_KEY_ID"];
         const pem = process.env["KALSHI_PRIVATE_KEY"];
@@ -872,6 +896,22 @@ async function runOwnedServerBotTick(db: Db) {
             msg = `Insufficient Kalshi balance — $${freshBalance.toFixed(2)} available, $${required.toFixed(2)} required.`;
           }
           if (status !== "failed") {
+            const finalMarket = await fetchOneMarket(sig.pair, scoredTicker);
+            if (!finalMarket || !freshMarketSupportsSignal(sig, finalMarket, liveSpot, settings.max_spread ?? MAX_SPREAD)) {
+              status = "failed";
+              msg = "Final quote no longer confirms the signal — no order was sent.";
+            } else {
+              submitMarket = finalMarket;
+              quoteAgeMs = 0;
+              visibleDepth = restingDepth(finalMarket, sig.dir);
+              const submitEntry = sig.dir === "YES" ? finalMarket.yesAsk : finalMarket.noAsk;
+              if (visibleDepth < MIN_RESTING_DEPTH || Math.round(submitEntry * 100) > maxPriceCents) {
+                status = "failed";
+                msg = "Final price or depth moved outside the safe limit — no order was sent.";
+              }
+            }
+          }
+          if (status !== "failed") {
             const res = await placeLiveOrder(
               { keyId, pem },
               {
@@ -880,7 +920,7 @@ async function runOwnedServerBotTick(db: Db) {
                 priceCents,
                 count,
                 maxPriceCents,
-                quote: m,
+                quote: submitMarket,
               },
             );
             attemptsByPair.set(sig.pair, priorAttempts + 1);
@@ -911,6 +951,11 @@ async function runOwnedServerBotTick(db: Db) {
           order_id: orderId,
           ticker: m.ticker,
           strike: m.strike,
+          strike_type: m.strikeType,
+          strategy_version: STRATEGY_VERSION,
+          quote_age_ms: quoteAgeMs,
+          requested_contracts: count,
+          visible_depth: visibleDepth,
           source: "server",
         });
 

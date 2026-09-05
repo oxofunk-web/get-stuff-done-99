@@ -9,6 +9,7 @@
  * are touched.
  */
 import { candleInfo } from "./candle";
+import { fetchFinalizedMarketResult } from "../kalshi.server";
 
 type Db = Awaited<ReturnType<typeof adminDb>>;
 
@@ -26,8 +27,9 @@ export function gradeContract(
   dir: "YES" | "NO",
   finalSpot: number,
   strike: number,
+  strikeType: "floor" | "cap" = "floor",
 ) {
-  const yesWon = finalSpot >= strike;
+  const yesWon = strikeType === "floor" ? finalSpot >= strike : finalSpot <= strike;
   return dir === "YES" ? yesWon : !yesWon;
 }
 
@@ -64,20 +66,22 @@ export async function settleOne(candleId: number, override?: Final[]) {
 
   const { data: sigs, error } = await db
     .from("signal_log")
-    .select("id, pair, dir, strike")
+    .select("id, pair, dir, strike, strike_type")
     .eq("candle_id", candleId)
     .is("outcome", null)
     .limit(5000);
   if (error) return { ok: false, settled: 0, trades: 0, error: error.message };
 
   let settled = 0;
-  for (const s of (sigs ?? []) as { id: string; pair: string; dir: string | null; strike: number | null }[]) {
+  for (const s of (sigs ?? []) as { id: string; pair: string; dir: string | null; strike: number | null; strike_type: "floor" | "cap" | null }[]) {
     const spot = finals.get(s.pair);
     const strike = s.strike ?? strikes.get(s.pair) ?? null;
     // Rejected rows carry the direction the engine *would* have taken, so the
     // counterfactual grades exactly like a real trade.
-    if (spot == null || strike == null || !s.dir) continue;
-    const won = gradeContract(s.dir as "YES" | "NO", spot, strike);
+    // Shadow results may use the local tape, but stale/legacy rows without an
+    // explicit contract rule are never allowed to train the live engine.
+    if (spot == null || strike == null || !s.dir || !s.strike_type) continue;
+    const won = gradeContract(s.dir as "YES" | "NO", spot, strike, s.strike_type);
     const { error: upErr } = await db
       .from("signal_log")
       .update({ outcome: won ? "win" : "loss", settled_spot: spot, settled_at: at })
@@ -87,7 +91,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
 
   const { data: trades } = await db
     .from("trade_log")
-    .select("id, pair, dir, contracts, entry_price, ticker, strike")
+    .select("id, pair, dir, contracts, entry_price, ticker, strike, strike_type")
     .eq("candle_id", candleId)
     .is("outcome", null)
     .eq("status", "placed")
@@ -102,19 +106,24 @@ export async function settleOne(candleId: number, override?: Final[]) {
     entry_price: number | null;
     ticker: string | null;
     strike: number | null;
+    strike_type: "floor" | "cap" | null;
   }[]) {
-    const spot = finals.get(t.pair);
-    // New fills carry their exact contract strike. Legacy rows fall back to the
-    // old tape-derived value so existing audit history remains settleable.
-    const strike = t.strike ?? strikes.get(t.pair) ?? null;
-    if (spot == null || strike == null) continue;
-    const won = gradeContract(t.dir as "YES" | "NO", spot, strike);
+    if (!t.ticker) continue;
+    const final = await fetchFinalizedMarketResult(t.ticker);
+    if (!final) continue;
+    const won = t.dir === "YES" ? final.result === "yes" : final.result === "no";
     const count = t.contracts ?? 0;
     const entry = t.entry_price ?? 0;
     const pnl = won ? count * (1 - entry) : -count * entry;
     const { error: upErr } = await db
       .from("trade_log")
-      .update({ outcome: won ? "win" : "loss", pnl, settled_at: at })
+      .update({
+        outcome: won ? "win" : "loss",
+        pnl,
+        settled_at: at,
+        strike: t.strike ?? final.strike,
+        strike_type: t.strike_type ?? final.strikeType,
+      })
       .eq("id", t.id);
     if (!upErr) graded += 1;
   }
@@ -141,7 +150,15 @@ export async function settlePending(maxCandles = 12) {
     .limit(5000);
   if (error) return { ok: false, candles: 0, settled: 0, trades: 0, error: error.message };
 
-  const ids = [...new Set((data ?? []).map((r) => Number((r as { candle_id: number }).candle_id)))]
+  const { data: pendingTrades } = await db
+    .from("trade_log")
+    .select("candle_id")
+    .eq("status", "placed")
+    .is("outcome", null)
+    .lt("candle_id", current)
+    .limit(5000);
+
+  const ids = [...new Set([...(data ?? []), ...(pendingTrades ?? [])].map((r) => Number((r as { candle_id: number }).candle_id)))]
     .sort((a, b) => b - a)
     .slice(0, maxCandles);
 

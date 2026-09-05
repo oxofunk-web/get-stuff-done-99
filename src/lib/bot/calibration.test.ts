@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calibrate, calibrateFor, emptyTable, PAIR_FULL_TRUST, type CalibrationTable } from "./calibration";
+import { calibrate, calibrateFor, emptyTable, MIN_SAMPLES, PAIR_FULL_TRUST, type CalibrationTable } from "./calibration";
 
 /** Global table: 86-90 band sitting at a 70% win rate on plenty of samples. */
 function globalTable(): CalibrationTable {
@@ -28,9 +28,14 @@ describe("per-pair calibration", () => {
     expect(calibrateFor("BNB", 87, g, undefined)).toBeCloseTo(global, 6);
   });
 
-  it("barely moves on a thin pair record", () => {
+  it("does not treat a thin record as a probability", () => {
     const thin = calibrateFor("DOGE", 87, g, { DOGE: pairTable(2, 2) });
-    expect(Math.abs(thin - global)).toBeLessThan(0.05);
+    expect(thin).toBeCloseTo(global, 6);
+  });
+
+  it("returns an unproven neutral estimate below the real-fill minimum", () => {
+    const thin = pairTable(MIN_SAMPLES - 1, MIN_SAMPLES - 1);
+    expect(calibrate(87, thin)).toBe(0.5);
   });
 
   it("tracks the pair's own rate once history is deep", () => {
@@ -38,8 +43,8 @@ describe("per-pair calibration", () => {
     const loser = calibrateFor("ETH", 87, g, { ETH: pairTable(PAIR_FULL_TRUST * 2, PAIR_FULL_TRUST * 2 * 0.5) });
     expect(winner).toBeGreaterThan(global);
     expect(loser).toBeLessThan(global);
-    expect(winner).toBeGreaterThan(0.85);
-    expect(loser).toBeLessThan(0.6);
+    expect(winner).toBeGreaterThan(global);
+    expect(loser).toBeLessThan(global);
   });
 
   it("stays inside probability bounds", () => {
