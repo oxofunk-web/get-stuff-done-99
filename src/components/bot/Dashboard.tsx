@@ -106,7 +106,13 @@ export function Dashboard() {
             source={bot.feedSource}
           />
           <ClockPanel candle={bot.candle} ticker={ticker} />
-          <MarketsPanel markets={bot.markets} ok={bot.marketsOk} />
+          <MarketsPanel
+            markets={bot.markets}
+            ok={bot.marketsOk}
+            health={bot.marketsHealth}
+            onRetry={bot.retryMarkets}
+          />
+
           </div>
           <div className="flex flex-col gap-3 lg:col-span-5">
             <ServerBotPanel />
