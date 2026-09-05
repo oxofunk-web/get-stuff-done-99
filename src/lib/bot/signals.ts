@@ -9,7 +9,16 @@ import {
 } from "./calibration";
 import { candleInfo } from "./candle";
 import { ORDER_CUTOFF_BUFFER_SECS } from "./stability";
-import { GATE_SECS, LAG_PCT, PAIRS } from "./constants";
+import {
+  CUSHION_PEAK_SIGMA,
+  GATE_SECS,
+  LAG_PCT,
+  PAIRS,
+  SCORE_CAP_PROVEN,
+  SCORE_CAP_UNPROVEN,
+  SCORE_HALF,
+  SCORE_SPAN,
+} from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
 import type { KalshiMarket, LagState, Signal, SpotState } from "./types";
