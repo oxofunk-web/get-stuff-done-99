@@ -16,6 +16,7 @@ export interface SnapshotRow {
   ticker: string | null;
   spot: number;
   strike: number | null;
+  strike_type?: "floor" | "cap" | null;
   yes_bid: number | null;
   yes_ask: number | null;
   yes_mid: number | null;
@@ -42,12 +43,13 @@ function marketFromRow(row: SnapshotRow): KalshiMarket | null {
   const ask = clampPrice(yesAsk);
   const mid = row.yes_mid ?? (bid + ask) / 2;
   return {
-    // The tape records quotes, not resting size — treat replay books as deep.
-    yesAskSize: 10000,
-    yesBidSize: 10000,
+    // Legacy tape has no depth. Zero prevents optimistic imaginary fills.
+    yesAskSize: 0,
+    yesBidSize: 0,
     pair: row.pair as PairId,
     ticker: row.ticker ?? `${row.pair}-REPLAY`,
     strike: row.strike,
+    strikeType: row.strike_type ?? null,
     yesBid: bid,
     yesAsk: ask,
     noBid: clampPrice(1 - ask),

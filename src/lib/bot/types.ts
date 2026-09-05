@@ -17,6 +17,8 @@ export interface KalshiMarket {
   pair: PairId;
   ticker: string;
   strike: number | null;
+  /** Contract rule: floor means YES at/above strike; cap means YES at/below strike. */
+  strikeType: "floor" | "cap" | null;
   yesBid: number;
   yesAsk: number;
   noBid: number;
@@ -44,6 +46,8 @@ export interface Signal {
   lagDetected: boolean;
   /** Calibrated win probability (0-1) after mapping conf onto real history. */
   calibrated: number;
+  /** True only when settled real fills are sufficient to treat calibration as evidence. */
+  calibrationReady: boolean;
   /** Price we expect to pay per contract, including half the spread. */
   entry: number;
   /** Expected value per dollar risked at that entry. */

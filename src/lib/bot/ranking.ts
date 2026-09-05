@@ -12,7 +12,7 @@ import type { PairEdgeRow } from "./telemetry.functions";
 import type { Signal } from "./types";
 
 /** Samples at which a pair's measured edge is trusted at full weight. */
-export const EDGE_FULL_TRUST = 20;
+export const EDGE_FULL_TRUST = 100;
 /** How much a fully-trusted edge can move the ranking score, per dollar. */
 const EDGE_WEIGHT = 0.5;
 
@@ -38,7 +38,14 @@ export function getPairEdge() {
 export function pairEdgeScore(pair: string, map: PairEdgeMap = edgeMap): number {
   const e = map[pair];
   if (!e || !e.fired || e.avgEntry <= 0) return 0;
-  const actual = e.firedWins / e.fired;
+  if (e.fired < VETO_MIN_TRADES) return 0;
+  // Wilson lower bound prevents a lucky early streak from masquerading as edge.
+  const z = 1.64;
+  const p = e.firedWins / e.fired;
+  const z2 = z * z;
+  const actual =
+    (p + z2 / (2 * e.fired) - z * Math.sqrt((p * (1 - p) + z2 / (4 * e.fired)) / e.fired)) /
+    (1 + z2 / e.fired);
   const breakeven = e.avgEntry;
   const weight = Math.min(1, e.fired / EDGE_FULL_TRUST);
   return (actual - breakeven) * weight;
@@ -86,8 +93,8 @@ export function rankSignals(signals: Signal[], map: PairEdgeMap = edgeMap): Sign
  * Pairs listed in MANUAL_RESUME were un-paused by hand: they stay tradable
  * until their P&L drops below the baseline recorded at resume time.
  */
-export const VETO_MIN_TRADES = 5;
-export const COOLDOWN_CANDLES = 4;
+export const VETO_MIN_TRADES = 30;
+export const COOLDOWN_CANDLES = 12;
 export const CANDLE_MS = 15 * 60 * 1000;
 
 /** Pair -> P&L baseline at manual resume. Re-pauses only on a new loss. */

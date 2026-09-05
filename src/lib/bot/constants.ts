@@ -10,7 +10,9 @@ export const MAX_SLIPPAGE_CENTS = 3; // floor for the value-based slippage cap
  */
 export const MAX_CHASE_CENTS = 8;
 /** Order attempts allowed per pair per candle (one retry after a moved quote). */
-export const MAX_ORDER_ATTEMPTS = 2;
+export const MAX_ORDER_ATTEMPTS = 1;
+/** Separates evidence gathered under materially different decision rules. */
+export const STRATEGY_VERSION = "stable-v2";
 export const DAILY_LOSS_CAP_DEFAULT = 20; // stop trading after this much loss in a day
 /**
  * Minimum contracts resting at the touch before an order is worth sending.

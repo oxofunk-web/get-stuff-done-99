@@ -17,6 +17,8 @@ const snapshotRow = z.object({
   ticker: z.string().nullable().default(null),
   spot: z.number(),
   strike: z.number().nullable().default(null),
+  strike_type: z.enum(["floor", "cap"]).nullable().default(null),
+  quote_observed_at: z.string().datetime().nullable().default(null),
   yes_bid: z.number().nullable().default(null),
   yes_ask: z.number().nullable().default(null),
   yes_mid: z.number().nullable().default(null),
@@ -44,6 +46,7 @@ const signalRow = z.object({
   spot: z.number().nullable().default(null),
   strike: z.number().nullable().default(null),
   source: z.enum(["client", "server"]).default("client"),
+  strategy_version: z.string().default("stable-v2"),
 });
 
 const tradeRow = z.object({
@@ -178,7 +181,7 @@ export const getRejectionReport = createServerFn({ method: "GET" }).handler(
 /** Per-pair economics: what a trade risks and what the pair actually returns. */
 export interface PairEdgeRow {
   pair: string;
-  /** Settled decisions used for the win rate (fired + counterfactuals). */
+  /** Settled real fills used for the win rate. */
   n: number;
   wins: number;
   /** Settled trades actually fired on this pair. */
@@ -202,7 +205,7 @@ export interface AccuracyStats {
   monitorWinRate: number;
   /** Hypothetical return per $1 risked at each unique monitor signal's price. */
   monitorNetPerDollar: number;
-  /** Settled rejected signals graded as counterfactuals — calibration fuel. */
+  /** Settled rejected signals, shown separately and never used for calibration. */
   counterfactual: number;
   table: CalibrationTable;
   /** Confidence bands split per pair — feeds per-pair calibration. */
@@ -215,10 +218,8 @@ export interface AccuracyStats {
 }
 
 /**
- * Real, settled accuracy. Headline numbers are the trades the engine actually
- * fired; the calibration table spans fired *and* counterfactual rejections, so
- * the confidence bands fill up in hours instead of weeks and the probability
- * stays honest across the whole score range.
+ * Real, settled accuracy. Calibration and pair ranking use actual fills only;
+ * shadow and rejected signals remain separate diagnostics.
  */
 export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): Promise<AccuracyStats> => {
   const empty: AccuracyStats = {
@@ -273,7 +274,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     // Realized dollars per pair, from the orders that actually filled.
     const { data: tradeRows } = await db
       .from("trade_log")
-      .select("ts, candle_id, pair, dir, conf, pnl, outcome, entry_price, status")
+      .select("ts, candle_id, pair, dir, conf, pnl, outcome, entry_price, status, strategy_version")
       .eq("source", "server")
       .limit(20000);
     const money = new Map<string, { pnl: number; trades: number }>();
@@ -287,7 +288,9 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       outcome: string | null;
       entry_price: number | null;
       status: string;
+      strategy_version: string;
     }[]).filter((t) => t.status === "placed" && t.outcome != null && t.pnl != null);
+    const learningTrades = settledTrades.filter((t) => t.strategy_version === "stable-v2");
     for (const t of settledTrades) {
       // Only settled orders count: failed attempts and unsettled fills carry no
       // realized P&L, and counting them would judge a pair on orders that never
@@ -302,7 +305,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     // Production learning uses unique SERVER decisions only. Browser rows are
     // monitor-only and repeated 5-second observations are not extra evidence.
     const monitorRows = decisions.filter((r) => r.verdict === "fired" && r.source === "client");
-    const learningRows = decisions.filter((r) => r.source === "server");
+    const shadowRows = decisions.filter((r) => r.source === "server");
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
@@ -313,7 +316,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     >();
     const wins = settledTrades.filter((t) => t.outcome === "win").length;
 
-    for (const r of learningRows) {
+    for (const r of learningTrades) {
       const won = r.outcome === "win";
       const conf = r.conf ?? 0;
       const band = table.find((b) => conf >= b.lo && conf < b.hi);
@@ -334,13 +337,11 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
         edge.get(r.pair) ?? { n: 0, wins: 0, fired: 0, firedWins: 0, entrySum: 0, entryN: 0 };
       e.n += 1;
       if (won) e.wins += 1;
-      if (r.verdict === "fired") {
-        e.fired += 1;
-        if (won) e.firedWins += 1;
-        if (r.entry_price != null && r.entry_price > 0) {
-          e.entrySum += r.entry_price;
-          e.entryN += 1;
-        }
+      e.fired += 1;
+      if (won) e.firedWins += 1;
+      if (r.entry_price != null && r.entry_price > 0) {
+        e.entrySum += r.entry_price;
+        e.entryN += 1;
       }
       edge.set(r.pair, e);
 
@@ -386,7 +387,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       monitorNetPerDollar: monitorReturns.length
         ? monitorReturns.reduce((sum, value) => sum + value, 0) / monitorReturns.length
         : 0,
-      counterfactual: learningRows.filter((r) => r.verdict !== "fired").length,
+       counterfactual: shadowRows.filter((r) => r.verdict !== "fired").length,
       table,
       pairTable,
       pairEdge,

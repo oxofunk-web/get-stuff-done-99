@@ -34,32 +34,32 @@ const sig = (pair: string, over: Partial<Signal> = {}): Signal =>
   }) as Signal;
 
 const row = (pair: string, o: Partial<PairEdgeMap[string]> = {}) =>
-  ({ pair, n: 30, fired: 20, firedWins: 17, avgEntry: 0.6, pnl: 10, trades: 8, ...o }) as PairEdgeMap[string];
+  ({ pair, n: 120, fired: 100, firedWins: 80, avgEntry: 0.6, pnl: 10, trades: 40, ...o }) as PairEdgeMap[string];
 
 describe("ranking", () => {
   it("favors the pair with the proven higher win rate", () => {
     const map: PairEdgeMap = {
-      GOOD: row("GOOD", { fired: 20, firedWins: 18, avgEntry: 0.6 }),
-      MEH: row("MEH", { fired: 20, firedWins: 10, avgEntry: 0.6 }),
+      GOOD: row("GOOD", { fired: 100, firedWins: 90, avgEntry: 0.6 }),
+      MEH: row("MEH", { fired: 100, firedWins: 50, avgEntry: 0.6 }),
     };
     const order = rankSignals([sig("MEH"), sig("GOOD")], map).map((s) => s.pair);
     expect(order[0]).toBe("GOOD");
   });
 
   it("penalizes expensive average entries", () => {
-    const cheap = { C: row("C", { fired: 20, firedWins: 14, avgEntry: 0.5 }) } as PairEdgeMap;
-    const pricey = { C: row("C", { fired: 20, firedWins: 14, avgEntry: 0.9 }) } as PairEdgeMap;
+    const cheap = { C: row("C", { fired: 100, firedWins: 70, avgEntry: 0.5 }) } as PairEdgeMap;
+    const pricey = { C: row("C", { fired: 100, firedWins: 70, avgEntry: 0.9 }) } as PairEdgeMap;
     expect(rankScore(sig("C"), cheap)).toBeGreaterThan(rankScore(sig("C"), pricey));
   });
 
   it("shrinks edge for thin samples", () => {
     const thin = { T: row("T", { fired: 2, firedWins: 2, avgEntry: 0.6 }) } as PairEdgeMap;
-    const full = { T: row("T", { fired: 20, firedWins: 20, avgEntry: 0.6 }) } as PairEdgeMap;
+    const full = { T: row("T", { fired: 100, firedWins: 100, avgEntry: 0.6 }) } as PairEdgeMap;
     expect(rankScore(sig("T"), thin)).toBeLessThan(rankScore(sig("T"), full));
   });
 
   it("pauses a losing pair but re-arms on a probe candle", () => {
-    const map = { LOSS: row("LOSS", { trades: 6, pnl: -12 }) } as PairEdgeMap;
+    const map = { LOSS: row("LOSS", { trades: 30, pnl: -12 }) } as PairEdgeMap;
     const probe = COOLDOWN_CANDLES * 10 * CANDLE_MS; // index divisible by cooldown
     const between = probe + CANDLE_MS;
     expect(pairVetoed("LOSS", map, between)).toBe(true);
@@ -71,8 +71,8 @@ describe("ranking", () => {
     const base = -10;
     MANUAL_RESUME["TEST"] = base;
     const between = COOLDOWN_CANDLES * 10 * CANDLE_MS + CANDLE_MS;
-    expect(pairVetoed("TEST", { TEST: row("TEST", { trades: 7, pnl: base }) } as PairEdgeMap, between)).toBe(false);
-    expect(pairVetoed("TEST", { TEST: row("TEST", { trades: 7, pnl: base - 5 }) } as PairEdgeMap, between)).toBe(true);
+    expect(pairVetoed("TEST", { TEST: row("TEST", { trades: 30, pnl: base }) } as PairEdgeMap, between)).toBe(false);
+    expect(pairVetoed("TEST", { TEST: row("TEST", { trades: 30, pnl: base - 5 }) } as PairEdgeMap, between)).toBe(true);
     delete MANUAL_RESUME["TEST"];
   });
 });

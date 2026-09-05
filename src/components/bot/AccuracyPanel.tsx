@@ -42,9 +42,8 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
             <div className="text-2xl">📊</div>
             <div className="mt-2 text-[11px] text-foreground">Still collecting outcomes</div>
             <div className="mt-1 text-[9px] leading-relaxed text-dim">
-              Every signal and market snapshot is now being recorded. After a few candles settle, the
-              real win rate appears here and the engine starts trusting measured odds instead of its
-              own score.
+              Real fills, shadow signals, and rejected opportunities are tracked separately. Only
+              settled real fills can calibrate money decisions.
             </div>
             {a?.error ? <div className="mt-2 text-[8px] text-no">{a.error}</div> : null}
           </div>
@@ -68,7 +67,7 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
                 <div className="text-[8px] text-muted-foreground">{a!.wins} wins</div>
               </div>
               <div className="bg-surface-2 p-2">
-                <div className="text-[7px] tracking-[0.2em] text-dim">CALIBRATED</div>
+                <div className="text-[7px] tracking-[0.2em] text-dim">PROVEN BANDS</div>
                 <div className="font-sans text-[15px] font-extrabold text-gold tabular-nums">
                   {a!.table.filter((b) => b.n >= MIN_SAMPLES).length}/{a!.table.length}
                 </div>
@@ -83,7 +82,7 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
             ) : null}
 
             <div className="mt-2.5 text-[7px] tracking-[0.2em] text-dim">
-              BY CONFIDENCE BAND · {a!.counterfactual} counterfactual samples included
+              REAL FILLS BY SCORE BAND · shadows excluded
             </div>
 
             <div className="mt-1 space-y-1">

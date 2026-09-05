@@ -23,6 +23,8 @@ export interface RawMarket {
   volume_24h?: number;
   volume_24h_fp?: string;
   close_time?: string;
+  status?: string;
+  result?: "yes" | "no" | "";
 }
 
 function toDollars(dollars: string | undefined, cents: number | undefined) {
@@ -44,6 +46,7 @@ export function normalizeMarket(mkt: RawMarket) {
   return {
     ticker: mkt.ticker,
     strike: mkt.floor_strike ?? mkt.cap_strike ?? null,
+    strikeType: mkt.floor_strike != null ? "floor" as const : mkt.cap_strike != null ? "cap" as const : null,
     yesBid,
     yesAsk,
     noBid: noBid || Math.max(0, 1 - yesAsk),
@@ -154,6 +157,19 @@ export async function fetchMarket(ticker: string): Promise<RawMarket | null> {
     }
   }
   return null;
+}
+
+/** Exchange-authoritative final result for an exact contract ticker. */
+export async function fetchFinalizedMarketResult(ticker: string) {
+  const market = await fetchMarket(ticker);
+  if (!market || market.status !== "finalized" || (market.result !== "yes" && market.result !== "no")) {
+    return null;
+  }
+  return {
+    result: market.result,
+    strike: market.floor_strike ?? market.cap_strike ?? null,
+    strikeType: market.floor_strike != null ? "floor" as const : market.cap_strike != null ? "cap" as const : null,
+  };
 }
 
 function derLength(n: number) {

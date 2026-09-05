@@ -1,6 +1,8 @@
 import {
   calibrateFor,
   evPerDollar,
+  MIN_SAMPLES,
+  bucketFor,
   returnSigma,
   type CalibrationTable,
   type PairCalibration,
@@ -290,12 +292,17 @@ export function computeSignals(
 
     // Spot has to sit on the right side of the strike for the direction taken.
     if (km.strike != null && s.price) {
-      if (dir === "YES" && s.price < km.strike) {
-        note(p.id, "rejected", "spot below strike for a YES", { spot: s.price, strike: km.strike }, dir);
+      if (!km.strikeType) {
+        note(p.id, "rejected", "unsupported contract rule", { strike: km.strike }, dir);
         continue;
       }
-      if (dir === "NO" && s.price > km.strike) {
-        note(p.id, "rejected", "spot above strike for a NO", { spot: s.price, strike: km.strike }, dir);
+      const yesInMoney = km.strikeType === "floor" ? s.price >= km.strike : s.price <= km.strike;
+      if (dir === "YES" && !yesInMoney) {
+        note(p.id, "rejected", "spot is outside the YES side of the strike", { spot: s.price, strike: km.strike }, dir);
+        continue;
+      }
+      if (dir === "NO" && yesInMoney) {
+        note(p.id, "rejected", "spot is outside the NO side of the strike", { spot: s.price, strike: km.strike }, dir);
         continue;
       }
     }
@@ -319,9 +326,10 @@ export function computeSignals(
       Math.max(0.01, (dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2)),
     );
     const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
+    const calibrationReady = (bucketFor(conf, calibration)?.n ?? 0) >= MIN_SAMPLES;
     const ev = evPerDollar(calibrated, entry);
 
-    if (ev < T.evMargin) {
+    if (calibrationReady && ev < T.evMargin) {
       note(
         p.id,
         "rejected",
@@ -373,11 +381,12 @@ export function computeSignals(
       kMom,
       lagDetected,
       calibrated,
+        calibrationReady,
       entry,
       ev,
       sigmaDist,
       skew,
-      reason: `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · edge ${(ev * 100).toFixed(0)}% per $ · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
+      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · probability unproven`} · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
       elapsed: c.elapsed,
       remain: c.remain,
     });

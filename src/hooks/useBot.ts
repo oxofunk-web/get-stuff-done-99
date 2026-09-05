@@ -487,6 +487,8 @@ export function useBot() {
           ticker: m?.ticker ?? null,
           spot: s.price,
           strike: m?.strike ?? null,
+          strike_type: m?.strikeType ?? null,
+          quote_observed_at: m ? new Date().toISOString() : null,
           yes_bid: m?.yesBid ?? null,
           yes_ask: m?.yesAsk ?? null,
           yes_mid: m?.yesMid ?? null,
@@ -539,6 +541,8 @@ export function useBot() {
             sigma_dist: s?.sigmaDist ?? null,
             spot: spotRef.current[t.pair]?.price ?? null,
             strike: m?.strike ?? null,
+            strike_type: m?.strikeType ?? null,
+            strategy_version: "stable-v2",
           };
         });
       if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);

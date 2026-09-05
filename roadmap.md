@@ -16,3 +16,9 @@
 - [ ] Publish the latest execution fixes, then verify an autonomous fill in the next qualifying window
 - [x] Retry failed market pulls (server + dashboard) and show real errors instead of blank/stale panels
 - [x] Stop logging junk samples ("outside window", "not enough data") so only real signals reach the live log
+- [x] Keep live trading OFF; reset contaminated calibration to $5 / 1 trade / strict gates
+- [x] Separate real-fill calibration from shadow and rejected signals; version strategy evidence
+- [x] Settle real fills from finalized exchange results and preserve floor/cap contract rules
+- [x] Count unsettled stake toward the daily loss cap and recheck the book immediately before sending
+- [x] Replace optimistic replay depth with no-fill behavior when depth was not recorded
+- [ ] Collect 100 independent settled shadow candidates before considering live approval
