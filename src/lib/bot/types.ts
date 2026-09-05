@@ -48,6 +48,9 @@ export interface Signal {
   calibrated: number;
   /** True only when settled real fills are sufficient to treat calibration as evidence. */
   calibrationReady: boolean;
+  /** How many real settled fills back this score band. */
+  calibrationSamples: number;
+
   /** Price we expect to pay per contract, including half the spread. */
   entry: number;
   /** Expected value per dollar risked at that entry. */
