@@ -263,6 +263,8 @@ export type Database = {
           source: string
           stake: number | null
           status: string
+          strike: number | null
+          ticker: string | null
           ts: string
         }
         Insert: {
@@ -288,6 +290,8 @@ export type Database = {
           source?: string
           stake?: number | null
           status: string
+          strike?: number | null
+          ticker?: string | null
           ts?: string
         }
         Update: {
@@ -313,6 +317,8 @@ export type Database = {
           source?: string
           stake?: number | null
           status?: string
+          strike?: number | null
+          ticker?: string | null
           ts?: string
         }
         Relationships: []
