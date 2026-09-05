@@ -2,7 +2,13 @@ import type { KalshiMarket, Signal } from "./types";
 
 export const CANDLE_SECONDS = 900;
 export const ORDER_CUTOFF_BUFFER_SECS = 5;
-export const REQUIRED_STABLE_SAMPLES = 2;
+/** How many time-separated, matching observations a signal needs to count. */
+export const REQUIRED_STABLE_SAMPLES = 3;
+/** Minimum elapsed time the confirmation window must span. */
+export const REQUIRED_STABLE_SPAN_MS = 6_000;
+/** How much cushion decay is tolerated across the window, in sigma. */
+export const CUSHION_DECAY_TOLERANCE = 0.15;
+
 
 /** Exact UTC close boundary for the active 15-minute candle. */
 export function activeCandleCloseMs(now = Date.now()) {
