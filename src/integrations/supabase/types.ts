@@ -359,6 +359,13 @@ export type Database = {
         Args: { p_lease_id: string; p_lease_seconds?: number }
         Returns: boolean
       }
+      bot_risk_snapshot: {
+        Args: { p_day_start: string }
+        Returns: {
+          open_risk: number
+          settled_pnl: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
