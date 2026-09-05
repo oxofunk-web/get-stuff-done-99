@@ -1,28 +1,29 @@
-# Retry failed market pulls and show real errors (never a blank panel)
+# Retry market pulls, show real errors, and clean up the signal log
 
-## What happens today (verified in code)
-- The dashboard asks the server for all 7 orderbooks every 8 seconds (`getMarkets` in `src/lib/kalshi.functions.ts`).
-- If one pair's pull fails, that pair silently drops out — no retry, no message.
-- If the whole pull fails, the panel shows "Kalshi feed unavailable — retrying…" **only when no data was ever loaded**. Once data exists, a failure leaves stale numbers on screen with no warning, and the next retry waits the full 8 seconds. The "Failed to fetch" errors in your console were this: a burst of failed pulls with no quick retry and no on-screen explanation.
+## What's going on (verified against live data)
+- **Fired signals have been good**: since the reset, server-fired signals that settled went 339 wins / 34 losses (~91%). The signal engine itself is not the problem.
+- **Live orders are what fail**: in the last 24h, order attempts failed on "book too thin — nothing resting at the live price" (24x), quotes moving past the chase cap (many), and resting size vanishing before the IOC landed (7x). Good signal, untradeable book at that second.
+- **The log is flooded with junk**: ~11,400 "outside the trade window" rejects in 6 hours. Bad/unusable samples are being written to the same log as real signals, which makes the dashboard and calibration noisy.
 
 ## Changes
 
-1. **Server retry (`src/lib/kalshi.functions.ts`)**
-   - Retry each pair's market fetch up to 2 more times with a short pause (≈400ms, then ≈1s) before giving up.
-   - Return per-pair status: for each pair either the orderbook or a short reason ("timeout", "HTTP 502", …). `ok` stays true if at least one pair loaded.
+### 1. Retry failed market pulls, show real errors (approved plan)
+- `src/lib/kalshi.functions.ts`: retry each pair's fetch up to 2 more times (≈400ms, ≈1s pauses); return per-pair status with a short reason on failure; `ok` true if any pair loaded.
+- `src/hooks/useBot.ts`: on a failed pull, quick-retry after ~2s (up to 2x) instead of waiting the full 8s; keep last good orderbooks on screen; track `lastOkAt` + the real error; only mark the feed down after 3 consecutive failures.
+- `src/components/bot/MarketsPanel.tsx`: amber "LIVE DATA STALE — retrying (Xs)" chip while showing older data; red chip with the actual error and a "Retry now" button after retries are exhausted; a failed pair's row shows "unavailable — retrying" instead of vanishing.
 
-2. **Dashboard retry + stale handling (`src/hooks/useBot.ts`)**
-   - On a failed pull, retry automatically after ~2s (up to 2 quick retries) instead of waiting the full 8s poll.
-   - Keep the last good orderbooks on screen while retrying — never blank the panel.
-   - Track `lastOkAt` timestamp and the real error message; only mark the feed down after 3 consecutive failures.
+### 2. Only good signals reach the live log
+- `src/lib/bot/server-engine.server.ts`: stop writing `rejected` rows for "outside the trade window" and "not enough live data yet" — these are noise, not decisions. Still record:
+  - every **fired** signal (kept permanently in the log),
+  - every **skipped** row (a good signal whose order couldn't be sent — the "why no order" trail),
+  - in-window rejects that cleared most gates (confidence, value, momentum) so the dashboard's "blocking right now" list still works.
+- Result: the live log becomes a list of real, tradeable opportunities — good ones stay, junk never gets written.
 
-3. **Visible, honest status (`src/components/bot/MarketsPanel.tsx`)**
-   - While showing older data during retries: amber "LIVE DATA STALE — retrying" chip with the seconds since last good pull.
-   - After retries are exhausted: red chip with the actual error (e.g. "Kalshi returned HTTP 502") and a "Retry now" button.
-   - Per-pair failure: that pair's row shows "unavailable — retrying" instead of vanishing.
-
-4. **No changes to trading logic** — the server runner already skips pairs it can't price; this only makes failures visible and self-healing. Live trading stays OFF.
+### 3. Cut down "good signal, no fill" failures
+- Before sending, require minimum resting depth at the touch (already `MIN_RESTING_DEPTH`) **plus** re-check depth on the fresh pre-order quote, so "book too thin" failures are skipped before an attempt is logged.
+- No change to gates, thresholds, or sizing. Live trading stays OFF.
 
 ## Verification
-- Typecheck (`bunx tsgo --noEmit`) and existing bot tests.
-- In the preview: block the market request (devtools offline), confirm quick retries fire, stale chip appears with the real error, and the panel recovers on its own when the network returns.
+- `bunx tsgo --noEmit` + existing bot test suite.
+- Preview: confirm the stale/error chip appears when the market request fails and recovers on its own.
+- After a trade window, confirm `signal_log` contains only in-window decisions and fired/skipped rows.
