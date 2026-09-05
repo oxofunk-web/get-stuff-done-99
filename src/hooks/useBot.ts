@@ -77,8 +77,23 @@ export function useBot() {
 
   const [markets, setMarkets] = useState<Partial<Record<PairId, KalshiMarket>>>({});
   const [marketsOk, setMarketsOk] = useState<boolean | null>(null);
+  /** Feed health for the markets panel: last good pull, real error, failed pairs. */
+  interface MarketsHealth {
+    lastOkAt: number | null;
+    error: string | null;
+    failures: { pair: string; error: string }[];
+  }
+  const [marketsHealth, setMarketsHealth] = useState<MarketsHealth>({
+    lastOkAt: null,
+    error: null,
+    failures: [],
+  });
+  const marketsHealthRef = useRef<MarketsHealth>({ lastOkAt: null, error: null, failures: [] });
+
+
   const historyRef = useRef<Partial<Record<PairId, number[]>>>({});
   const marketsRef = useRef<Partial<Record<PairId, KalshiMarket>>>({});
+
 
   // ---- server bot (the only trader) ----------------------------------------
   const [server, setServer] = useState<ServerBotState | null>(null);
@@ -282,7 +297,15 @@ export function useBot() {
     }
   }, [candle.id, refreshAccuracy]);
 
-  // Kalshi orderbook polling (through the server, so no CORS and no key in the browser)
+  // Kalshi orderbook polling (through the server, so no CORS and no key in the
+  // browser). A failed pull retries quickly instead of waiting the full poll
+  // interval, and the last good book stays on screen (up to STALE_DROP_MS) so a
+  // hiccup never blanks the panel.
+  const STALE_DROP_MS = 45000;
+  const failsRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pullRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     let stop = false;
     const pull = async () => {
@@ -294,28 +317,68 @@ export function useBot() {
         }
         const res = await getMarkets({ data: spots });
         if (stop) return;
-        const next: Partial<Record<PairId, KalshiMarket>> = {};
+        const next: Partial<Record<PairId, KalshiMarket>> = { ...marketsRef.current };
+        const seen = new Set<PairId>();
         for (const m of res.markets) {
-          next[m.pair as PairId] = m as KalshiMarket;
-          const h = historyRef.current[m.pair as PairId] ?? [];
+          const id = m.pair as PairId;
+          seen.add(id);
+          next[id] = m as KalshiMarket;
+          const h = historyRef.current[id] ?? [];
           h.push(m.yesMid);
           if (h.length > 40) h.shift();
-          historyRef.current[m.pair as PairId] = h;
+          historyRef.current[id] = h;
+        }
+        // Drop a carried-over book once it is too old to reason about.
+        const lastOk = marketsHealthRef.current.lastOkAt;
+        if (res.markets.length && lastOk && Date.now() - lastOk > STALE_DROP_MS) {
+          for (const p of PAIRS) if (!seen.has(p.id)) delete next[p.id];
         }
         setMarkets(next);
         marketsRef.current = next;
         setMarketsOk(res.ok);
-      } catch {
-        if (!stop) setMarketsOk(false);
+        failsRef.current = res.ok ? 0 : failsRef.current + 1;
+        const health = {
+          lastOkAt: res.ok ? Date.now() : marketsHealthRef.current.lastOkAt,
+          error: res.ok ? null : (res.error ?? "Kalshi feed unavailable"),
+          failures: res.failures ?? [],
+        };
+        marketsHealthRef.current = health;
+        setMarketsHealth(health);
+        if (!res.ok && failsRef.current < 3) schedule(2000);
+      } catch (e) {
+        if (stop) return;
+        failsRef.current += 1;
+        const health = {
+          lastOkAt: marketsHealthRef.current.lastOkAt,
+          error: e instanceof Error ? e.message : "Could not reach the market feed",
+          failures: marketsHealthRef.current.failures,
+        };
+        marketsHealthRef.current = health;
+        setMarketsHealth(health);
+        if (failsRef.current >= 3) setMarketsOk(false);
+        if (failsRef.current < 3) schedule(2000);
       }
     };
+    const schedule = (ms: number) => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => void pull(), ms);
+    };
+    pullRef.current = () => {
+      failsRef.current = 0;
+      void pull();
+    };
     void pull();
-    const i = setInterval(pull, KALSHI_POLL_MS);
+    const i = setInterval(() => void pull(), KALSHI_POLL_MS);
     return () => {
       stop = true;
       clearInterval(i);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, []);
+
+  /** "Retry now" from the markets panel. */
+  const retryMarkets = useCallback(() => pullRef.current(), []);
+
 
   // Live-credential probe
   const refreshLive = useCallback(async () => {
@@ -577,6 +640,9 @@ export function useBot() {
     feedSource,
     markets,
     marketsOk,
+    marketsHealth,
+    retryMarkets,
+
     history: historyRef.current,
     signals,
     candle,

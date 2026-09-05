@@ -14,3 +14,5 @@
 - [x] Reset contaminated signal/snapshot telemetry and restore conservative controls
 - [ ] Run safeguards and observe the bot while OFF across a trade window
 - [ ] Publish the latest execution fixes, then verify an autonomous fill in the next qualifying window
+- [x] Retry failed market pulls (server + dashboard) and show real errors instead of blank/stale panels
+- [x] Stop logging junk samples ("outside window", "not enough data") so only real signals reach the live log

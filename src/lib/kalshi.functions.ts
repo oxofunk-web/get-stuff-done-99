@@ -4,30 +4,58 @@ import { z } from "zod";
 import { PAIRS } from "./bot/constants";
 import {
   fetchLiveBalance,
-  fetchOpenMarket,
+  fetchOpenMarketWithReason,
   fetchPortfolioSnapshot,
   normalizeMarket,
   placeLiveOrder,
 } from "./kalshi.server";
 
+const RETRY_DELAYS_MS = [400, 1000];
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Live YES/NO orderbook for every 15-minute crypto series. Public data.
  * Spot prices are optional but strongly recommended: each candle lists many
  * strikes and only the one nearest spot is tradable.
+ *
+ * A single flaky read used to drop a pair silently. Each pair now gets two
+ * extra attempts and, if it still fails, reports a short reason so the
+ * dashboard can show a real error instead of a blank row.
  */
 export const getMarkets = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.record(z.string(), z.number()).optional().parse(input) ?? {})
   .handler(async ({ data }) => {
-  const results = await Promise.all(
-    PAIRS.map(async (p) => {
-      const raw = await fetchOpenMarket(p.series, data[p.id] ?? null);
-      if (!raw) return null;
-      return { pair: p.id, ...normalizeMarket(raw) };
-    }),
-  );
-  const markets = results.filter((m): m is NonNullable<typeof m> => m !== null);
-  return { markets, ok: markets.length > 0, ts: Date.now() };
-});
+    const results = await Promise.all(
+      PAIRS.map(async (p) => {
+        let error: string | null = null;
+        for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+          if (attempt > 0) await wait(RETRY_DELAYS_MS[attempt - 1]!);
+          const res = await fetchOpenMarketWithReason(p.series, data[p.id] ?? null);
+          if (res.market) return { pair: p.id, market: { pair: p.id, ...normalizeMarket(res.market) } };
+          error = res.error;
+          // A period with no contract at all will not appear on a retry either.
+          if (res.error?.startsWith("no contract")) break;
+        }
+        return { pair: p.id, error: error ?? "unavailable" };
+      }),
+    );
+    const markets = results
+      .map((r) => ("market" in r ? r.market : null))
+      .filter((m): m is NonNullable<typeof m> => m != null);
+    const failures = results.flatMap((r) =>
+      "error" in r && r.error ? [{ pair: r.pair as string, error: r.error }] : [],
+    );
+
+    return {
+      markets,
+      failures,
+      ok: markets.length > 0,
+      error: markets.length === 0 ? (failures[0]?.error ?? "Kalshi unreachable") : null,
+      ts: Date.now(),
+    };
+  });
+
 
 /** Whether live trading credentials are configured on the server. */
 export const getLiveStatus = createServerFn({ method: "GET" }).handler(async () => {
