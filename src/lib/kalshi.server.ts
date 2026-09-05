@@ -67,19 +67,36 @@ export function normalizeMarket(mkt: RawMarket) {
  * moved 71¢ -> 88¢" skips and nonsense signals. Always pick the open market
  * that closes soonest in the future: the candle currently being traded.
  */
-export async function fetchOpenMarket(
+export interface MarketFetchResult {
+  market: RawMarket | null;
+  /** Short human-readable reason when no market could be returned. */
+  error: string | null;
+}
+
+/**
+ * Same read as {@link fetchOpenMarket} but reports WHY it came back empty, so
+ * the dashboard can show a real error instead of a silently missing row.
+ */
+export async function fetchOpenMarketWithReason(
   series: string,
   spot?: number | null,
   now = Date.now(),
-): Promise<RawMarket | null> {
+): Promise<MarketFetchResult> {
   const path = `/markets?series_ticker=${series}&status=open&limit=200`;
+  let lastError: string | null = null;
   for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
     try {
       const r = await fetch(base + path, { headers: { accept: "application/json" } });
-      if (!r.ok) continue;
+      if (!r.ok) {
+        lastError = `Kalshi returned HTTP ${r.status}`;
+        continue;
+      }
       const j = (await r.json()) as { markets?: RawMarket[] };
       const markets = j.markets ?? [];
-      if (!markets.length) continue;
+      if (!markets.length) {
+        lastError = "no open contracts listed";
+        continue;
+      }
       const upcoming = markets
         .map((m) => ({ m, close: m.close_time ? new Date(m.close_time).getTime() : NaN }))
         .filter((x) => Number.isFinite(x.close) && x.close > now)
@@ -89,7 +106,7 @@ export async function fetchOpenMarket(
       const candle = upcoming
         .filter((x) => marketMatchesActiveCandle(x.m.close_time, now))
         .map((x) => x.m);
-      if (!candle.length) return null;
+      if (!candle.length) return { market: null, error: "no contract for this 15-minute period" };
       // Pick deterministically by strike proximity. Re-ranking by live midpoint
       // made the selected contract jump as prices moved.
       const score = (m: RawMarket) => {
@@ -97,16 +114,26 @@ export async function fetchOpenMarket(
         if (spot && strike != null) return Math.abs(strike - spot) / spot;
         return Math.abs(normalizeMarket(m).yesMid - 0.5);
       };
-      return candle.reduce((best, m) => {
-        const delta = score(m) - score(best);
-        return delta < 0 || (delta === 0 && m.ticker < best.ticker) ? m : best;
+      const best = candle.reduce((acc, m) => {
+        const delta = score(m) - score(acc);
+        return delta < 0 || (delta === 0 && m.ticker < acc.ticker) ? m : acc;
       }, candle[0]!);
-    } catch {
-      // try next base
+      return { market: best, error: null };
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "network error";
     }
   }
-  return null;
+  return { market: null, error: lastError ?? "Kalshi unreachable" };
 }
+
+export async function fetchOpenMarket(
+  series: string,
+  spot?: number | null,
+  now = Date.now(),
+): Promise<RawMarket | null> {
+  return (await fetchOpenMarketWithReason(series, spot, now)).market;
+}
+
 
 /** Exposed for regression tests and diagnostics. */
 export { activeCandleCloseMs };
