@@ -9,7 +9,8 @@ import type { KalshiMarket, SpotState } from "./types";
 function tape(base: number, drift: number, ticks = 60, at = 0): SpotState {
   const start = at - ticks * 1_000;
   const rows = Array.from({ length: ticks }, (_, i) => ({
-    price: base * (1 + drift * i),
+    // deterministic jitter so return volatility is non-zero
+    price: base * (1 + drift * i + (i % 2 === 0 ? 0.00015 : -0.00015)),
     ts: start + i * 1_000,
   }));
   const last = rows[rows.length - 1]!;
