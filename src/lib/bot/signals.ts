@@ -345,6 +345,19 @@ export function computeSignals(
       continue;
     }
 
+    // Upper edge of the cushion band: a contract this far in the money is a
+    // near-certainty the book has already paid for, so there is no room left.
+    if (km.strike != null && sigma > 0 && Math.abs(sigmaDist) > T.maxSigmaDist) {
+      note(
+        p.id,
+        "rejected",
+        "already too deep in the money to be worth its price",
+        { sigmaDist: Number(sigmaDist.toFixed(2)), max: T.maxSigmaDist },
+        dir,
+      );
+      continue;
+    }
+
     // Price the trade honestly: calibrated probability vs. what we actually pay.
     const entry = Math.min(
       0.99,
@@ -353,6 +366,20 @@ export function computeSignals(
     const calibrated = calibrateFor(p.id, conf, calibration, pairCalibration);
     const calibrationReady = (bucketFor(conf, calibration)?.n ?? 0) >= MIN_SAMPLES;
     const ev = evPerDollar(calibrated, entry);
+
+    // Hard ceiling on what the leg may cost. Average recorded entry was 78¢,
+    // where a single loss wipes out several wins.
+    if (entry > T.maxEntry + 1e-9) {
+      note(
+        p.id,
+        "rejected",
+        "leg costs too much to leave any room",
+        { entry: Number(entry.toFixed(2)), max: T.maxEntry },
+        dir,
+      );
+      continue;
+    }
+
 
     if (calibrationReady && ev < T.evMargin) {
       note(
