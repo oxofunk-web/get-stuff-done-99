@@ -78,6 +78,18 @@ export function useBot() {
   const [markets, setMarkets] = useState<Partial<Record<PairId, KalshiMarket>>>({});
   const [marketsOk, setMarketsOk] = useState<boolean | null>(null);
   /** Feed health for the markets panel: last good pull, real error, failed pairs. */
+  interface MarketsHealth {
+    lastOkAt: number | null;
+    error: string | null;
+    failures: { pair: string; error: string }[];
+  }
+  const [marketsHealth, setMarketsHealth] = useState<MarketsHealth>({
+    lastOkAt: null,
+    error: null,
+    failures: [],
+  });
+  const marketsHealthRef = useRef<MarketsHealth>({ lastOkAt: null, error: null, failures: [] });
+
   const [marketsHealth, setMarketsHealth] = useState<{
     lastOkAt: number | null;
     error: string | null;
