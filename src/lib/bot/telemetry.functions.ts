@@ -18,6 +18,7 @@ const snapshotRow = z.object({
   spot: z.number(),
   strike: z.number().nullable().default(null),
   strike_type: z.enum(["floor", "cap"]).nullable().default(null),
+  quote_observed_at: z.string().datetime().nullable().default(null),
   yes_bid: z.number().nullable().default(null),
   yes_ask: z.number().nullable().default(null),
   yes_mid: z.number().nullable().default(null),
