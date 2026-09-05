@@ -679,7 +679,16 @@ async function runOwnedServerBotTick(db: Db) {
     const slot = Math.floor(candleInfo(now).elapsed / 5) * 5;
     const fired = new Map(signals.map((s) => [s.pair, s]));
     const awaiting = new Map(rankedSignals.filter((s) => !stablePairs.has(s.pair)).map((s) => [s.pair, s]));
-    const logRows: SignalInsert[] = trace.map((t) => {
+    // Junk samples are not decisions: writing "outside the trade window" and
+    // "not enough live data yet" for every pair every 5 seconds buried the real
+    // signals (11k rows in 6h) and polluted what the dashboard calls a signal.
+    const NOISE_REASONS = ["outside the trade window", "not enough live data yet"];
+    const isNoise = (verdict: string, reason: string | null) =>
+      verdict === "rejected" && !!reason && NOISE_REASONS.some((n) => reason.startsWith(n));
+    const logRows: SignalInsert[] = trace
+      .filter((t) => !isNoise(t.verdict, t.reason) || fired.has(t.pair) || awaiting.has(t.pair))
+      .map((t) => {
+
       const s = fired.get(t.pair);
       const pending = awaiting.get(t.pair);
       const m = markets[t.pair];
