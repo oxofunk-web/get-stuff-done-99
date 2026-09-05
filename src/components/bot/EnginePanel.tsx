@@ -1,5 +1,5 @@
 import { mmss } from "@/lib/bot/candle";
-import { CLOSE_SECS, GATE_SECS, type GatePresetName } from "@/lib/bot/constants";
+import { CLOSE_SECS, GATE_SECS, SCORE_DIAL_MAX, type GatePresetName } from "@/lib/bot/constants";
 import type { CandleInfo } from "@/lib/bot/candle";
 
 export interface Gates {
