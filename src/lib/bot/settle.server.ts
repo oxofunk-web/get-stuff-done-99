@@ -79,7 +79,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
 
   const { data: trades } = await db
     .from("trade_log")
-    .select("id, pair, dir, contracts, entry_price")
+    .select("id, pair, dir, contracts, entry_price, ticker, strike")
     .eq("candle_id", candleId)
     .is("outcome", null)
     .eq("status", "placed")
@@ -92,9 +92,13 @@ export async function settleOne(candleId: number, override?: Final[]) {
     dir: string;
     contracts: number | null;
     entry_price: number | null;
+    ticker: string | null;
+    strike: number | null;
   }[]) {
     const spot = finals.get(t.pair);
-    const strike = strikes.get(t.pair) ?? null;
+    // New fills carry their exact contract strike. Legacy rows fall back to the
+    // old tape-derived value so existing audit history remains settleable.
+    const strike = t.strike ?? strikes.get(t.pair) ?? null;
     if (spot == null || strike == null) continue;
     const yesWon = spot >= strike;
     const won = t.dir === "YES" ? yesWon : !yesWon;

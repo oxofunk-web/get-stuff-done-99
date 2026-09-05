@@ -20,6 +20,7 @@ import {
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { pairVetoed, setPairEdge } from "@/lib/bot/ranking";
+import { advanceStableSignal, REQUIRED_STABLE_SAMPLES, type StableSignalCandidate } from "@/lib/bot/stability";
 import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
@@ -355,12 +356,33 @@ export function useBot() {
     return () => clearInterval(i);
   }, [refreshPortfolio]);
 
-  const signals = useMemo(
+  const rawSignals = useMemo(
     () => computeSignals(spot, markets, historyRef.current, now),
     // `tick` forces recompute as websocket ticks mutate the spot ref
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [markets, now, tick],
   );
+  const displayCandidates = useRef(new Map<PairId, StableSignalCandidate>());
+  const signals = useMemo(() => {
+    const active = new Set<PairId>();
+    const stable = rawSignals.filter((signal) => {
+      active.add(signal.pair);
+      const ticker = markets[signal.pair]?.ticker;
+      if (!ticker) return false;
+      const next = advanceStableSignal(
+        displayCandidates.current.get(signal.pair),
+        `${ticker}:${signal.dir}`,
+        now,
+        1_000,
+      );
+      displayCandidates.current.set(signal.pair, next);
+      return next.count >= REQUIRED_STABLE_SAMPLES;
+    });
+    for (const pair of [...displayCandidates.current.keys()]) {
+      if (!active.has(pair)) displayCandidates.current.delete(pair);
+    }
+    return stable;
+  }, [markets, now, rawSignals]);
 
   // Why each pair is idle right now — so "no signals" reads as "here's what
   // every pair is waiting for" instead of a blank panel.

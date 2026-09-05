@@ -1,5 +1,6 @@
 import { MAX_SLIPPAGE_CENTS } from "./bot/constants";
 import { mapOrderToBook } from "./bot/order-map";
+import { activeCandleCloseMs, marketMatchesActiveCandle } from "./bot/stability";
 
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
 const FALLBACK_BASE = "https://api.elections.kalshi.com/trade-api/v2";
@@ -66,7 +67,11 @@ export function normalizeMarket(mkt: RawMarket) {
  * moved 71¢ -> 88¢" skips and nonsense signals. Always pick the open market
  * that closes soonest in the future: the candle currently being traded.
  */
-export async function fetchOpenMarket(series: string, spot?: number | null): Promise<RawMarket | null> {
+export async function fetchOpenMarket(
+  series: string,
+  spot?: number | null,
+  now = Date.now(),
+): Promise<RawMarket | null> {
   const path = `/markets?series_ticker=${series}&status=open&limit=200`;
   for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
     try {
@@ -75,36 +80,36 @@ export async function fetchOpenMarket(series: string, spot?: number | null): Pro
       const j = (await r.json()) as { markets?: RawMarket[] };
       const markets = j.markets ?? [];
       if (!markets.length) continue;
-      const now = Date.now();
       const upcoming = markets
         .map((m) => ({ m, close: m.close_time ? new Date(m.close_time).getTime() : NaN }))
         .filter((x) => Number.isFinite(x.close) && x.close > now)
         .sort((a, b) => a.close - b.close);
-      if (!upcoming.length) return markets[0] ?? null;
-      // Every candle lists MANY strikes. Keep only the candle closing soonest,
-      // then take the strike nearest spot (or nearest a 50¢ mid when spot is
-      // unknown) — far out-of-the-money strikes quote at 1-3¢ and are never
-      // tradable, which is what silenced the engine.
-      const soonest = upcoming[0]!.close;
-      const candle = upcoming.filter((x) => x.close === soonest).map((x) => x.m);
-      // Rank by how balanced the book is, not raw strike distance: late in a
-      // candle the nearest strike can still be a 1¢ certainty, while a slightly
-      // further strike is the one actually priced in a tradable range.
+      // The API briefly exposes the closing and next contracts together. Only
+      // accept the contract whose close matches our active UTC quarter-hour.
+      const candle = upcoming
+        .filter((x) => marketMatchesActiveCandle(x.m.close_time, now))
+        .map((x) => x.m);
+      if (!candle.length) return null;
+      // Pick deterministically by strike proximity. Re-ranking by live midpoint
+      // made the selected contract jump as prices moved.
       const score = (m: RawMarket) => {
-        const n = normalizeMarket(m);
-        const quoted = n.yesBid > 0 || n.yesAsk > 0;
-        if (quoted) return Math.abs(n.yesMid - 0.5);
         const strike = m.floor_strike ?? m.cap_strike ?? null;
-        if (spot && strike != null) return 0.5 + Math.abs(strike - spot) / spot;
-        return 1;
+        if (spot && strike != null) return Math.abs(strike - spot) / spot;
+        return Math.abs(normalizeMarket(m).yesMid - 0.5);
       };
-      return candle.reduce((best, m) => (score(m) < score(best) ? m : best), candle[0]!);
+      return candle.reduce((best, m) => {
+        const delta = score(m) - score(best);
+        return delta < 0 || (delta === 0 && m.ticker < best.ticker) ? m : best;
+      }, candle[0]!);
     } catch {
       // try next base
     }
   }
   return null;
 }
+
+/** Exposed for regression tests and diagnostics. */
+export { activeCandleCloseMs };
 
 
 /** Fresh single-market snapshot (best bid/ask + resting size at top of book). */

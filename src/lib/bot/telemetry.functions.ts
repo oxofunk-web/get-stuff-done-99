@@ -298,9 +298,10 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       money.set(t.pair, m);
     }
 
-    // Calibration spans unique decisions. Headline accuracy comes from actual
-    // settled server fills below, never from browser-only monitor signals.
+    // Production learning uses unique SERVER decisions only. Browser rows are
+    // monitor-only and repeated 5-second observations are not extra evidence.
     const monitorRows = decisions.filter((r) => r.verdict === "fired" && r.source === "client");
+    const learningRows = decisions.filter((r) => r.source === "server");
     const table = emptyTable();
     const pairMap = new Map<string, { n: number; wins: number }>();
     const minMap = new Map<number, { n: number; wins: number }>();
@@ -311,7 +312,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     >();
     const wins = settledTrades.filter((t) => t.outcome === "win").length;
 
-    for (const r of decisions) {
+    for (const r of learningRows) {
       const won = r.outcome === "win";
       const conf = r.conf ?? 0;
       const band = table.find((b) => conf >= b.lo && conf < b.hi);
@@ -384,7 +385,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       monitorNetPerDollar: monitorReturns.length
         ? monitorReturns.reduce((sum, value) => sum + value, 0) / monitorReturns.length
         : 0,
-      counterfactual: decisions.filter((r) => r.verdict !== "fired").length,
+      counterfactual: learningRows.filter((r) => r.verdict !== "fired").length,
       table,
       pairTable,
       pairEdge,
