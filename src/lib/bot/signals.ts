@@ -472,6 +472,8 @@ export function computeSignals(
       lagDetected,
       calibrated,
         calibrationReady,
+      calibrationSamples,
+
       entry,
       ev,
       sigmaDist,
