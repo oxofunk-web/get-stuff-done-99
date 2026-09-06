@@ -1,0 +1,1 @@
+UPDATE public.bot_settings SET gate_preset='balanced', threshold=72, ev_margin=0.04, min_yes_mid=0.08, max_yes_mid=0.94, min_skew=0.02, max_spread=0.07, min_sigma_dist=0.35, max_trades=1, bet_size=5, mode='paper', enabled=false, updated_at=now() WHERE id=true;

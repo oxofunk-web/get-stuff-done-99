@@ -331,6 +331,24 @@ export function EnginePanel({
           {blocks?.length ? (
             <div className="mt-2 space-y-0.5 border-t border-wire pt-2">
               <p className="text-[8px] font-bold tracking-widest text-dim">BLOCKING RIGHT NOW</p>
+              {(() => {
+                const tally = new Map<string, number>();
+                for (const b of blocks) {
+                  const key = (b.reason.split("—")[0] ?? b.reason).trim();
+                  tally.set(key, (tally.get(key) ?? 0) + 1);
+                }
+                const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+                if (!top) return null;
+                return (
+                  <p className="flex justify-between gap-2 text-[8px] text-gold">
+                    <span className="font-bold">TOP BLOCKER</span>
+                    <span className="truncate text-right">
+                      {top[0]} ({top[1]} of {blocks.length})
+                    </span>
+                  </p>
+                );
+              })()}
+
               {blocks.slice(0, 7).map((b) => (
                 <p key={b.pair} className="flex justify-between gap-2 text-[8px] text-dim">
                   <span className="font-bold text-fg">{b.pair}</span>
@@ -339,6 +357,7 @@ export function EnginePanel({
               ))}
             </div>
           ) : null}
+
         </div>
 
 
