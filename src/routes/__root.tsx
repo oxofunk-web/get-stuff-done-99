@@ -77,7 +77,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Kalshi Auto 15M Bot" },
+      { title: "BOTTE-BY-OXOFUNK" },
       {
         name: "description",
         content: "Automated 15-minute Kalshi crypto trading console with a real-time BRTI lag engine.",

@@ -70,7 +70,7 @@ export function Dashboard() {
             className={`size-1.5 rounded-full ${bot.botOn ? "animate-blink bg-yes" : "bg-dim"}`}
           />
           <div>
-            <h1 className="truncate font-sans text-[15px] font-extrabold text-hi">KALSHI AUTO</h1>
+            <h1 className="truncate font-sans text-[15px] font-extrabold text-hi">BOTTE-BY-OXOFUNK</h1>
             <p className="text-[7px] tracking-[0.25em] text-muted-foreground">
               15M EXECUTION DESK · LIVE MONEY
             </p>
