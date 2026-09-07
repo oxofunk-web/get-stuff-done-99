@@ -187,14 +187,20 @@ export function computeSignals(
 
   const out: Signal[] = [];
 
+  // Only readings taken inside this candle may inform momentum or volatility;
+  // last candle's regime must not decide this candle's trade.
+  const candleStartMs = Math.floor(now / 900_000) * 900_000;
+
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
-    if (!s || !km || s.ticks.length < T.minTicks) {
+    const freshTicks = s ? s.ticks.filter((t) => t.ts >= candleStartMs).length : 0;
+    if (!s || !km || freshTicks < T.minTicks) {
       note(p.id, "rejected", "not enough live data yet", {
         hasSpot: Boolean(s),
         hasMarket: Boolean(km),
-        ticks: s?.ticks.length ?? 0,
+        ticks: freshTicks,
+        needed: T.minTicks,
         needTicks: T.minTicks,
       });
       continue;
