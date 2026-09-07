@@ -52,7 +52,7 @@ export function getPairCalibration() {
  */
 export function volStats(spot: SpotState | undefined, strike: number | null, remainSecs: number) {
   if (!spot || spot.ticks.length < 6) return { sigma: 0, sigmaDist: 0 };
-  const window = spot.ticks.slice(-60);
+  const window = spot.ticks.slice(-TICK_LOOKBACK);
   const sigma = returnSigma(window.map((t) => t.price));
   if (!sigma || strike == null || !spot.price) return { sigma, sigmaDist: 0 };
   const first = window[0]!;
