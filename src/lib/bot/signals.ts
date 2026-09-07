@@ -18,7 +18,7 @@ import {
   displayScore,
   SCORE_HALF,
   SCORE_SPAN,
-
+  TICK_LOOKBACK,
 } from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
@@ -52,7 +52,7 @@ export function getPairCalibration() {
  */
 export function volStats(spot: SpotState | undefined, strike: number | null, remainSecs: number) {
   if (!spot || spot.ticks.length < 6) return { sigma: 0, sigmaDist: 0 };
-  const window = spot.ticks.slice(-60);
+  const window = spot.ticks.slice(-TICK_LOOKBACK);
   const sigma = returnSigma(window.map((t) => t.price));
   if (!sigma || strike == null || !spot.price) return { sigma, sigmaDist: 0 };
   const first = window[0]!;
@@ -187,14 +187,20 @@ export function computeSignals(
 
   const out: Signal[] = [];
 
+  // Only readings taken inside this candle may inform momentum or volatility;
+  // last candle's regime must not decide this candle's trade.
+  const candleStartMs = Math.floor(now / 900_000) * 900_000;
+
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
-    if (!s || !km || s.ticks.length < T.minTicks) {
+    const freshTicks = s ? s.ticks.filter((t) => t.ts >= candleStartMs).length : 0;
+    if (!s || !km || freshTicks < T.minTicks) {
       note(p.id, "rejected", "not enough live data yet", {
         hasSpot: Boolean(s),
         hasMarket: Boolean(km),
-        ticks: s?.ticks.length ?? 0,
+        ticks: freshTicks,
+        needed: T.minTicks,
         needTicks: T.minTicks,
       });
       continue;

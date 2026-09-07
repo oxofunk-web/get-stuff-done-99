@@ -51,7 +51,7 @@ import { fetchLiveBalance, fetchMarket, fetchOpenMarket, normalizeMarket, placeL
 import type { KalshiMarket, SpotState, SpotTick } from "./types";
 
 /**
- * Sampling. The momentum math needs ~24 ticks inside a candle, so one sample
+ * Sampling. The momentum math needs ~60 ticks inside a candle, so one sample
  * per minute is far too thin when the dashboard isn't also feeding the tape.
  * Each tick therefore samples continuously for most of its minute, re-scoring
  * the engine after every sample — that gives the server the same
