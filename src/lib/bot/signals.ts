@@ -342,10 +342,24 @@ export function computeSignals(
 
 
 
-    // The book has to actually lean one way — coin-flip mids are noise.
+    // The book has to lean one way — unless the read already has real distance
+    // from the strike and momentum pointing the same way, which is evidence a
+    // coin-flip mid simply hasn't priced yet.
     if (Math.abs(skew) < T.minSkew) {
-      note(p.id, "rejected", "book too flat", { skew, min: T.minSkew }, leanDir);
-      continue;
+      const cushionYes = km.strikeType === "floor" ? sigmaDist : -sigmaDist;
+      const cushionSide: "YES" | "NO" = cushionYes > 0 ? "YES" : "NO";
+      const strongCushion =
+        Math.abs(cushionYes) >= T.strongCushion && cushionSide === leanDir;
+      if (!strongCushion) {
+        note(
+          p.id,
+          "rejected",
+          "book too flat with no other evidence",
+          { skew, min: T.minSkew, cushion: Number(cushionYes.toFixed(2)), need: T.strongCushion },
+          leanDir,
+        );
+        continue;
+      }
     }
 
 
