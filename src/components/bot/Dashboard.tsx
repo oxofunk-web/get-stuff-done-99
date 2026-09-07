@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AccuracyPanel } from "./AccuracyPanel";
 import { BrtiPanel } from "./BrtiPanel";
+import { AiCoachPanel } from "./AiCoachPanel";
 import { ClockPanel } from "./ClockPanel";
 import { EnginePanel } from "./EnginePanel";
 import { LogPanel } from "./LogPanel";
@@ -129,6 +130,8 @@ export function Dashboard() {
             gates={bot.gates} gatePreset={bot.gatePreset} onGatePreset={bot.setGatePreset} onGate={bot.setGate}
             blocks={bot.server?.blocks ?? []}
             dayPnl={bot.dayPnl} dailyLossCap={bot.dailyLossCap} capHit={bot.capHit} onResetDay={bot.resetDay}
+            bootstrap={bot.bootstrap} onBootstrap={bot.setBootstrap}
+            learningFills={bot.accuracy?.learningFills ?? 0} learningNeeded={bot.accuracy?.learningNeeded ?? 50}
           /></div>
           <div className="flex flex-col gap-3 lg:col-span-5"><ServerBotPanel /><ClockPanel candle={bot.candle} ticker={ticker} /></div>
         </div> : null}
@@ -166,6 +169,7 @@ export function Dashboard() {
             rejections={bot.rejections}
             onRefresh={() => void bot.refreshAccuracy()}
           />
+          <AiCoachPanel />
           <LogPanel log={bot.log} />
           </div>
         </div> : null}
