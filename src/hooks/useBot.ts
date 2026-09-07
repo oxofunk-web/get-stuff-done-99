@@ -385,6 +385,7 @@ export function useBot() {
   const refreshLive = useCallback(async () => {
     try {
       const res = await getLiveStatus();
+      if (!res || typeof res.configured !== "boolean") return null;
       setLive(res);
       return res;
     } catch {
