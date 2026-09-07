@@ -27,7 +27,10 @@ export function useBrtiFeed() {
   const [status, setStatus] = useState<FeedStatus>("connecting");
   const [source, setSource] = useState<FeedSource>("coinbase");
   const [tick, setTick] = useState(0);
+  /** Bumped every time the app comes back from the background. */
+  const [wakeCount, setWakeCount] = useState(0);
   const spotRef = useRef<Partial<Record<PairId, SpotState>>>({});
+  const lastFrameRef = useRef(0);
 
   useEffect(() => {
     let disposed = false;
@@ -35,6 +38,7 @@ export function useBrtiFeed() {
     let watchdog: ReturnType<typeof setTimeout> | null = null;
     let poll: ReturnType<typeof setInterval> | null = null;
     let gotFrame = false;
+
 
     const push = (sym: PairId | undefined, price: number, change24h: number) => {
       if (!sym || !price || !Number.isFinite(price)) return;
