@@ -402,7 +402,13 @@ interface SignalInsert {
   strike?: number | null;
   strike_type?: "floor" | "cap" | null;
   strategy_version?: string;
+  raw_score?: number | null;
+  minute_in?: number | null;
+  depth?: number | null;
+  mom_z?: number | null;
+  cushion_score?: number | null;
 }
+
 
 
 
