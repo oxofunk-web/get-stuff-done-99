@@ -299,6 +299,17 @@ export function computeSignals(
     // Volatility-normalized momentum: a 0.1% move on XRP and on BTC are not
     // the same event, so score the move in units of that pair's own noise.
     const momZ = sigma > 0 ? spotMom / (sigma * 3) : spotMom / LAG_PCT;
+    Object.assign(feat, {
+      spotMom,
+      midMom: spotMidMom,
+      skew,
+      kMom,
+      sigma,
+      sigmaDist,
+      momZ,
+    });
+
+
 
     // The book has to actually lean one way — coin-flip mids are noise.
     if (Math.abs(skew) < T.minSkew) {
