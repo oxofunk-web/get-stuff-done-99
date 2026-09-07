@@ -900,10 +900,32 @@ async function runOwnedServerBotTick(db: Db) {
         // the saved EV margin is probability / (1 + margin).
         const valueCeiling = sig.calibrated / (1 + settings.ev_margin);
         const chaseCeiling = sig.entry + MAX_CHASE_CENTS / 100;
-        const maxEntry = Math.min(0.99, valueCeiling, chaseCeiling);
+        // Learning mode: while real-fill probability is unproven the engine may
+        // still take tiny positions, but only on cheap legs where the price
+        // itself carries the edge and a loss is a couple of dollars. Without
+        // this the bot can never collect the 50 real fills it waits for.
+        const bootstrapOn = Boolean(settings.bootstrap_enabled) && !sig.calibrationReady;
+        const bootstrapMaxEntry = settings.bootstrap_max_entry ?? BOOTSTRAP_MAX_ENTRY_DEFAULT;
+        const bootstrapStake = settings.bootstrap_stake ?? BOOTSTRAP_STAKE_DEFAULT;
+        const bootstrapDailyCap = settings.bootstrap_max_daily ?? BOOTSTRAP_MAX_DAILY_DEFAULT;
+        const maxEntry = bootstrapOn
+          ? Math.min(bootstrapMaxEntry, chaseCeiling)
+          : Math.min(0.99, valueCeiling, chaseCeiling);
         const maxPriceCents = Math.max(1, Math.min(99, Math.floor(maxEntry * 100)));
-        if (!sig.calibrationReady) {
+        if (!sig.calibrationReady && !bootstrapOn) {
           skip("shadow only — real-fill probability is not proven yet");
+          continue;
+        }
+        if (bootstrapOn && freshEntry > bootstrapMaxEntry + 1e-9) {
+          skip(
+            `learning mode only buys under ${Math.round(bootstrapMaxEntry * 100)}¢ — live ${Math.round(freshEntry * 100)}¢`,
+          );
+          continue;
+        }
+        if (bootstrapOn && bootstrapSpentToday + bootstrapStake > bootstrapDailyCap + 1e-9) {
+          skip(
+            `learning budget used up — $${bootstrapSpentToday.toFixed(2)} of $${bootstrapDailyCap.toFixed(2)} risked today`,
+          );
           continue;
         }
         if (freshEntry * 100 > maxPriceCents + 0.0001) {
@@ -919,10 +941,12 @@ async function runOwnedServerBotTick(db: Db) {
           skip(`book too thin — ${depth} resting at ${priceCents}¢`);
           continue;
         }
+        const stakeTarget = bootstrapOn ? bootstrapStake : settings.bet_size;
         const count = Math.max(
           1,
-          Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, freshEntry))),
+          Math.min(depth, Math.floor(stakeTarget / Math.max(0.01, freshEntry))),
         );
+
         let status = "placed";
         let msg = "";
         let contracts = count;
