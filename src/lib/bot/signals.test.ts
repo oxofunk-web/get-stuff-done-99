@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeSignals } from "./signals";
+import { computeSignals, getSignalTrace } from "./signals";
 import { getTuning, resetTuning, setTuning } from "./tuning";
 import { GATE_SECS, MAX_ENTRY_PRICE, SCORE_CAP_UNPROVEN } from "./constants";
 import type { KalshiMarket, SpotState } from "./types";
