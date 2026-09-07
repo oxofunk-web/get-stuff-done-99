@@ -205,6 +205,7 @@ export function useBot() {
       minSkew: server.minSkew,
       maxSpread: server.maxSpread,
       minSigmaDist: server.minSigmaDist,
+      gateSecs: server.gateSecs,
     });
   }, [server]);
 

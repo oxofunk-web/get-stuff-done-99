@@ -90,6 +90,7 @@ export interface ServerBotRow {
   min_skew?: number | null;
   max_spread?: number | null;
   min_sigma_dist?: number | null;
+  gate_secs?: number | null;
   gate_preset?: string | null;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
@@ -143,6 +144,8 @@ export interface ServerBotState {
   minSkew: number;
   maxSpread: number;
   minSigmaDist: number;
+  /** Seconds into the 15-minute candle before the bot may look for a trade. */
+  gateSecs: number;
   gatePreset: string;
   lastTickAt: string | null;
   lastTickMsg: string | null;
@@ -214,6 +217,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     minSkew: s.min_skew ?? MIN_SKEW,
     maxSpread: s.max_spread ?? MAX_SPREAD,
     minSigmaDist: s.min_sigma_dist ?? MIN_SIGMA_DIST,
+    gateSecs: s.gate_secs ?? GATE_SECS,
     gatePreset: s.gate_preset ?? "balanced",
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
@@ -489,6 +493,7 @@ async function runOwnedServerBotTick(db: Db) {
     minSkew: settings.min_skew ?? MIN_SKEW,
     maxSpread: settings.max_spread ?? MAX_SPREAD,
     minSigmaDist: settings.min_sigma_dist ?? MIN_SIGMA_DIST,
+    gateSecs: settings.gate_secs ?? GATE_SECS,
   });
   const cal = await loadCalibration(db);
   setCalibration(cal.table, cal.pairTable);
@@ -603,6 +608,7 @@ async function runOwnedServerBotTick(db: Db) {
       minSkew: settings.min_skew ?? MIN_SKEW,
       maxSpread: settings.max_spread ?? MAX_SPREAD,
       minSigmaDist: settings.min_sigma_dist ?? MIN_SIGMA_DIST,
+      gateSecs: settings.gate_secs ?? GATE_SECS,
     });
     // Spot first: the strike nearest spot is the only tradable one of the many
     // strikes each candle lists, so the market pull needs the price.
@@ -781,7 +787,8 @@ async function runOwnedServerBotTick(db: Db) {
 
 
     // ---- 5. Trade, only when enabled and inside the window ----------------
-    const inWindow = c.elapsed >= GATE_SECS && c.elapsed < CLOSE_SECS - ORDER_CUTOFF_BUFFER_SECS;
+    const gateSecs = settings.gate_secs ?? GATE_SECS;
+    const inWindow = c.elapsed >= gateSecs && c.elapsed < CLOSE_SECS - ORDER_CUTOFF_BUFFER_SECS;
     if (!enabledNow) {
       lastMsg = `tape ok · ${signals.length} live signal(s) · server bot OFF`;
     } else if (!inWindow) {
