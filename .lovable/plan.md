@@ -1,35 +1,24 @@
-# Full engine reset + fix the disappearing signals
+# Make signals survive an app refresh
 
-## What I found (checked live, just now)
+## Confirmed cause
 
-The engine is not broken or asleep. It ticked seconds ago and is scoring every pair:
+- The server runner is healthy: its latest heartbeat was at 06:01:50 UTC and the price tape is still receiving all seven pairs every minute.
+- Refreshing the app clears the phone’s in-memory price history. The visible Signals panel then starts again from 1 reading and requires 60 current-candle readings before it can show a signal, even though the server already has the full candle history.
+- The dashboard currently mixes two sources: signal cards come from the phone’s freshly reset feed, while the idle reasons come from older server decisions. That makes a working server look stopped after refresh.
+- The saved bot switch is currently OFF. The runner continues analyzing and recording while off, but it will not place real orders. This plan will not turn real-money trading on automatically.
 
-- BTC scored 57.2, DOGE 60.9 — both just under your 66 confidence dial, so both were rejected as "missed by 8.8 / 5.1".
-- ETH, SOL, XRP were rejected as "mid outside tradable band"; BNB/NEAR sometimes "nothing resting in the book".
-- Bot switch is OFF and mode is paper, so nothing would be ordered anyway.
+## Changes
 
-That is exactly why signals appear and then vanish a minute later: scores drift a few points around your dial, so the same pair crosses 66 and falls back under it. Nothing is resetting on refresh.
+1. Make the server runner the single source for the Signals panel, including direction, confidence, entry price, edge, reason, and timestamp for each pair.
+2. Return only decisions from the current 15-minute candle and label their state clearly: confirming, ready signal, blocked, or stale. Do not reuse a previous candle’s reason after refresh.
+3. Preserve visible signal continuity across reloads by rebuilding the screen from the current candle’s saved server observations instead of waiting for the phone to collect 60 new readings.
+4. Show the server heartbeat and the bot switch separately: “scanner running” can coexist with “real orders off,” so the screen cannot imply that analysis stopped.
+5. Keep the phone feed for live prices and charts only; it will no longer decide which signals the user sees or increments the visible signal count.
+6. Remove the duplicate client-side signal/tape logging path so refreshing or opening multiple tabs cannot create conflicting telemetry.
 
-Second, real problem: the Signals panel on your phone is fed by the **phone's own** price feed, not the server bot. On mobile most pairs never collect enough ticks, so the panel says "not enough live data yet" for 6 of 7 pairs while the server is happily scoring all of them. So the screen genuinely does not show what the bot thinks.
+## Safety and verification
 
-## The reset you asked for
-
-1. Wipe all bot history: past trade attempts and fills (103 rows, 14 placed), the full decision log, and the recorded price tape. Learning starts from zero.
-2. Clear pair pauses/cooldowns and any leftover day-loss baseline, so all seven pairs are eligible immediately.
-3. Clear the stale run lease so the next scheduled tick takes a clean lock.
-4. Leave your dials as they are (66 dial, 5:00 window, $10, 2 trades/candle, $20 cap) and leave the bot switch OFF and paper mode — your call to flip it on.
-
-Your real Kalshi account, wallet and any open positions are untouched — only the bot's own records.
-
-## The UI fix (so this stops being confusing)
-
-5. The Signals panel and the "why each pair is idle" strip read from the **server** decisions instead of the phone's feed, with the pair's real reason and score (e.g. "57.2 — missed by 8.8"). No more false "not enough live data yet".
-6. Show the last server tick time in the header, so a stale screen is obvious at a glance.
-7. Show near-misses: any pair within a few points of your dial is listed as "close" with its score, so you can see it building instead of it silently blinking in and out.
-
-## Technical notes
-
-- Deletes: `trade_log`, `signal_log`, `market_snapshots`; `bot_settings.run_lease_id/run_lease_until` nulled; `MANUAL_RESUME` in `src/lib/bot/ranking.ts` emptied (already empty — verified).
-- `SignalsPanel` / `Dashboard` consume the existing server tick payload (`bot.server`) as the source for pair verdicts and near-misses; client-engine reasons are dropped from display only.
-- No change to signal math, gates, thresholds, order placement or settlement. Live trading stays off.
-- Verify with a typecheck plus the existing bot test suite, then watch one candle in the preview.
+- Do not erase trade history, learning results, or recorded market data.
+- Do not change scoring math, thresholds, timing gates, trade sizing, or automatically enable live trading.
+- Verify a signal/decision remains visible before and after a hard refresh, confirm the displayed candle matches the current candle, and confirm the server heartbeat continues advancing with the page closed and reopened.
+- Run the existing signal, stability, ranking, and order tests plus a mobile-size browser check.
