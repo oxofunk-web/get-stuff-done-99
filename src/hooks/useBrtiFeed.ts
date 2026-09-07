@@ -255,5 +255,5 @@ export function useBrtiFeed() {
   }, []);
 
 
-  return { spot: spotRef.current, status, source, tick };
+  return { spot: spotRef.current, status, source, tick, wakeCount };
 }
