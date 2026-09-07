@@ -14,9 +14,49 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_notes: {
+        Row: {
+          candle_id: number | null
+          created_at: string
+          data: Json | null
+          id: string
+          kind: string
+          label: string | null
+          note: string | null
+          pair: string | null
+          ts: string
+        }
+        Insert: {
+          candle_id?: number | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          kind: string
+          label?: string | null
+          note?: string | null
+          pair?: string | null
+          ts?: string
+        }
+        Update: {
+          candle_id?: number | null
+          created_at?: string
+          data?: Json | null
+          id?: string
+          kind?: string
+          label?: string | null
+          note?: string | null
+          pair?: string | null
+          ts?: string
+        }
+        Relationships: []
+      }
       bot_settings: {
         Row: {
           bet_size: number
+          bootstrap_enabled: boolean
+          bootstrap_max_daily: number
+          bootstrap_max_entry: number
+          bootstrap_stake: number
           daily_loss_cap: number
           enabled: boolean
           ev_margin: number
@@ -43,6 +83,10 @@ export type Database = {
         }
         Insert: {
           bet_size?: number
+          bootstrap_enabled?: boolean
+          bootstrap_max_daily?: number
+          bootstrap_max_entry?: number
+          bootstrap_stake?: number
           daily_loss_cap?: number
           enabled?: boolean
           ev_margin?: number
@@ -69,6 +113,10 @@ export type Database = {
         }
         Update: {
           bet_size?: number
+          bootstrap_enabled?: boolean
+          bootstrap_max_daily?: number
+          bootstrap_max_entry?: number
+          bootstrap_stake?: number
           daily_loss_cap?: number
           enabled?: boolean
           ev_margin?: number
@@ -172,13 +220,18 @@ export type Database = {
           calibrated: number | null
           candle_id: number
           conf: number | null
+          cushion_score: number | null
+          depth: number | null
           dir: string | null
           entry_price: number | null
           ev: number | null
           id: string
           k_mom: number | null
+          minute_in: number | null
+          mom_z: number | null
           outcome: string | null
           pair: string
+          raw_score: number | null
           reason: string | null
           seconds_in: number
           settled_at: string | null
@@ -200,13 +253,18 @@ export type Database = {
           calibrated?: number | null
           candle_id: number
           conf?: number | null
+          cushion_score?: number | null
+          depth?: number | null
           dir?: string | null
           entry_price?: number | null
           ev?: number | null
           id?: string
           k_mom?: number | null
+          minute_in?: number | null
+          mom_z?: number | null
           outcome?: string | null
           pair: string
+          raw_score?: number | null
           reason?: string | null
           seconds_in: number
           settled_at?: string | null
@@ -228,13 +286,18 @@ export type Database = {
           calibrated?: number | null
           candle_id?: number
           conf?: number | null
+          cushion_score?: number | null
+          depth?: number | null
           dir?: string | null
           entry_price?: number | null
           ev?: number | null
           id?: string
           k_mom?: number | null
+          minute_in?: number | null
+          mom_z?: number | null
           outcome?: string | null
           pair?: string
+          raw_score?: number | null
           reason?: string | null
           seconds_in?: number
           settled_at?: string | null
