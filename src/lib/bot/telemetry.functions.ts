@@ -207,6 +207,12 @@ export interface AccuracyStats {
   monitorNetPerDollar: number;
   /** Settled rejected signals, shown separately and never used for calibration. */
   counterfactual: number;
+  /** Real settled fills on the current strategy — what confidence learns from. */
+  learningFills: number;
+  /** Real fills needed before confidence is treated as proven. */
+  learningNeeded: number;
+  /** Fills the exchange never resolved; excluded from every rate. */
+  voidFills: number;
   table: CalibrationTable;
   /** Confidence bands split per pair — feeds per-pair calibration. */
   pairTable: PairCalibration;
@@ -232,6 +238,9 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     monitorWinRate: 0,
     monitorNetPerDollar: 0,
     counterfactual: 0,
+    learningFills: 0,
+    learningNeeded: MIN_REAL_SAMPLES,
+    voidFills: 0,
     table: emptyTable(),
     pairTable: {},
     pairEdge: [],
@@ -290,7 +299,10 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       status: string;
       strategy_version: string;
     }[]).filter((t) => t.status === "placed" && t.outcome != null && t.pnl != null);
-    const learningTrades = settledTrades.filter((t) => t.strategy_version === "stable-v2");
+    const voidFills = settledTrades.filter((t) => t.outcome === "void").length;
+    const learningTrades = settledTrades.filter(
+      (t) => t.strategy_version === "stable-v2" && t.outcome !== "void",
+    );
     for (const t of settledTrades) {
       // Only settled orders count: failed attempts and unsettled fills carry no
       // realized P&L, and counting them would judge a pair on orders that never
@@ -388,6 +400,9 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
         ? monitorReturns.reduce((sum, value) => sum + value, 0) / monitorReturns.length
         : 0,
        counterfactual: shadowRows.filter((r) => r.verdict !== "fired").length,
+      learningFills: learningTrades.length,
+      learningNeeded: MIN_REAL_SAMPLES,
+      voidFills,
       table,
       pairTable,
       pairEdge,
