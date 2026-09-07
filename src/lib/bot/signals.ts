@@ -458,6 +458,9 @@ export function computeSignals(
     const calibrated = calibrateFor(p.id, rawScore, calibration, pairCalibration);
 
     const ev = evPerDollar(calibrated, entry);
+    Object.assign(feat, { entry, calibrated, ev });
+
+
 
     // The leg we would actually buy must have something resting on it.
     const legDepth = dir === "YES" ? (km.yesAskSize ?? 0) : (km.yesBidSize ?? 0);
