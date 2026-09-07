@@ -17,6 +17,9 @@
 import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
 import {
+  BOOTSTRAP_MAX_DAILY_DEFAULT,
+  BOOTSTRAP_MAX_ENTRY_DEFAULT,
+  BOOTSTRAP_STAKE_DEFAULT,
   CLOSE_SECS,
   DAILY_LOSS_CAP_DEFAULT,
   GATE_SECS,
@@ -558,6 +561,25 @@ async function runOwnedServerBotTick(db: Db) {
     }
   }
 
+  // How much tiny-stake learning money has already been risked today. Kept
+  // separate from the normal loss cap so learning can never bleed into it.
+  let bootstrapSpentToday = 0;
+  {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { data: bootRows } = await db
+      .from("trade_log")
+      .select("stake")
+      .eq("source", "server")
+      .eq("status", "placed")
+      .like("msg", "BOOTSTRAP%")
+      .gte("ts", dayStart.toISOString());
+    bootstrapSpentToday = ((bootRows ?? []) as { stake: number | null }[]).reduce(
+      (a, r) => a + Math.max(0, r.stake ?? 0),
+      0,
+    );
+  }
+
   let sampled = 0;
   let placedNow = 0;
   let rounds = 0;
@@ -1009,7 +1031,7 @@ async function runOwnedServerBotTick(db: Db) {
               contracts = res.filled;
               entry = res.priceCents / 100;
               orderId = res.orderId;
-              msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
+              msg = `${bootstrapOn ? "BOOTSTRAP" : "SERVER LIVE"} ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
             } else {
               status = "failed";
               msg = res.error ?? "Order rejected";
@@ -1041,6 +1063,7 @@ async function runOwnedServerBotTick(db: Db) {
         });
 
         if (status === "placed") {
+          if (bootstrapOn) bootstrapSpentToday += contracts * entry;
           placedNow += 1;
           tradedPairs.add(sig.pair);
           remaining -= 1;
