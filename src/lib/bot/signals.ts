@@ -231,7 +231,19 @@ export function computeSignals(
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
+    // Fresh feature sheet per pair: whatever is known at the moment a gate
+    // stops the read is what gets recorded with that rejection.
+    feat = {
+      spot: s?.price,
+      yesMid: km?.yesMid,
+      spread: km?.spread,
+      strike: km?.strike ?? null,
+      strikeType: km?.strikeType ?? null,
+      depth: km ? Math.max(km.yesAskSize ?? 0, km.yesBidSize ?? 0) : undefined,
+      minuteIn: Number((((c.elapsed - GATE) / 60)).toFixed(2)),
+    };
     const freshTicks = s ? s.ticks.filter((t) => t.ts >= candleStartMs).length : 0;
+
     if (!s || !km || freshTicks < T.minTicks) {
       note(p.id, "rejected", "not enough live data yet", {
         hasSpot: Boolean(s),
