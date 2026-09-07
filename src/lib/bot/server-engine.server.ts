@@ -92,6 +92,11 @@ export interface ServerBotRow {
   min_sigma_dist?: number | null;
   gate_secs?: number | null;
   gate_preset?: string | null;
+  /** Learning mode: allow tiny real stakes on cheap legs before proof exists. */
+  bootstrap_enabled?: boolean | null;
+  bootstrap_stake?: number | null;
+  bootstrap_max_daily?: number | null;
+  bootstrap_max_entry?: number | null;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
 }
