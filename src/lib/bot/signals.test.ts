@@ -109,7 +109,13 @@ describe("signal scoring", () => {
 
   it("lets a flat book through only when the cushion is strong", () => {
     resetTuning();
-    setTuning({ threshold: 0, evMargin: -1, minSkew: 0.05, entryValueTestPrice: 0.99 });
+    setTuning({
+      threshold: 0,
+      evMargin: -1,
+      minSkew: 0.05,
+      entryValueTestPrice: 0.99,
+      strongCushion: 99,
+    });
     computeSignals(
       { BTC: tape(101, 0.00004, 60, inWindow) },
       { BTC: market({ yesMid: 0.52, yesBid: 0.51, yesAsk: 0.53 }) },
