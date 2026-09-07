@@ -89,6 +89,21 @@ export function midMomentum(spot: SpotState | undefined) {
   return o ? (r - o) / o : 0;
 }
 
+/**
+ * Ignore ordinary counter-ticks and veto only a meaningful reversal confirmed
+ * by both the short and broader spot windows.
+ */
+export function isMaterialMomentumReversal(
+  dir: "YES" | "NO",
+  spotMom: number,
+  spotMidMom: number,
+) {
+  const reversalFloor = LAG_PCT * 0.5;
+  const shortAgainst = dir === "YES" ? spotMom <= -reversalFloor : spotMom >= reversalFloor;
+  const broadAgainst = dir === "YES" ? spotMidMom < 0 : spotMidMom > 0;
+  return shortAgainst && broadAgainst;
+}
+
 /** Kalshi yes-mid velocity over the rolling history. */
 export function kalshiMomentum(history: number[] | undefined, fallback: number) {
   const h = history ?? [];
@@ -410,10 +425,17 @@ export function computeSignals(
     }
 
 
-    // Spot momentum must not fight the chosen direction.
-    const momDir = Math.sign(spotMom || spotMidMom);
-    if (momDir !== 0 && ((dir === "YES" && momDir < 0) || (dir === "NO" && momDir > 0))) {
-      note(p.id, "rejected", "spot momentum fights the direction", { dir, spotMom, momDir }, dir);
+    // A tiny counter-tick is noise. Only block a material reversal when both
+    // the short and broader spot windows confirm it against the chosen side.
+    const reversalFloor = LAG_PCT * 0.5;
+    if (isMaterialMomentumReversal(dir, spotMom, spotMidMom)) {
+      note(
+        p.id,
+        "rejected",
+        "confirmed spot reversal fights the direction",
+        { dir, spotMom, midMom: spotMidMom, reversalFloor },
+        dir,
+      );
       continue;
     }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeSignals, getSignalTrace } from "./signals";
+import { computeSignals, getSignalTrace, isMaterialMomentumReversal } from "./signals";
 import { getTuning, resetTuning, setTuning } from "./tuning";
 import { GATE_SECS, MAX_ENTRY_PRICE, SCORE_CAP_UNPROVEN } from "./constants";
 import type { KalshiMarket, SpotState } from "./types";
@@ -92,6 +92,21 @@ describe("signal scoring", () => {
 
   it("keeps a cushion band with an upper edge", () => {
     expect(getTuning().maxSigmaDist).toBeGreaterThan(getTuning().minSigmaDist);
+  });
+});
+
+describe("momentum reversal filter", () => {
+  it("does not block a tiny counter-move", () => {
+    expect(isMaterialMomentumReversal("YES", -0.00059, -0.001)).toBe(false);
+  });
+
+  it("does not block a short dip when broader momentum still supports the signal", () => {
+    expect(isMaterialMomentumReversal("YES", -0.0008, 0.0002)).toBe(false);
+  });
+
+  it("blocks a material reversal confirmed by both momentum windows", () => {
+    expect(isMaterialMomentumReversal("YES", -0.0008, -0.0002)).toBe(true);
+    expect(isMaterialMomentumReversal("NO", 0.0008, 0.0002)).toBe(true);
   });
 });
 
