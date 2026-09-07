@@ -745,6 +745,10 @@ async function runOwnedServerBotTick(db: Db) {
       const s = fired.get(t.pair);
       const pending = awaiting.get(t.pair);
       const m = markets[t.pair];
+      // Rejected reads used to store empty confidence/price/edge, which made it
+      // impossible to test whether the score separates winners from losers.
+      // The trace now carries every measured feature, fired or not.
+      const f = t.features;
       return {
         candle_id: c.id,
         seconds_in: slot,
@@ -756,22 +760,28 @@ async function runOwnedServerBotTick(db: Db) {
 
         source: "server",
         dir: s?.dir ?? pending?.dir ?? t.dir ?? null,
-        conf: s?.conf ?? pending?.conf ?? null,
-        calibrated: s?.calibrated ?? pending?.calibrated ?? null,
-        entry_price: s?.entry ?? pending?.entry ?? null,
-        ev: s?.ev ?? pending?.ev ?? null,
-        yes_mid: m?.yesMid ?? null,
-        spread: m?.spread ?? null,
-        skew: s?.skew ?? null,
-        spot_mom: s?.spotMom ?? null,
-        k_mom: s?.kMom ?? null,
-        sigma_dist: s?.sigmaDist ?? null,
-        spot: spot[t.pair]?.price ?? null,
-        strike: m?.strike ?? null,
-        strike_type: m?.strikeType ?? null,
+        conf: s?.conf ?? pending?.conf ?? f.conf ?? null,
+        calibrated: s?.calibrated ?? pending?.calibrated ?? f.calibrated ?? null,
+        entry_price: s?.entry ?? pending?.entry ?? f.entry ?? null,
+        ev: s?.ev ?? pending?.ev ?? f.ev ?? null,
+        yes_mid: m?.yesMid ?? f.yesMid ?? null,
+        spread: m?.spread ?? f.spread ?? null,
+        skew: s?.skew ?? f.skew ?? null,
+        spot_mom: s?.spotMom ?? f.spotMom ?? null,
+        k_mom: s?.kMom ?? f.kMom ?? null,
+        sigma_dist: s?.sigmaDist ?? f.sigmaDist ?? null,
+        spot: spot[t.pair]?.price ?? f.spot ?? null,
+        strike: m?.strike ?? f.strike ?? null,
+        strike_type: m?.strikeType ?? f.strikeType ?? null,
         strategy_version: STRATEGY_VERSION,
+        raw_score: f.rawScore ?? null,
+        minute_in: f.minuteIn ?? null,
+        depth: f.depth ?? null,
+        mom_z: f.momZ ?? null,
+        cushion_score: f.cushionScore ?? null,
       };
     });
+
     // Pairs the engine fired but selection dropped (cooldown) — visible, not silent.
     for (const s of scored) {
       // Stable and still-confirming candidates are already represented above.
