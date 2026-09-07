@@ -75,6 +75,12 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
               </div>
             </div>
 
+            <div className="mt-2 rounded-md border border-wire bg-surface-2 p-2 text-[8px] text-muted-foreground">
+              LEARNING FROM REAL RESULTS — {a!.learningFills} of {a!.learningNeeded} settled fills needed before
+              confidence is trusted
+              {a!.voidFills ? ` · ${a!.voidFills} fill(s) never resolved and are excluded` : ""}
+            </div>
+
             {a!.monitorTotal ? (
               <div className="mt-2 rounded-md border border-gold/40 bg-gold/10 p-2 text-[8px] text-gold">
                 MONITOR ONLY — {a!.monitorWins}/{a!.monitorTotal} directions right after de-duplication · hypothetical {a!.monitorNetPerDollar >= 0 ? "+" : ""}{(a!.monitorNetPerDollar * 100).toFixed(1)}¢ per $1 risked. These were not trades.
