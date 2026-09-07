@@ -94,3 +94,56 @@ describe("signal scoring", () => {
     expect(getTuning().maxSigmaDist).toBeGreaterThan(getTuning().minSigmaDist);
   });
 });
+
+describe("current-candle data requirement", () => {
+  it("rejects a tape thinner than the required readings", () => {
+    resetTuning();
+    setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1, minTicks: 60 });
+    const out = computeSignals(
+      { BTC: tape(101, 0.00004, 40, inWindow) },
+      { BTC: market() },
+      { BTC: [0.6, 0.61] },
+      inWindow,
+    );
+    expect(out.length).toBe(0);
+    const trace = getSignalTrace().find((t) => t.pair === "BTC");
+    expect(trace?.reason).toBe("not enough live data yet");
+    expect((trace?.detail as { ticks: number; needed: number }).ticks).toBe(40);
+    expect((trace?.detail as { ticks: number; needed: number }).needed).toBe(60);
+    resetTuning();
+  });
+
+  it("accepts a tape with the full readings requirement met", () => {
+    resetTuning();
+    setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1, maxSigmaDist: 50, minTicks: 60 });
+    const out = computeSignals(
+      { BTC: tape(101, 0.00004, 60, inWindow) },
+      { BTC: market() },
+      { BTC: [0.6, 0.61] },
+      inWindow,
+    );
+    expect(out.length).toBe(1);
+    resetTuning();
+  });
+
+  it("does not count readings taken before the candle started", () => {
+    resetTuning();
+    setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1, maxSigmaDist: 50, minTicks: 60 });
+    const candleStart = Math.floor(inWindow / 900_000) * 900_000;
+    const stale = tape(101, 0.00004, 60, inWindow);
+    // Shift half the readings into the previous candle.
+    stale.ticks = stale.ticks.map((t, i) =>
+      i < 30 ? { ...t, ts: candleStart - (30 - i) * 1_000 } : t,
+    );
+    const out = computeSignals(
+      { BTC: stale },
+      { BTC: market() },
+      { BTC: [0.6, 0.61] },
+      inWindow,
+    );
+    expect(out.length).toBe(0);
+    const trace = getSignalTrace().find((t) => t.pair === "BTC");
+    expect((trace?.detail as { ticks: number }).ticks).toBe(30);
+    resetTuning();
+  });
+});
