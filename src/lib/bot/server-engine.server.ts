@@ -155,6 +155,11 @@ export interface ServerBotState {
   /** Seconds into the 15-minute candle before the bot may look for a trade. */
   gateSecs: number;
   gatePreset: string;
+  /** Tiny-stake learning mode: buys cheap legs to earn real outcomes. */
+  bootstrapEnabled: boolean;
+  bootstrapStake: number;
+  bootstrapMaxDaily: number;
+  bootstrapMaxEntry: number;
   lastTickAt: string | null;
   lastTickMsg: string | null;
   recentTrades: {
@@ -227,6 +232,10 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     minSigmaDist: s.min_sigma_dist ?? MIN_SIGMA_DIST,
     gateSecs: s.gate_secs ?? GATE_SECS,
     gatePreset: s.gate_preset ?? "balanced",
+    bootstrapEnabled: Boolean(s.bootstrap_enabled),
+    bootstrapStake: s.bootstrap_stake ?? BOOTSTRAP_STAKE_DEFAULT,
+    bootstrapMaxDaily: s.bootstrap_max_daily ?? BOOTSTRAP_MAX_DAILY_DEFAULT,
+    bootstrapMaxEntry: s.bootstrap_max_entry ?? BOOTSTRAP_MAX_ENTRY_DEFAULT,
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
     recentTrades: (recent ?? []) as ServerBotState["recentTrades"],
