@@ -118,27 +118,28 @@ export function lagState(
  * the score separates winners from losers.
  */
 export interface TraceFeatures {
-  rawScore?: number;
-  conf?: number;
-  calibrated?: number;
-  entry?: number;
-  ev?: number;
-  skew?: number;
-  spotMom?: number;
-  midMom?: number;
-  kMom?: number;
-  momZ?: number;
-  sigma?: number;
-  sigmaDist?: number;
-  cushionScore?: number;
-  spread?: number;
-  yesMid?: number;
-  depth?: number;
-  minuteIn?: number;
-  spot?: number;
-  strike?: number | null;
-  strikeType?: "floor" | "cap" | null;
+  rawScore?: number | undefined;
+  conf?: number | undefined;
+  calibrated?: number | undefined;
+  entry?: number | undefined;
+  ev?: number | undefined;
+  skew?: number | undefined;
+  spotMom?: number | undefined;
+  midMom?: number | undefined;
+  kMom?: number | undefined;
+  momZ?: number | undefined;
+  sigma?: number | undefined;
+  sigmaDist?: number | undefined;
+  cushionScore?: number | undefined;
+  spread?: number | undefined;
+  yesMid?: number | undefined;
+  depth?: number | undefined;
+  minuteIn?: number | undefined;
+  spot?: number | undefined;
+  strike?: number | null | undefined;
+  strikeType?: "floor" | "cap" | null | undefined;
 }
+
 
 export interface SignalTrace {
   pair: PairId;
