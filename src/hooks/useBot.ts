@@ -25,11 +25,13 @@ import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
   getRejectionReport,
+  getServerLooks,
   recordSignals,
   recordSnapshots,
   settleCandle,
   type AccuracyStats,
   type RejectionRow,
+  type ServerLookRow,
 } from "@/lib/bot/telemetry.functions";
 import {
   getServerBot,
@@ -111,6 +113,24 @@ export function useBot() {
     const i = setInterval(() => void refreshServer(), 15000);
     return () => clearInterval(i);
   }, [refreshServer]);
+
+  // What the *server* runner thought about each pair on its last look. The
+  // browser's own copy of the scoring code only sees this device's price
+  // frames, so it must never be presented as the decision.
+  const [serverLooks, setServerLooks] = useState<ServerLookRow[]>([]);
+  useEffect(() => {
+    const pull = async () => {
+      try {
+        const r = await getServerLooks();
+        if (r.ok) setServerLooks(r.rows);
+      } catch {
+        // keep last known looks
+      }
+    };
+    void pull();
+    const i = setInterval(() => void pull(), 10000);
+    return () => clearInterval(i);
+  }, []);
 
   const [sigCount, setSigCount] = useState(0);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -235,7 +255,7 @@ export function useBot() {
     void applyServer(() => updateServerBot({ data: { enabled: next } }));
     notify(
       next
-        ? "LIVE TRADING ON — real orders after the 10:00 mark, even with the app closed"
+        ? "LIVE TRADING ON — real orders once the trade window opens, even with the app closed"
         : "Live trading OFF — no new orders will be placed",
       next ? "no" : "warn",
     );
@@ -471,18 +491,30 @@ export function useBot() {
   // every pair is waiting for" instead of a blank panel.
   const pairStatus = useMemo(() => {
     const trace = getSignalTrace();
+    const looks = new Map(serverLooks.map((r) => [r.pair, r]));
     return PAIRS.map((p) => {
-      const t = trace.find((x) => x.pair === p.id);
       const paused = pairVetoed(p.id);
+      const srv = looks.get(p.id);
+      const t = trace.find((x) => x.pair === p.id);
+      // Local reasons are only a fallback, and a local data shortage says
+      // nothing about the trader — never surface it as a blocker.
+      const localReason =
+        !t || t.reason === "not enough live data yet" ? null : t.reason;
+      const ageSecs = srv ? Math.max(0, Math.round((now - Date.parse(srv.ts)) / 1000)) : null;
+      const reason = paused
+        ? "paused — losing record, cooling down"
+        : srv
+          ? `${srv.reason ?? srv.verdict}${ageSecs !== null && ageSecs > 90 ? ` · ${Math.round(ageSecs / 60)}m ago` : ""}`
+          : (localReason ?? "waiting on the server's first look this candle");
       return {
         pair: p.id,
-        verdict: t?.verdict ?? "rejected",
-        reason: paused ? "paused — losing record, cooling down" : (t?.reason ?? "waiting for data"),
+        verdict: srv?.verdict ?? t?.verdict ?? "rejected",
+        reason,
         paused,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signals, now]);
+  }, [signals, now, serverLooks]);
 
   // Count brand-new signals
   useEffect(() => {

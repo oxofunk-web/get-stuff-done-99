@@ -1,5 +1,6 @@
 import { mmss } from "@/lib/bot/candle";
-import { CLOSE_SECS, GATE_SECS, PAIRS, THRESHOLD } from "@/lib/bot/constants";
+import { CLOSE_SECS, PAIRS, THRESHOLD } from "@/lib/bot/constants";
+import { getTuning } from "@/lib/bot/tuning";
 import type { CandleInfo } from "@/lib/bot/candle";
 import type { Signal, TradeStatus } from "@/lib/bot/types";
 
@@ -129,9 +130,14 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
 
 function EmptyState({ candle }: { candle: CandleInfo }) {
   const { elapsed, remain } = candle;
+  const gate = getTuning().gateSecs;
   const state =
-    elapsed < GATE_SECS
-      ? { icon: "🔒", txt: "Trade window opens at the 10:00 mark", sub: "Monitoring BRTI & Kalshi in background" }
+    elapsed < gate
+      ? {
+          icon: "🔒",
+          txt: `Trade window opens at the ${mmss(gate)} mark`,
+          sub: "Monitoring BRTI & Kalshi in background",
+        }
       : elapsed >= CLOSE_SECS
         ? { icon: "⌛", txt: "Closing zone — no new entries", sub: `Next candle in ${mmss(remain)}` }
         : { icon: "🔍", txt: `Scanning — no ${THRESHOLD}%+ signal yet`, sub: "BRTI & Kalshi updating in real time" };

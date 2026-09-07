@@ -8,11 +8,13 @@ const phaseMeta = {
   closing: { label: "🔴 CLOSING", tone: "text-no", bar: "from-no to-no/50" },
 } as const;
 
+const mins = (s: number) => `${Math.round((s / 60) * 10) / 10}m`;
+
+/** Segments follow the real gate/close settings instead of hardcoded minutes. */
 const segs = [
-  { label: "0–6m", sub: "WARM-UP", from: 0, to: 360 },
-  { label: "6–10m", sub: "APPROACH", from: 360, to: 600 },
-  { label: "10–14m", sub: "✅ TRADE", from: 600, to: 840 },
-  { label: "14–15m", sub: "CLOSE", from: 840, to: 900 },
+  { label: `0–${mins(GATE_SECS)}`, sub: "WARM-UP", from: 0, to: GATE_SECS },
+  { label: `${mins(GATE_SECS)}–${mins(CLOSE_SECS)}`, sub: "✅ TRADE", from: GATE_SECS, to: CLOSE_SECS },
+  { label: `${mins(CLOSE_SECS)}–15m`, sub: "CLOSE", from: CLOSE_SECS, to: 900 },
 ];
 
 export function ClockPanel({ candle, ticker }: { candle: CandleInfo; ticker: string | null }) {

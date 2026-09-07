@@ -176,7 +176,7 @@ export function Dashboard() {
           <strong className="text-foreground">AUTO-TRADING:</strong> real-time spot via Coinbase
           Exchange with Binance fallback, plus Kalshi REST for the YES/NO orderbook. One
           engine places trades: the server bot, which keeps running even with this app closed. It
-          fires after the 10:00 mark at ≥86% confidence, up to one per pair (4 max) per 15-minute
+          fires once the trade window opens at or above the confidence dial, up to one per pair (4 max) per 15-minute
           candle. Lag detection compares BRTI spot momentum against Kalshi price direction —
           divergence is the edge. Live mode submits real immediate-or-cancel limit orders signed
           server-side. Not financial advice. Kalshi is CFTC-regulated.
