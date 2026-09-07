@@ -73,7 +73,7 @@ export interface Portfolio {
  * phone loses nothing and an open phone can never double a candle's trades.
  */
 export function useBot() {
-  const { spot, status: feedStatus, source: feedSource, tick } = useBrtiFeed();
+  const { spot, status: feedStatus, source: feedSource, tick, wakeCount } = useBrtiFeed();
 
   const [markets, setMarkets] = useState<Partial<Record<PairId, KalshiMarket>>>({});
   const [marketsOk, setMarketsOk] = useState<boolean | null>(null);
