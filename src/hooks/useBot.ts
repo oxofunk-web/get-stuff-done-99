@@ -403,6 +403,7 @@ export function useBot() {
   const refreshPortfolio = useCallback(async () => {
     try {
       const res = await getPortfolio();
+      if (!res || !Array.isArray(res.positions)) return null;
       setPortfolio(res);
       // Anchor today's realized P&L the first time we read the account so the
       // loss cap measures today's damage, not lifetime results.
