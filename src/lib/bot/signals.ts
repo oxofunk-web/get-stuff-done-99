@@ -288,6 +288,22 @@ export function computeSignals(
       continue;
     }
 
+    // A read with no strike, or a strike whose rule (above/below) is unknown,
+    // cannot be graded or even pointed in a direction. Previously such reads
+    // skipped every strike gate and fired blind; they are now refused outright.
+    if (km.strike == null || !km.strikeType) {
+      note(
+        p.id,
+        "rejected",
+        "contract terms not published yet",
+        { strike: km.strike ?? null, strikeType: km.strikeType ?? null },
+        leanDir,
+      );
+      continue;
+    }
+
+
+
 
 
     const spotMom = spotMomentum(s);
