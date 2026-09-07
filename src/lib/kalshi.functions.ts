@@ -34,8 +34,9 @@ export const getMarkets = createServerFn({ method: "GET" })
           const res = await fetchOpenMarketWithReason(p.series, data[p.id] ?? null);
           if (res.market) return { pair: p.id, market: { pair: p.id, ...normalizeMarket(res.market) } };
           error = res.error;
-          // A period with no contract at all will not appear on a retry either.
-          if (res.error?.startsWith("no contract")) break;
+          // Keep retrying even on "no contract": at candle rollover Kalshi
+          // lists BTC's new contract first and the other series a few moments
+          // later, so an empty period is often transient, not final.
         }
         return { pair: p.id, error: error ?? "unavailable" };
       }),
