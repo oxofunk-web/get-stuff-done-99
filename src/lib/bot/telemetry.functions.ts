@@ -277,6 +277,19 @@ export interface AccuracyStats {
   byPair: { pair: string; n: number; wins: number }[];
   byMinute: { minute: number; n: number; wins: number }[];
   recent: { ts: string; pair: string; dir: string; conf: number; outcome: string }[];
+  /**
+   * Does a higher score actually win more often? Fired and rejected reads are
+   * banded side by side: two flat lines mean the score is noise and the
+   * threshold is meaningless.
+   */
+  discrimination: {
+    lo: number;
+    hi: number;
+    firedN: number;
+    firedWins: number;
+    rejectedN: number;
+    rejectedWins: number;
+  }[];
   error?: string;
 }
 
@@ -304,6 +317,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
     byPair: [],
     byMinute: [],
     recent: [],
+    discrimination: [],
   };
   try {
     const db = await admin();
@@ -437,6 +451,29 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       }))
       .sort((a, b) => b.n - a.n);
 
+    // Score discrimination over every settled server decision, fired or not.
+    const disc = emptyTable().map((b) => ({
+      lo: b.lo,
+      hi: b.hi,
+      firedN: 0,
+      firedWins: 0,
+      rejectedN: 0,
+      rejectedWins: 0,
+    }));
+    for (const r of shadowRows) {
+      if (r.conf == null) continue;
+      const b = disc.find((d) => r.conf! >= d.lo && r.conf! < d.hi);
+      if (!b) continue;
+      const won = r.outcome === "win";
+      if (r.verdict === "fired") {
+        b.firedN += 1;
+        if (won) b.firedWins += 1;
+      } else {
+        b.rejectedN += 1;
+        if (won) b.rejectedWins += 1;
+      }
+    }
+
     const monitorWins = monitorRows.filter((r) => r.outcome === "win").length;
     const monitorReturns = monitorRows
       .filter((r) => r.entry_price != null && r.entry_price > 0)
@@ -467,6 +504,7 @@ export const getAccuracy = createServerFn({ method: "GET" }).handler(async (): P
       byMinute: [...minMap.entries()]
         .map(([minute, v]) => ({ minute, ...v }))
         .sort((a, b) => a.minute - b.minute),
+      discrimination: disc,
       recent: settledTrades.slice(0, 12).map((t) => ({
         ts: t.ts,
         pair: t.pair,
