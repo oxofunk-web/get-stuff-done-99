@@ -63,7 +63,14 @@ export function useBrtiFeed() {
       cur.change24h = change24h;
       cur.ts = now;
       cur.ticks.push({ price, ts: now });
-      if (cur.ticks.length > 120) cur.ticks.shift();
+      // Never let the previous candle's prices decide this candle's momentum or
+      // volatility: keep only readings taken inside the current 15-minute candle.
+      const candleStart = Math.floor(now / 900_000) * 900_000;
+      if (cur.ticks[0] && cur.ticks[0].ts < candleStart) {
+        cur.ticks = cur.ticks.filter((t) => t.ts >= candleStart);
+      }
+      // Memory guard.
+      while (cur.ticks.length > 120) cur.ticks.shift();
     };
 
     const cleanupSocket = () => {
