@@ -11,6 +11,9 @@ import {
   MIN_SIGMA_DIST,
   MAX_SIGMA_DIST,
   MAX_ENTRY_PRICE,
+  MAX_ENTRY_PRICE_UNPROVEN,
+  ENTRY_VALUE_TEST_PRICE,
+  STRONG_CUSHION_SIGMA,
 } from "./constants";
 
 /**
@@ -33,8 +36,14 @@ export interface Tuning {
   minSigmaDist: number;
   /** Upper edge of the cushion band — past this the contract is fully priced. */
   maxSigmaDist: number;
-  /** Highest price per contract the engine will pay for the leg it buys. */
+  /** Absolute highest price per contract the engine will pay for the leg. */
   maxEntry: number;
+  /** Tighter ceiling used while confidence is still unproven. */
+  maxEntryUnproven: number;
+  /** Price above which the leg must also clear the value margin. */
+  entryValueTestPrice: number;
+  /** Cushion that can stand in for a leaning book. */
+  strongCushion: number;
 }
 
 const defaults: Tuning = {
@@ -50,6 +59,9 @@ const defaults: Tuning = {
   minSigmaDist: MIN_SIGMA_DIST,
   maxSigmaDist: MAX_SIGMA_DIST,
   maxEntry: MAX_ENTRY_PRICE,
+  maxEntryUnproven: MAX_ENTRY_PRICE_UNPROVEN,
+  entryValueTestPrice: ENTRY_VALUE_TEST_PRICE,
+  strongCushion: STRONG_CUSHION_SIGMA,
 };
 
 let current: Tuning = { ...defaults };

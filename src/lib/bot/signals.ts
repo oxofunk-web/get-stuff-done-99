@@ -342,10 +342,24 @@ export function computeSignals(
 
 
 
-    // The book has to actually lean one way — coin-flip mids are noise.
+    // The book has to lean one way — unless the read already has real distance
+    // from the strike and momentum pointing the same way, which is evidence a
+    // coin-flip mid simply hasn't priced yet.
     if (Math.abs(skew) < T.minSkew) {
-      note(p.id, "rejected", "book too flat", { skew, min: T.minSkew }, leanDir);
-      continue;
+      const cushionYes = km.strikeType === "floor" ? sigmaDist : -sigmaDist;
+      const cushionSide: "YES" | "NO" = cushionYes > 0 ? "YES" : "NO";
+      const strongCushion =
+        Math.abs(cushionYes) >= T.strongCushion && cushionSide === leanDir;
+      if (!strongCushion) {
+        note(
+          p.id,
+          "rejected",
+          "book too flat with no other evidence",
+          { skew, min: T.minSkew, cushion: Number(cushionYes.toFixed(2)), need: T.strongCushion },
+          leanDir,
+        );
+        continue;
+      }
     }
 
 
@@ -425,6 +439,33 @@ export function computeSignals(
     }
 
 
+    // Cushion measured in the direction actually being bought: positive means
+    // spot sits on the winning side of the strike for this leg. For a "cap"
+    // contract YES wins below the strike, so the raw distance flips sign.
+    const yesCushion = km.strikeType === "floor" ? sigmaDist : -sigmaDist;
+    let dirCushion = dir === "YES" ? yesCushion : -yesCushion;
+
+    // Wrong side of the strike used to kill the read outright, even though 81%
+    // of those graded later won. Flip to the side spot actually supports and
+    // keep running every remaining protection against the new direction.
+    if (dirCushion <= 0) {
+      const flipped: "YES" | "NO" = dir === "YES" ? "NO" : "YES";
+      const flippedCushion = flipped === "YES" ? yesCushion : -yesCushion;
+      if (flippedCushion > 0) {
+        dir = flipped;
+        dirCushion = flippedCushion;
+      } else {
+        note(
+          p.id,
+          "rejected",
+          "neither side of the strike has a cushion",
+          { spot: s.price, strike: km.strike, dirCushion: Number(dirCushion.toFixed(2)) },
+          dir,
+        );
+        continue;
+      }
+    }
+
     // A tiny counter-tick is noise. Only block a material reversal when both
     // the short and broader spot windows confirm it against the chosen side.
     const reversalFloor = LAG_PCT * 0.5;
@@ -442,24 +483,6 @@ export function computeSignals(
     // The book must not be pricing against us either.
     if ((dir === "YES" && skew < 0) || (dir === "NO" && skew > 0)) {
       note(p.id, "rejected", "book prices against the direction", { dir, skew }, dir);
-      continue;
-    }
-
-    // Cushion measured in the direction actually being bought: positive means
-    // spot sits on the winning side of the strike for this leg. For a "cap"
-    // contract YES wins below the strike, so the raw distance flips sign.
-    const yesCushion = km.strikeType === "floor" ? sigmaDist : -sigmaDist;
-    const dirCushion = dir === "YES" ? yesCushion : -yesCushion;
-
-    // Spot has to sit on the right side of the strike for the direction taken.
-    if (dirCushion <= 0) {
-      note(
-        p.id,
-        "rejected",
-        dir === "YES" ? "spot is outside the YES side of the strike" : "spot is outside the NO side of the strike",
-        { spot: s.price, strike: km.strike, dirCushion: Number(dirCushion.toFixed(2)) },
-        dir,
-      );
       continue;
     }
 
@@ -505,8 +528,6 @@ export function computeSignals(
     const ev = evPerDollar(calibrated, entry);
     Object.assign(feat, { entry, calibrated, ev });
 
-
-
     // The leg we would actually buy must have something resting on it.
     const legDepth = dir === "YES" ? (km.yesAskSize ?? 0) : (km.yesBidSize ?? 0);
     if (legDepth < MIN_RESTING_DEPTH) {
@@ -520,17 +541,45 @@ export function computeSignals(
       continue;
     }
 
-    // Hard ceiling on what the leg may cost. Average recorded entry was 78¢,
-    // where a single loss wipes out several wins.
-    if (entry > T.maxEntry + 1e-9) {
+    // Price ceiling: absolute once confidence is proven, tighter until then.
+    const ceiling = calibrationReady ? T.maxEntry : Math.min(T.maxEntry, T.maxEntryUnproven);
+    if (entry > ceiling + 1e-9) {
       note(
         p.id,
         "rejected",
-        "leg costs too much to leave any room",
-        { entry: Number(entry.toFixed(2)), max: T.maxEntry },
+        calibrationReady
+          ? "leg costs more than the absolute ceiling"
+          : "leg too expensive for an unproven score",
+        {
+          entry: Number(entry.toFixed(2)),
+          max: ceiling,
+          limit: calibrationReady ? "absolute" : "unproven",
+        },
         dir,
       );
       continue;
+    }
+
+    // Above the comfort price the leg must earn it on value, using the
+    // calibrated probability when proven and the score itself before that.
+    if (entry > T.entryValueTestPrice) {
+      const probEstimate = calibrationReady ? calibrated : conf / 100;
+      const valueAtPrice = evPerDollar(probEstimate, entry);
+      if (valueAtPrice < T.evMargin) {
+        note(
+          p.id,
+          "rejected",
+          "price this high is not justified by the value",
+          {
+            entry: Number(entry.toFixed(2)),
+            prob: Number(probEstimate.toFixed(3)),
+            value: Number(valueAtPrice.toFixed(3)),
+            need: T.evMargin,
+          },
+          dir,
+        );
+        continue;
+      }
     }
 
 

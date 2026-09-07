@@ -32,7 +32,7 @@ export const KALSHI_POLL_MS = 8000;
 export const MAX_SPREAD = 0.07; // skip illiquid books wider than 7¢
 export const MIN_YES_MID = 0.08; // skip lottery-ticket longshots
 export const MAX_YES_MID = 0.94; // skip near-certain, no edge left
-export const MIN_SKEW = 0.02; // book must lean at least 2¢ one way
+export const MIN_SKEW = 0.01; // book must lean at least 1¢ one way
 export const MIN_TICKS = 60; // enough spot history *inside this candle* to trust momentum
 /** How many recent ticks the volatility estimate looks back over. */
 export const TICK_LOOKBACK = 60;
@@ -49,11 +49,27 @@ export const MAX_SIGMA_DIST = 3.0;
 /** Cushion (in sigma) where the score peaks before decaying toward the band edge. */
 export const CUSHION_PEAK_SIGMA = 1.5;
 /**
- * Highest price per contract the engine will pay for the leg it buys. Measured
- * hit rate on fired signals was 57.6% at an average 72¢ entry, which loses
- * money by construction — a 60¢ ceiling is the most that read can justify.
+ * Absolute ceiling on what the engine will pay for the leg it buys. Recorded
+ * decisions show reads blocked between 65¢ and 89¢ won ~90% of the time, so a
+ * flat 60¢ cap threw away the bulk of the opportunity. Anything past this is a
+ * near-certainty the book has already fully paid for.
  */
-export const MAX_ENTRY_PRICE = 0.6;
+export const MAX_ENTRY_PRICE = 0.9;
+/**
+ * Interim ceiling while confidence is still unproven: an unvalidated score may
+ * not buy an expensive leg no matter how good it looks.
+ */
+export const MAX_ENTRY_PRICE_UNPROVEN = 0.8;
+/**
+ * Above this price the leg must additionally justify itself on value, not just
+ * sit under the ceiling.
+ */
+export const ENTRY_VALUE_TEST_PRICE = 0.6;
+/**
+ * Cushion (in sigma) strong enough to stand in for a leaning book, so a flat
+ * mid alone no longer kills a read that has real distance from the strike.
+ */
+export const STRONG_CUSHION_SIGMA = 1.0;
 /** Bootstrap defaults: tiny real stakes so real-fill evidence can accumulate. */
 export const BOOTSTRAP_STAKE_DEFAULT = 2;
 export const BOOTSTRAP_MAX_DAILY_DEFAULT = 10;

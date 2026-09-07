@@ -63,10 +63,10 @@ describe("signal scoring", () => {
     resetTuning();
   });
 
-  it("refuses a leg that costs more than the price ceiling", () => {
+  it("refuses a leg that costs more than the absolute ceiling", () => {
     resetTuning();
     setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1 });
-    const pricey = MAX_ENTRY_PRICE + 0.1;
+    const pricey = MAX_ENTRY_PRICE + 0.05;
     const out = computeSignals(
       { BTC: tape(101, 0.00004, 60, inWindow) },
       { BTC: market({ yesBid: pricey - 0.01, yesAsk: pricey, yesMid: pricey - 0.005 }) },
@@ -74,6 +74,69 @@ describe("signal scoring", () => {
       inWindow,
     );
     expect(out.length).toBe(0);
+    resetTuning();
+  });
+
+  it("allows an expensive leg when the value still clears the margin", () => {
+    resetTuning();
+    setTuning({ threshold: 0, minSigmaDist: 0, evMargin: -1, entryValueTestPrice: 0.99 });
+    const out = computeSignals(
+      { BTC: tape(101, 0.00004, 60, inWindow) },
+      { BTC: market({ yesBid: 0.77, yesAsk: 0.79, yesMid: 0.78 }) },
+      { BTC: [0.7, 0.75] },
+      inWindow,
+    );
+    expect(out.length).toBe(1);
+    expect(out[0]!.entry).toBeCloseTo(0.79, 5);
+    resetTuning();
+  });
+
+  it("flips the direction when spot sits on the other side of the strike", () => {
+    resetTuning();
+    setTuning({ threshold: 0, evMargin: -1, entryValueTestPrice: 0.99 });
+    // Falling tape below a floor strike: the YES lean is wrong, NO is right.
+    const out = computeSignals(
+      { BTC: tape(99, -0.00004, 60, inWindow) },
+      { BTC: market({ strike: 100, yesMid: 0.45, yesBid: 0.44, yesAsk: 0.46, noAsk: 0.56 }) },
+      { BTC: [0.5, 0.48, 0.46, 0.45] },
+      inWindow,
+    );
+    const fired = getSignalTrace().filter((t) => t.verdict === "fired");
+    expect(out.every((s) => s.dir === "NO")).toBe(true);
+    expect(fired.every((t) => t.dir === "NO")).toBe(true);
+    resetTuning();
+  });
+
+  it("lets a flat book through only when the cushion is strong", () => {
+    resetTuning();
+    setTuning({
+      threshold: 0,
+      evMargin: -1,
+      minSkew: 0.05,
+      entryValueTestPrice: 0.99,
+      strongCushion: 99,
+    });
+    computeSignals(
+      { BTC: tape(101, 0.00004, 60, inWindow) },
+      { BTC: market({ yesMid: 0.52, yesBid: 0.51, yesAsk: 0.53 }) },
+      { BTC: [0.5, 0.51, 0.52] },
+      inWindow,
+    );
+    const flatNoEvidence = getSignalTrace().some((t) =>
+      t.reason.includes("book too flat with no other evidence"),
+    );
+    setTuning({ strongCushion: 0 });
+    computeSignals(
+      { BTC: tape(101, 0.00004, 60, inWindow) },
+      { BTC: market({ yesMid: 0.52, yesBid: 0.51, yesAsk: 0.53 }) },
+      { BTC: [0.5, 0.51, 0.52] },
+      inWindow,
+    );
+    const passedOnCushion = getSignalTrace().every(
+      (t) => !t.reason.includes("book too flat with no other evidence"),
+    );
+    expect(flatNoEvidence).toBe(true);
+    expect(passedOnCushion).toBe(true);
     resetTuning();
   });
 
