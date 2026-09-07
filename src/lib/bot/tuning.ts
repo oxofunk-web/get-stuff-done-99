@@ -59,6 +59,9 @@ const defaults: Tuning = {
   minSigmaDist: MIN_SIGMA_DIST,
   maxSigmaDist: MAX_SIGMA_DIST,
   maxEntry: MAX_ENTRY_PRICE,
+  maxEntryUnproven: MAX_ENTRY_PRICE_UNPROVEN,
+  entryValueTestPrice: ENTRY_VALUE_TEST_PRICE,
+  strongCushion: STRONG_CUSHION_SIGMA,
 };
 
 let current: Tuning = { ...defaults };
