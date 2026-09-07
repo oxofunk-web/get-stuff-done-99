@@ -508,7 +508,7 @@ async function runOwnedServerBotTick(db: Db) {
       .eq("source", "server")
       .gte("ts", dayStart.toISOString())
     const riskRows = (dayRows ?? []) as { pnl: number | null; stake: number | null; status: string; outcome: string | null }[];
-    const dayPnl = riskRows.reduce((a, r) => a + (r.pnl ?? 0), 0);
+    const dayPnl = riskRows.reduce((a, r) => a + (r.outcome === "void" ? 0 : r.pnl ?? 0), 0);
     const openRisk = riskRows.reduce(
       (a, r) => a + (r.status === "placed" && r.outcome == null ? Math.max(0, r.stake ?? 0) : 0),
       0,
