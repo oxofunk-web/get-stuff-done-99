@@ -63,17 +63,18 @@ export async function settleOne(candleId: number, override?: Final[]) {
   const { finals: taped, strikes } = await finalsFromTape(db, candleId);
   const finals = new Map(taped);
   for (const f of override ?? []) if (f.spot > 0) finals.set(f.pair, f.spot);
-  if (!finals.size) return { ok: true, settled: 0, trades: 0 };
 
   const at = new Date().toISOString();
 
-  const { data: sigs, error } = await db
-    .from("signal_log")
-    .select("id, pair, dir, strike, strike_type")
-    .eq("candle_id", candleId)
-    .is("outcome", null)
-    .limit(5000);
-  if (error) return { ok: false, settled: 0, trades: 0, error: error.message };
+  const { data: sigs, error } = finals.size
+    ? await db
+        .from("signal_log")
+        .select("id, pair, dir, strike, strike_type")
+        .eq("candle_id", candleId)
+        .is("outcome", null)
+        .limit(5000)
+    : { data: [], error: null };
+  if (error) return { ok: false, settled: 0, trades: 0, voided: 0, error: error.message };
 
   let settled = 0;
   for (const s of (sigs ?? []) as { id: string; pair: string; dir: string | null; strike: number | null; strike_type: "floor" | "cap" | null }[]) {
