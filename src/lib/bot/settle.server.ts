@@ -194,7 +194,7 @@ export async function settlePending(maxCandles = 12) {
     .lt("candle_id", current)
     .order("candle_id", { ascending: false })
     .limit(5000);
-  if (error) return { ok: false, candles: 0, settled: 0, trades: 0, error: error.message };
+  if (error) return { ok: false, candles: 0, settled: 0, trades: 0, voided: 0, error: error.message };
 
   const { data: pendingTrades } = await db
     .from("trade_log")
