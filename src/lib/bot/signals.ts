@@ -112,6 +112,34 @@ export function lagState(
   return "ok";
 }
 
+/**
+ * Every measurable input behind one decision, recorded whether the read fired
+ * or was rejected. Without these on rejections there is no way to tell whether
+ * the score separates winners from losers.
+ */
+export interface TraceFeatures {
+  rawScore?: number;
+  conf?: number;
+  calibrated?: number;
+  entry?: number;
+  ev?: number;
+  skew?: number;
+  spotMom?: number;
+  midMom?: number;
+  kMom?: number;
+  momZ?: number;
+  sigma?: number;
+  sigmaDist?: number;
+  cushionScore?: number;
+  spread?: number;
+  yesMid?: number;
+  depth?: number;
+  minuteIn?: number;
+  spot?: number;
+  strike?: number | null;
+  strikeType?: "floor" | "cap" | null;
+}
+
 export interface SignalTrace {
   pair: PairId;
   verdict: "fired" | "rejected";
@@ -123,7 +151,10 @@ export interface SignalTrace {
    */
   dir: "YES" | "NO" | null;
   detail: Record<string, number | string | boolean | null>;
+  /** Everything measured up to the point the decision was made. */
+  features: TraceFeatures;
 }
+
 
 
 let debugEnabled =
