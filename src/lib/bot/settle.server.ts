@@ -95,13 +95,15 @@ export async function settleOne(candleId: number, override?: Final[]) {
 
   const { data: trades } = await db
     .from("trade_log")
-    .select("id, pair, dir, contracts, entry_price, ticker, strike, strike_type")
+    .select("id, pair, dir, contracts, entry_price, ticker, strike, strike_type, settle_attempts")
     .eq("candle_id", candleId)
     .is("outcome", null)
     .eq("status", "placed")
+    .order("settle_attempts", { ascending: true })
     .limit(500);
 
   let graded = 0;
+  let voided = 0;
   for (const t of (trades ?? []) as {
     id: string;
     pair: string;
@@ -111,10 +113,38 @@ export async function settleOne(candleId: number, override?: Final[]) {
     ticker: string | null;
     strike: number | null;
     strike_type: "floor" | "cap" | null;
+    settle_attempts: number | null;
   }[]) {
-    if (!t.ticker) continue;
-    const final = await fetchFinalizedMarketResult(t.ticker);
-    if (!final) continue;
+    const attempts = (t.settle_attempts ?? 0) + 1;
+    const final = t.ticker ? await fetchFinalizedMarketResult(t.ticker) : null;
+    if (!final) {
+      // The exchange hasn't published a result yet. Record the attempt so the
+      // next pass backs off, and stop chasing a contract that never resolves
+      // instead of leaving it ungraded — and unlearnable — forever.
+      const stale = Date.now() > candleCloseMs(candleId) + VOID_AFTER_MS;
+      if (attempts >= MAX_SETTLE_ATTEMPTS && stale) {
+        const { error: voidErr } = await db
+          .from("trade_log")
+          .update({
+            outcome: "void",
+            pnl: 0,
+            settled_at: at,
+            settle_attempts: attempts,
+            settle_checked_at: at,
+            msg: t.ticker
+              ? `voided — the exchange never published a result for ${t.ticker}`
+              : "voided — no contract recorded for this fill",
+          })
+          .eq("id", t.id);
+        if (!voidErr) voided += 1;
+      } else {
+        await db
+          .from("trade_log")
+          .update({ settle_attempts: attempts, settle_checked_at: at })
+          .eq("id", t.id);
+      }
+      continue;
+    }
     const won = t.dir === "YES" ? final.result === "yes" : final.result === "no";
     const count = t.contracts ?? 0;
     const entry = t.entry_price ?? 0;
@@ -125,6 +155,8 @@ export async function settleOne(candleId: number, override?: Final[]) {
         outcome: won ? "win" : "loss",
         pnl,
         settled_at: at,
+        settle_attempts: attempts,
+        settle_checked_at: at,
         strike: t.strike ?? final.strike,
         strike_type: t.strike_type ?? final.strikeType,
       })
@@ -132,7 +164,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
     if (!upErr) graded += 1;
   }
 
-  return { ok: true, settled, trades: graded };
+  return { ok: true, settled, trades: graded, voided };
 }
 
 /**
