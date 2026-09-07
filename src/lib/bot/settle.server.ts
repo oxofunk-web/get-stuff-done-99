@@ -210,10 +210,12 @@ export async function settlePending(maxCandles = 12) {
 
   let settled = 0;
   let trades = 0;
+  let voided = 0;
   for (const id of ids) {
     const r = await settleOne(id);
     settled += r.settled;
     trades += r.trades;
+    voided += r.voided ?? 0;
   }
-  return { ok: true, candles: ids.length, settled, trades };
+  return { ok: true, candles: ids.length, settled, trades, voided };
 }
