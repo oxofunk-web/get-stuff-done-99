@@ -546,7 +546,7 @@ export function computeSignals(
         skew,
         spotMom,
         kMom,
-        sigmaDist: Number(sigmaDist.toFixed(2)),
+        sigmaDist: Number(dirCushion.toFixed(2)),
         lagDetected,
       },
       dir,
@@ -571,9 +571,9 @@ export function computeSignals(
 
       entry,
       ev,
-      sigmaDist,
+      sigmaDist: dirCushion,
       skew,
-      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
+      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion +${dirCushion.toFixed(2)}σ on the ${dir} side · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
       elapsed: c.elapsed,
       remain: c.remain,
     });
