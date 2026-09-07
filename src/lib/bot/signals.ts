@@ -288,6 +288,22 @@ export function computeSignals(
       continue;
     }
 
+    // A read with no strike, or a strike whose rule (above/below) is unknown,
+    // cannot be graded or even pointed in a direction. Previously such reads
+    // skipped every strike gate and fired blind; they are now refused outright.
+    if (km.strike == null || !km.strikeType) {
+      note(
+        p.id,
+        "rejected",
+        "contract terms not published yet",
+        { strike: km.strike ?? null, strikeType: km.strikeType ?? null },
+        leanDir,
+      );
+      continue;
+    }
+
+
+
 
 
     const spotMom = spotMomentum(s);
@@ -407,31 +423,38 @@ export function computeSignals(
       continue;
     }
 
+    // Cushion measured in the direction actually being bought: positive means
+    // spot sits on the winning side of the strike for this leg. For a "cap"
+    // contract YES wins below the strike, so the raw distance flips sign.
+    const yesCushion = km.strikeType === "floor" ? sigmaDist : -sigmaDist;
+    const dirCushion = dir === "YES" ? yesCushion : -yesCushion;
+
     // Spot has to sit on the right side of the strike for the direction taken.
-    if (km.strike != null && s.price) {
-      if (!km.strikeType) {
-        note(p.id, "rejected", "unsupported contract rule", { strike: km.strike }, dir);
-        continue;
-      }
-      const yesInMoney = km.strikeType === "floor" ? s.price >= km.strike : s.price <= km.strike;
-      if (dir === "YES" && !yesInMoney) {
-        note(p.id, "rejected", "spot is outside the YES side of the strike", { spot: s.price, strike: km.strike }, dir);
-        continue;
-      }
-      if (dir === "NO" && yesInMoney) {
-        note(p.id, "rejected", "spot is outside the NO side of the strike", { spot: s.price, strike: km.strike }, dir);
-        continue;
-      }
+    if (dirCushion <= 0) {
+      note(
+        p.id,
+        "rejected",
+        dir === "YES" ? "spot is outside the YES side of the strike" : "spot is outside the NO side of the strike",
+        { spot: s.price, strike: km.strike, dirCushion: Number(dirCushion.toFixed(2)) },
+        dir,
+      );
+      continue;
+    }
+
+    // No measurable volatility means no honest cushion measurement either.
+    if (!(sigma > 0)) {
+      note(p.id, "rejected", "not enough movement to measure risk yet", { sigma }, dir);
+      continue;
     }
 
     // Cushion gate: too close to the strike relative to how much this pair can
     // still move is a coin flip no matter how confident the score looks.
-    if (km.strike != null && sigma > 0 && Math.abs(sigmaDist) < T.minSigmaDist) {
+    if (dirCushion < T.minSigmaDist) {
       note(
         p.id,
         "rejected",
         "spot too close to the strike to be safe",
-        { sigmaDist: Number(sigmaDist.toFixed(2)), min: T.minSigmaDist },
+        { sigmaDist: Number(dirCushion.toFixed(2)), min: T.minSigmaDist },
         dir,
       );
       continue;
@@ -439,12 +462,12 @@ export function computeSignals(
 
     // Upper edge of the cushion band: a contract this far in the money is a
     // near-certainty the book has already paid for, so there is no room left.
-    if (km.strike != null && sigma > 0 && Math.abs(sigmaDist) > T.maxSigmaDist) {
+    if (dirCushion > T.maxSigmaDist) {
       note(
         p.id,
         "rejected",
         "already too deep in the money to be worth its price",
-        { sigmaDist: Number(sigmaDist.toFixed(2)), max: T.maxSigmaDist },
+        { sigmaDist: Number(dirCushion.toFixed(2)), max: T.maxSigmaDist },
         dir,
       );
       continue;
@@ -523,7 +546,7 @@ export function computeSignals(
         skew,
         spotMom,
         kMom,
-        sigmaDist: Number(sigmaDist.toFixed(2)),
+        sigmaDist: Number(dirCushion.toFixed(2)),
         lagDetected,
       },
       dir,
@@ -548,9 +571,9 @@ export function computeSignals(
 
       entry,
       ev,
-      sigmaDist,
+      sigmaDist: dirCushion,
       skew,
-      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion ${sigmaDist >= 0 ? "+" : ""}${sigmaDist.toFixed(2)}σ from strike · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
+      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion +${dirCushion.toFixed(2)}σ on the ${dir} side · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
       elapsed: c.elapsed,
       remain: c.remain,
     });
