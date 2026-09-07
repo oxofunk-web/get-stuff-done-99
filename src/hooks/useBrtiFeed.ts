@@ -45,6 +45,8 @@ export function useBrtiFeed() {
       gotFrame = true;
       setStatus("live");
       const now = Date.now();
+      lastFrameRef.current = now;
+
       const cur = spotRef.current[sym];
       if (!cur) {
         spotRef.current[sym] = {
