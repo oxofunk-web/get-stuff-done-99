@@ -177,6 +177,63 @@ export const getRejectionReport = createServerFn({ method: "GET" }).handler(
   },
 );
 
+/** The server runner's most recent look at each pair — what the real trader thought. */
+export interface ServerLookRow {
+  pair: string;
+  verdict: string;
+  reason: string | null;
+  secondsIn: number;
+  ts: string;
+  candleId: number;
+}
+
+/**
+ * The dashboard runs its own copy of the scoring code purely for display, and
+ * that copy only sees the price frames this device received. The authoritative
+ * read is the server runner's, so the idle panel shows these rows instead.
+ */
+export const getServerLooks = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ ok: boolean; rows: ServerLookRow[]; error?: string }> => {
+    try {
+      const db = await admin();
+      const since = new Date(Date.now() - 20 * 60_000).toISOString();
+      const { data, error } = await db
+        .from("signal_log")
+        .select("pair, verdict, reason, seconds_in, ts, candle_id")
+        .eq("source", "server")
+        .gte("ts", since)
+        .order("ts", { ascending: false })
+        .limit(2000);
+      if (error) return { ok: false, rows: [], error: error.message };
+
+      const latest = new Map<string, ServerLookRow>();
+      for (const r of (data ?? []) as {
+        pair: string;
+        verdict: string;
+        reason: string | null;
+        seconds_in: number;
+        ts: string;
+        candle_id: number;
+      }[]) {
+        if (latest.has(r.pair)) continue; // rows arrive newest-first
+        latest.set(r.pair, {
+          pair: r.pair,
+          verdict: r.verdict,
+          reason: r.reason,
+          secondsIn: r.seconds_in,
+          ts: r.ts,
+          candleId: r.candle_id,
+        });
+      }
+      return { ok: true, rows: [...latest.values()] };
+    } catch (e) {
+      return { ok: false, rows: [], error: e instanceof Error ? e.message : "unavailable" };
+    }
+  },
+);
+
+
+
 
 /** Per-pair economics: what a trade risks and what the pair actually returns. */
 export interface PairEdgeRow {
