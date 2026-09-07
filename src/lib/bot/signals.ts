@@ -363,6 +363,8 @@ export function computeSignals(
     const calibrationSamples = bucketFor(rawScore, calibration)?.n ?? 0;
     const calibrationReady = calibrationSamples >= MIN_SAMPLES;
     const conf = displayScore(rawScore, calibrationReady);
+    Object.assign(feat, { cushionScore, rawScore, conf });
+
 
 
     // Direction is resolved before the gates so every rejection below records
