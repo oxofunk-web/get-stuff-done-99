@@ -308,6 +308,8 @@ async function loadCalibration(db: Db) {
     .eq("status", "placed")
     .eq("strategy_version", STRATEGY_VERSION)
     .not("outcome", "is", null)
+    // Unresolved contracts carry no information — they must never shape confidence.
+    .neq("outcome", "void")
     .not("conf", "is", null)
     .limit(20000);
   const edge = new Map<string, PairEdgeRow>();
