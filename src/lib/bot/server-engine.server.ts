@@ -1017,7 +1017,20 @@ async function runOwnedServerBotTick(db: Db) {
     await heartbeat("feeds unavailable — no spot prices this tick");
     return { ok: false, error: "no spot prices", ms: Date.now() - startedAt };
   }
-  if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks`);
+
+  // Grade closed candles on every tick, so real fill results feed confidence
+  // without waiting on an external schedule.
+  let settleNote = "";
+  try {
+    const { settlePending } = await import("./settle.server");
+    const r = await settlePending(6);
+    if (r.trades) settleNote = ` · graded ${r.trades} fill(s)`;
+    if (r.voided) settleNote += ` · ${r.voided} void`;
+  } catch {
+    // Settlement is best-effort; a failure here must not stop sampling.
+  }
+
+  if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks${settleNote}`);
   return {
     ok: true,
     sampled,
