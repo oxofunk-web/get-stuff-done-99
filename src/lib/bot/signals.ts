@@ -182,6 +182,11 @@ export function computeSignals(
   now = Date.now(),
 ): Signal[] {
   const trace: SignalTrace[] = [];
+  /**
+   * Features measured so far for the pair currently being scored. Every note
+   * snapshots it, so a rejection carries the same numbers a fired signal does.
+   */
+  let feat: TraceFeatures = {};
   const note = (
     pair: PairId,
     verdict: SignalTrace["verdict"],
@@ -189,8 +194,9 @@ export function computeSignals(
     detail: SignalTrace["detail"] = {},
     dir: SignalTrace["dir"] = null,
   ) => {
-    trace.push({ pair, verdict, reason, dir, detail });
+    trace.push({ pair, verdict, reason, dir, detail, features: { ...feat } });
   };
+
 
   const flush = () => {
     lastTrace = trace;
