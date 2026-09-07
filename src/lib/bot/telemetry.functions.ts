@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { BANDS, emptyTable, type CalibrationTable, type PairCalibration } from "./calibration";
+import { BANDS, MIN_SAMPLES as MIN_REAL_SAMPLES, emptyTable, type CalibrationTable, type PairCalibration } from "./calibration";
 
 /**
  * Telemetry for the trading engine: raw market tape, every signal (fired and
