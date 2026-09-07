@@ -181,7 +181,7 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
                     .filter((d) => d.firedN + d.rejectedN > 0)
                     .map((d) => (
                       <div key={`${d.lo}-${d.hi}`} className="flex items-baseline justify-between gap-2 text-[9px]">
-                        <span className="text-muted-foreground">{bandLabel(d)}</span>
+                        <span className="text-muted-foreground">{bandLabel(d.lo, d.hi)}</span>
                         <span className="shrink-0 tabular-nums text-dim">
                           taken{" "}
                           <span className={toneFor(rate(d.firedWins, d.firedN), d.firedN)}>
