@@ -27,7 +27,10 @@ export function useBrtiFeed() {
   const [status, setStatus] = useState<FeedStatus>("connecting");
   const [source, setSource] = useState<FeedSource>("coinbase");
   const [tick, setTick] = useState(0);
+  /** Bumped every time the app comes back from the background. */
+  const [wakeCount, setWakeCount] = useState(0);
   const spotRef = useRef<Partial<Record<PairId, SpotState>>>({});
+  const lastFrameRef = useRef(0);
 
   useEffect(() => {
     let disposed = false;
@@ -36,11 +39,14 @@ export function useBrtiFeed() {
     let poll: ReturnType<typeof setInterval> | null = null;
     let gotFrame = false;
 
+
     const push = (sym: PairId | undefined, price: number, change24h: number) => {
       if (!sym || !price || !Number.isFinite(price)) return;
       gotFrame = true;
       setStatus("live");
       const now = Date.now();
+      lastFrameRef.current = now;
+
       const cur = spotRef.current[sym];
       if (!cur) {
         spotRef.current[sym] = {
@@ -191,17 +197,63 @@ export function useBrtiFeed() {
       };
     };
 
+    /**
+     * Phones freeze the page while it is in the background: the socket dies and
+     * every timer stops. Coming back has to rebuild the feed from scratch and
+     * drop the frozen ticks, otherwise the terminal shows pre-sleep prices as
+     * if they were live until someone reloads by hand.
+     */
+    let lastWakeAt = 0;
+    const wake = () => {
+      if (disposed) return;
+      const now = Date.now();
+      if (now - lastWakeAt < 1500) return;
+      lastWakeAt = now;
+      if (poll) clearInterval(poll);
+      poll = null;
+      cleanupSocket();
+      // Frozen history must never be mixed with fresh ticks.
+      const gap = now - lastFrameRef.current;
+      if (gap > FEED_TIMEOUT_MS) {
+        for (const s of Object.values(spotRef.current)) {
+          if (s) s.ticks = s.ticks.filter((t) => now - t.ts < FEED_TIMEOUT_MS);
+        }
+      }
+      gotFrame = false;
+      setStatus("connecting");
+      setWakeCount((c) => c + 1);
+      startCoinbase();
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+
     startCoinbase();
-    // A steady one-second heartbeat keeps freshness visible even between ticks.
-    const paint = setInterval(() => setTick((t) => t + 1), 1000);
+    // A steady one-second heartbeat keeps freshness visible even between ticks,
+    // and tells us when the stream has gone quiet without a close event.
+    const paint = setInterval(() => {
+      setTick((t) => t + 1);
+      const age = Date.now() - lastFrameRef.current;
+      if (!lastFrameRef.current) return;
+      if (age > FEED_TIMEOUT_MS) setStatus((s) => (s === "live" ? "connecting" : s));
+      if (age > 15000) wake();
+    }, 1000);
 
     return () => {
       disposed = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", wake);
       clearInterval(paint);
       if (poll) clearInterval(poll);
       cleanupSocket();
     };
   }, []);
 
-  return { spot: spotRef.current, status, source, tick };
+
+  return { spot: spotRef.current, status, source, tick, wakeCount };
 }

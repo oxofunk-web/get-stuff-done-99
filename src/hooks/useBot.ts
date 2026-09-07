@@ -73,7 +73,7 @@ export interface Portfolio {
  * phone loses nothing and an open phone can never double a candle's trades.
  */
 export function useBot() {
-  const { spot, status: feedStatus, source: feedSource, tick } = useBrtiFeed();
+  const { spot, status: feedStatus, source: feedSource, tick, wakeCount } = useBrtiFeed();
 
   const [markets, setMarkets] = useState<Partial<Record<PairId, KalshiMarket>>>({});
   const [marketsOk, setMarketsOk] = useState<boolean | null>(null);
@@ -418,6 +418,22 @@ export function useBot() {
     const i = setInterval(() => void refreshPortfolio(), 20000);
     return () => clearInterval(i);
   }, [refreshPortfolio]);
+
+  // Coming back from the background: every interval was frozen, so pull all the
+  // panels once instead of waiting out the next poll.
+  useEffect(() => {
+    if (!wakeCount) return;
+    setNow(Date.now());
+    seenSigIds.current = new Set();
+    loggedSigRef.current = new Set();
+    pullRef.current();
+    void refreshServer();
+    void refreshLive();
+    void refreshPortfolio();
+    void refreshAccuracy();
+  }, [wakeCount, refreshServer, refreshLive, refreshPortfolio, refreshAccuracy]);
+
+
 
   const rawSignals = useMemo(
     () => computeSignals(spot, markets, historyRef.current, now),
