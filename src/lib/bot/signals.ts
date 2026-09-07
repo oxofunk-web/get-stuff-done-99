@@ -112,6 +112,35 @@ export function lagState(
   return "ok";
 }
 
+/**
+ * Every measurable input behind one decision, recorded whether the read fired
+ * or was rejected. Without these on rejections there is no way to tell whether
+ * the score separates winners from losers.
+ */
+export interface TraceFeatures {
+  rawScore?: number | undefined;
+  conf?: number | undefined;
+  calibrated?: number | undefined;
+  entry?: number | undefined;
+  ev?: number | undefined;
+  skew?: number | undefined;
+  spotMom?: number | undefined;
+  midMom?: number | undefined;
+  kMom?: number | undefined;
+  momZ?: number | undefined;
+  sigma?: number | undefined;
+  sigmaDist?: number | undefined;
+  cushionScore?: number | undefined;
+  spread?: number | undefined;
+  yesMid?: number | undefined;
+  depth?: number | undefined;
+  minuteIn?: number | undefined;
+  spot?: number | undefined;
+  strike?: number | null | undefined;
+  strikeType?: "floor" | "cap" | null | undefined;
+}
+
+
 export interface SignalTrace {
   pair: PairId;
   verdict: "fired" | "rejected";
@@ -123,7 +152,10 @@ export interface SignalTrace {
    */
   dir: "YES" | "NO" | null;
   detail: Record<string, number | string | boolean | null>;
+  /** Everything measured up to the point the decision was made. */
+  features: TraceFeatures;
 }
+
 
 
 let debugEnabled =
@@ -151,6 +183,11 @@ export function computeSignals(
   now = Date.now(),
 ): Signal[] {
   const trace: SignalTrace[] = [];
+  /**
+   * Features measured so far for the pair currently being scored. Every note
+   * snapshots it, so a rejection carries the same numbers a fired signal does.
+   */
+  let feat: TraceFeatures = {};
   const note = (
     pair: PairId,
     verdict: SignalTrace["verdict"],
@@ -158,8 +195,9 @@ export function computeSignals(
     detail: SignalTrace["detail"] = {},
     dir: SignalTrace["dir"] = null,
   ) => {
-    trace.push({ pair, verdict, reason, dir, detail });
+    trace.push({ pair, verdict, reason, dir, detail, features: { ...feat } });
   };
+
 
   const flush = () => {
     lastTrace = trace;
@@ -194,7 +232,19 @@ export function computeSignals(
   for (const p of PAIRS) {
     const s = spot[p.id];
     const km = markets[p.id];
+    // Fresh feature sheet per pair: whatever is known at the moment a gate
+    // stops the read is what gets recorded with that rejection.
+    feat = {
+      spot: s?.price,
+      yesMid: km?.yesMid,
+      spread: km?.spread,
+      strike: km?.strike ?? null,
+      strikeType: km?.strikeType ?? null,
+      depth: km ? Math.max(km.yesAskSize ?? 0, km.yesBidSize ?? 0) : undefined,
+      minuteIn: Number((((c.elapsed - GATE) / 60)).toFixed(2)),
+    };
     const freshTicks = s ? s.ticks.filter((t) => t.ts >= candleStartMs).length : 0;
+
     if (!s || !km || freshTicks < T.minTicks) {
       note(p.id, "rejected", "not enough live data yet", {
         hasSpot: Boolean(s),
@@ -249,6 +299,17 @@ export function computeSignals(
     // Volatility-normalized momentum: a 0.1% move on XRP and on BTC are not
     // the same event, so score the move in units of that pair's own noise.
     const momZ = sigma > 0 ? spotMom / (sigma * 3) : spotMom / LAG_PCT;
+    Object.assign(feat, {
+      spotMom,
+      midMom: spotMidMom,
+      skew,
+      kMom,
+      sigma,
+      sigmaDist,
+      momZ,
+    });
+
+
 
     // The book has to actually lean one way — coin-flip mids are noise.
     if (Math.abs(skew) < T.minSkew) {
@@ -302,6 +363,8 @@ export function computeSignals(
     const calibrationSamples = bucketFor(rawScore, calibration)?.n ?? 0;
     const calibrationReady = calibrationSamples >= MIN_SAMPLES;
     const conf = displayScore(rawScore, calibrationReady);
+    Object.assign(feat, { cushionScore, rawScore, conf });
+
 
 
     // Direction is resolved before the gates so every rejection below records
@@ -395,6 +458,9 @@ export function computeSignals(
     const calibrated = calibrateFor(p.id, rawScore, calibration, pairCalibration);
 
     const ev = evPerDollar(calibrated, entry);
+    Object.assign(feat, { entry, calibrated, ev });
+
+
 
     // The leg we would actually buy must have something resting on it.
     const legDepth = dir === "YES" ? (km.yesAskSize ?? 0) : (km.yesBidSize ?? 0);

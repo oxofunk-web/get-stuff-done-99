@@ -17,6 +17,9 @@
 import { emptyTable, type PairCalibration } from "./calibration";
 import { candleInfo } from "./candle";
 import {
+  BOOTSTRAP_MAX_DAILY_DEFAULT,
+  BOOTSTRAP_MAX_ENTRY_DEFAULT,
+  BOOTSTRAP_STAKE_DEFAULT,
   CLOSE_SECS,
   DAILY_LOSS_CAP_DEFAULT,
   GATE_SECS,
@@ -92,6 +95,11 @@ export interface ServerBotRow {
   min_sigma_dist?: number | null;
   gate_secs?: number | null;
   gate_preset?: string | null;
+  /** Learning mode: allow tiny real stakes on cheap legs before proof exists. */
+  bootstrap_enabled?: boolean | null;
+  bootstrap_stake?: number | null;
+  bootstrap_max_daily?: number | null;
+  bootstrap_max_entry?: number | null;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
 }
@@ -147,6 +155,11 @@ export interface ServerBotState {
   /** Seconds into the 15-minute candle before the bot may look for a trade. */
   gateSecs: number;
   gatePreset: string;
+  /** Tiny-stake learning mode: buys cheap legs to earn real outcomes. */
+  bootstrapEnabled: boolean;
+  bootstrapStake: number;
+  bootstrapMaxDaily: number;
+  bootstrapMaxEntry: number;
   lastTickAt: string | null;
   lastTickMsg: string | null;
   recentTrades: {
@@ -219,6 +232,10 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     minSigmaDist: s.min_sigma_dist ?? MIN_SIGMA_DIST,
     gateSecs: s.gate_secs ?? GATE_SECS,
     gatePreset: s.gate_preset ?? "balanced",
+    bootstrapEnabled: Boolean(s.bootstrap_enabled),
+    bootstrapStake: s.bootstrap_stake ?? BOOTSTRAP_STAKE_DEFAULT,
+    bootstrapMaxDaily: s.bootstrap_max_daily ?? BOOTSTRAP_MAX_DAILY_DEFAULT,
+    bootstrapMaxEntry: s.bootstrap_max_entry ?? BOOTSTRAP_MAX_ENTRY_DEFAULT,
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
     recentTrades: (recent ?? []) as ServerBotState["recentTrades"],
@@ -402,7 +419,13 @@ interface SignalInsert {
   strike?: number | null;
   strike_type?: "floor" | "cap" | null;
   strategy_version?: string;
+  raw_score?: number | null;
+  minute_in?: number | null;
+  depth?: number | null;
+  mom_z?: number | null;
+  cushion_score?: number | null;
 }
+
 
 
 
@@ -545,6 +568,25 @@ async function runOwnedServerBotTick(db: Db) {
     } catch {
       // Balance unreadable this tick: let the order path report its own error.
     }
+  }
+
+  // How much tiny-stake learning money has already been risked today. Kept
+  // separate from the normal loss cap so learning can never bleed into it.
+  let bootstrapSpentToday = 0;
+  {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { data: bootRows } = await db
+      .from("trade_log")
+      .select("stake")
+      .eq("source", "server")
+      .eq("status", "placed")
+      .like("msg", "BOOTSTRAP%")
+      .gte("ts", dayStart.toISOString());
+    bootstrapSpentToday = ((bootRows ?? []) as { stake: number | null }[]).reduce(
+      (a, r) => a + Math.max(0, r.stake ?? 0),
+      0,
+    );
   }
 
   let sampled = 0;
@@ -739,6 +781,10 @@ async function runOwnedServerBotTick(db: Db) {
       const s = fired.get(t.pair);
       const pending = awaiting.get(t.pair);
       const m = markets[t.pair];
+      // Rejected reads used to store empty confidence/price/edge, which made it
+      // impossible to test whether the score separates winners from losers.
+      // The trace now carries every measured feature, fired or not.
+      const f = t.features;
       return {
         candle_id: c.id,
         seconds_in: slot,
@@ -750,22 +796,28 @@ async function runOwnedServerBotTick(db: Db) {
 
         source: "server",
         dir: s?.dir ?? pending?.dir ?? t.dir ?? null,
-        conf: s?.conf ?? pending?.conf ?? null,
-        calibrated: s?.calibrated ?? pending?.calibrated ?? null,
-        entry_price: s?.entry ?? pending?.entry ?? null,
-        ev: s?.ev ?? pending?.ev ?? null,
-        yes_mid: m?.yesMid ?? null,
-        spread: m?.spread ?? null,
-        skew: s?.skew ?? null,
-        spot_mom: s?.spotMom ?? null,
-        k_mom: s?.kMom ?? null,
-        sigma_dist: s?.sigmaDist ?? null,
-        spot: spot[t.pair]?.price ?? null,
-        strike: m?.strike ?? null,
-        strike_type: m?.strikeType ?? null,
+        conf: s?.conf ?? pending?.conf ?? f.conf ?? null,
+        calibrated: s?.calibrated ?? pending?.calibrated ?? f.calibrated ?? null,
+        entry_price: s?.entry ?? pending?.entry ?? f.entry ?? null,
+        ev: s?.ev ?? pending?.ev ?? f.ev ?? null,
+        yes_mid: m?.yesMid ?? f.yesMid ?? null,
+        spread: m?.spread ?? f.spread ?? null,
+        skew: s?.skew ?? f.skew ?? null,
+        spot_mom: s?.spotMom ?? f.spotMom ?? null,
+        k_mom: s?.kMom ?? f.kMom ?? null,
+        sigma_dist: s?.sigmaDist ?? f.sigmaDist ?? null,
+        spot: spot[t.pair]?.price ?? f.spot ?? null,
+        strike: m?.strike ?? f.strike ?? null,
+        strike_type: m?.strikeType ?? f.strikeType ?? null,
         strategy_version: STRATEGY_VERSION,
+        raw_score: f.rawScore ?? null,
+        minute_in: f.minuteIn ?? null,
+        depth: f.depth ?? null,
+        mom_z: f.momZ ?? null,
+        cushion_score: f.cushionScore ?? null,
       };
     });
+
     // Pairs the engine fired but selection dropped (cooldown) — visible, not silent.
     for (const s of scored) {
       // Stable and still-confirming candidates are already represented above.
@@ -879,10 +931,32 @@ async function runOwnedServerBotTick(db: Db) {
         // the saved EV margin is probability / (1 + margin).
         const valueCeiling = sig.calibrated / (1 + settings.ev_margin);
         const chaseCeiling = sig.entry + MAX_CHASE_CENTS / 100;
-        const maxEntry = Math.min(0.99, valueCeiling, chaseCeiling);
+        // Learning mode: while real-fill probability is unproven the engine may
+        // still take tiny positions, but only on cheap legs where the price
+        // itself carries the edge and a loss is a couple of dollars. Without
+        // this the bot can never collect the 50 real fills it waits for.
+        const bootstrapOn = Boolean(settings.bootstrap_enabled) && !sig.calibrationReady;
+        const bootstrapMaxEntry = settings.bootstrap_max_entry ?? BOOTSTRAP_MAX_ENTRY_DEFAULT;
+        const bootstrapStake = settings.bootstrap_stake ?? BOOTSTRAP_STAKE_DEFAULT;
+        const bootstrapDailyCap = settings.bootstrap_max_daily ?? BOOTSTRAP_MAX_DAILY_DEFAULT;
+        const maxEntry = bootstrapOn
+          ? Math.min(bootstrapMaxEntry, chaseCeiling)
+          : Math.min(0.99, valueCeiling, chaseCeiling);
         const maxPriceCents = Math.max(1, Math.min(99, Math.floor(maxEntry * 100)));
-        if (!sig.calibrationReady) {
+        if (!sig.calibrationReady && !bootstrapOn) {
           skip("shadow only — real-fill probability is not proven yet");
+          continue;
+        }
+        if (bootstrapOn && freshEntry > bootstrapMaxEntry + 1e-9) {
+          skip(
+            `learning mode only buys under ${Math.round(bootstrapMaxEntry * 100)}¢ — live ${Math.round(freshEntry * 100)}¢`,
+          );
+          continue;
+        }
+        if (bootstrapOn && bootstrapSpentToday + bootstrapStake > bootstrapDailyCap + 1e-9) {
+          skip(
+            `learning budget used up — $${bootstrapSpentToday.toFixed(2)} of $${bootstrapDailyCap.toFixed(2)} risked today`,
+          );
           continue;
         }
         if (freshEntry * 100 > maxPriceCents + 0.0001) {
@@ -898,10 +972,12 @@ async function runOwnedServerBotTick(db: Db) {
           skip(`book too thin — ${depth} resting at ${priceCents}¢`);
           continue;
         }
+        const stakeTarget = bootstrapOn ? bootstrapStake : settings.bet_size;
         const count = Math.max(
           1,
-          Math.min(depth, Math.floor(settings.bet_size / Math.max(0.01, freshEntry))),
+          Math.min(depth, Math.floor(stakeTarget / Math.max(0.01, freshEntry))),
         );
+
         let status = "placed";
         let msg = "";
         let contracts = count;
@@ -964,7 +1040,7 @@ async function runOwnedServerBotTick(db: Db) {
               contracts = res.filled;
               entry = res.priceCents / 100;
               orderId = res.orderId;
-              msg = `SERVER LIVE ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
+              msg = `${bootstrapOn ? "BOOTSTRAP" : "SERVER LIVE"} ${sig.dir} ×${res.filled} @ ${res.priceCents}¢ · ${res.status}`;
             } else {
               status = "failed";
               msg = res.error ?? "Order rejected";
@@ -996,6 +1072,7 @@ async function runOwnedServerBotTick(db: Db) {
         });
 
         if (status === "placed") {
+          if (bootstrapOn) bootstrapSpentToday += contracts * entry;
           placedNow += 1;
           tradedPairs.add(sig.pair);
           remaining -= 1;

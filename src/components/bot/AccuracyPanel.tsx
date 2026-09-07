@@ -171,6 +171,39 @@ export function AccuracyPanel({ accuracy, rejections, onRefresh }: Props) {
               </div>
             ) : null}
 
+            {(a!.discrimination ?? []).some((d) => d.firedN + d.rejectedN > 0) ? (
+              <div className="mt-3">
+                <div className="text-[7px] tracking-[0.2em] text-dim">
+                  DOES A HIGHER SCORE WIN MORE? · taken vs skipped, by score band
+                </div>
+                <div className="mt-1 space-y-0.5">
+                  {a!.discrimination
+                    .filter((d) => d.firedN + d.rejectedN > 0)
+                    .map((d) => (
+                      <div key={`${d.lo}-${d.hi}`} className="flex items-baseline justify-between gap-2 text-[9px]">
+                        <span className="text-muted-foreground">{bandLabel(d.lo, d.hi)}</span>
+                        <span className="shrink-0 tabular-nums text-dim">
+                          taken{" "}
+                          <span className={toneFor(rate(d.firedWins, d.firedN), d.firedN)}>
+                            {d.firedN ? `${rate(d.firedWins, d.firedN).toFixed(0)}% of ${d.firedN}` : "—"}
+                          </span>{" "}
+                          · skipped{" "}
+                          <span className={toneFor(rate(d.rejectedWins, d.rejectedN), d.rejectedN)}>
+                            {d.rejectedN
+                              ? `${rate(d.rejectedWins, d.rejectedN).toFixed(0)}% of ${d.rejectedN}`
+                              : "—"}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                </div>
+                <p className="mt-1 text-[8px] leading-relaxed text-dim">
+                  If every band shows the same win rate, the score is not telling the bot anything
+                  yet and the dial cannot help.
+                </p>
+              </div>
+            ) : null}
+
             {rejections.length ? (
               <div className="mt-3">
                 <div className="text-[7px] tracking-[0.2em] text-dim">

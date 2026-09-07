@@ -273,6 +273,19 @@ export function useBot() {
     (n: number) => void applyServer(() => updateServerBot({ data: { dailyLossCap: n } })),
     [applyServer],
   );
+  const bootstrap = {
+    enabled: server?.bootstrapEnabled ?? false,
+    stake: server?.bootstrapStake ?? 2,
+    maxDaily: server?.bootstrapMaxDaily ?? 10,
+    maxEntry: server?.bootstrapMaxEntry ?? 0.55,
+  };
+  /** Tiny-stake learning mode — the only way to earn real outcomes cheaply. */
+  const setBootstrap = useCallback(
+    (patch: { bootstrapEnabled?: boolean; bootstrapStake?: number; bootstrapMaxDaily?: number; bootstrapMaxEntry?: number }) =>
+      void applyServer(() => updateServerBot({ data: patch })),
+    [applyServer],
+  );
+
   const setEvMargin = useCallback(
     (n: number) => void applyServer(() => updateServerBot({ data: { evMargin: n } })),
     [applyServer],
@@ -706,6 +719,8 @@ export function useBot() {
     toggleBot,
     betSize,
     setBetSize,
+    bootstrap,
+    setBootstrap,
     maxTrades,
     setMaxTrades,
     placedCount,

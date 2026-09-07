@@ -38,6 +38,10 @@ interface SettingsPatch {
   min_sigma_dist?: number;
   gate_secs?: number;
   gate_preset?: string;
+  bootstrap_enabled?: boolean;
+  bootstrap_stake?: number;
+  bootstrap_max_daily?: number;
+  bootstrap_max_entry?: number;
   updated_at: string;
 }
 
@@ -59,6 +63,10 @@ export const updateServerBot = createServerFn({ method: "POST" })
         minSigmaDist: z.number().min(0).max(2).optional(),
         gateSecs: z.number().int().min(60).max(780).optional(),
         gatePreset: z.enum(["strict", "balanced", "aggressive", "custom"]).optional(),
+        bootstrapEnabled: z.boolean().optional(),
+        bootstrapStake: z.number().min(1).max(25).optional(),
+        bootstrapMaxDaily: z.number().min(1).max(200).optional(),
+        bootstrapMaxEntry: z.number().min(0.05).max(0.8).optional(),
       })
       .parse(d),
   )
@@ -84,6 +92,10 @@ export const updateServerBot = createServerFn({ method: "POST" })
     if (data.minSigmaDist !== undefined) patch.min_sigma_dist = data.minSigmaDist;
     if (data.gateSecs !== undefined) patch.gate_secs = data.gateSecs;
     if (data.gatePreset !== undefined) patch.gate_preset = data.gatePreset;
+    if (data.bootstrapEnabled !== undefined) patch.bootstrap_enabled = data.bootstrapEnabled;
+    if (data.bootstrapStake !== undefined) patch.bootstrap_stake = data.bootstrapStake;
+    if (data.bootstrapMaxDaily !== undefined) patch.bootstrap_max_daily = data.bootstrapMaxDaily;
+    if (data.bootstrapMaxEntry !== undefined) patch.bootstrap_max_entry = data.bootstrapMaxEntry;
     // Hand-tuning any single gate means the saved preset no longer describes it.
     const touchedGate =
       data.threshold !== undefined ||

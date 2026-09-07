@@ -36,6 +36,15 @@ interface Props {
   dailyLossCap: number;
   capHit: boolean;
   onResetDay: () => void;
+  bootstrap: { enabled: boolean; stake: number; maxDaily: number; maxEntry: number };
+  onBootstrap: (patch: {
+    bootstrapEnabled?: boolean;
+    bootstrapStake?: number;
+    bootstrapMaxDaily?: number;
+    bootstrapMaxEntry?: number;
+  }) => void;
+  learningFills?: number;
+  learningNeeded?: number;
 }
 
 export function EnginePanel({
@@ -62,6 +71,10 @@ export function EnginePanel({
   dailyLossCap,
   capHit,
   onResetDay,
+  bootstrap,
+  onBootstrap,
+  learningFills = 0,
+  learningNeeded = 50,
 }: Props) {
   const el = candle.elapsed;
   const gate = tradedThisCandle
@@ -171,6 +184,48 @@ export function EnginePanel({
               ${n}
             </button>
           ))}
+        </div>
+
+        <div className="mt-2 rounded-md border border-gold/40 bg-gold/5 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[8px] font-bold tracking-[0.2em] text-gold">LEARNING MODE</span>
+            <button
+              type="button"
+              onClick={() => onBootstrap({ bootstrapEnabled: !bootstrap.enabled })}
+              className={`rounded border px-2 py-0.5 text-[8px] font-bold tracking-widest transition-colors ${
+                bootstrap.enabled
+                  ? "border-gold/60 bg-gold/15 text-gold"
+                  : "border-wire text-dim hover:border-dim"
+              }`}
+            >
+              {bootstrap.enabled ? "ON" : "OFF"}
+            </button>
+          </div>
+          <p className="mt-1 text-[8px] leading-relaxed text-muted-foreground">
+            Until real results are proven, buy tiny — ${bootstrap.stake} a trade, only under{" "}
+            {(bootstrap.maxEntry * 100).toFixed(0)}¢, and no more than ${bootstrap.maxDaily} a day.
+            That is how the bot earns real outcomes instead of guesses.{" "}
+            <span className="text-gold">
+              {Math.min(learningFills, learningNeeded)} of {learningNeeded} real results collected
+            </span>
+            .
+          </p>
+          <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+            {[1, 2, 3, 5].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onBootstrap({ bootstrapStake: n })}
+                className={`rounded-md border py-1 text-[10px] transition-colors ${
+                  bootstrap.stake === n
+                    ? "border-gold/60 bg-gold/10 font-bold text-gold"
+                    : "border-wire text-muted-foreground hover:border-dim"
+                }`}
+              >
+                ${n}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-2">

@@ -48,8 +48,16 @@ export const MIN_SIGMA_DIST = 0.35;
 export const MAX_SIGMA_DIST = 3.0;
 /** Cushion (in sigma) where the score peaks before decaying toward the band edge. */
 export const CUSHION_PEAK_SIGMA = 1.5;
-/** Highest price per contract the engine will pay for the leg it buys. */
-export const MAX_ENTRY_PRICE = 0.8;
+/**
+ * Highest price per contract the engine will pay for the leg it buys. Measured
+ * hit rate on fired signals was 57.6% at an average 72¢ entry, which loses
+ * money by construction — a 60¢ ceiling is the most that read can justify.
+ */
+export const MAX_ENTRY_PRICE = 0.6;
+/** Bootstrap defaults: tiny real stakes so real-fill evidence can accumulate. */
+export const BOOTSTRAP_STAKE_DEFAULT = 2;
+export const BOOTSTRAP_MAX_DAILY_DEFAULT = 10;
+export const BOOTSTRAP_MAX_ENTRY_DEFAULT = 0.55;
 /** Score curve: 50 + SPAN * strength/(strength + HALF) — soft, never saturates. */
 export const SCORE_SPAN = 45;
 export const SCORE_HALF = 0.45;
