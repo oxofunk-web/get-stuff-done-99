@@ -18,7 +18,7 @@ import {
   displayScore,
   SCORE_HALF,
   SCORE_SPAN,
-
+  TICK_LOOKBACK,
 } from "./constants";
 import { getTuning } from "./tuning";
 import type { PairId } from "./constants";
