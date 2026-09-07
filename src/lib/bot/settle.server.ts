@@ -23,6 +23,16 @@ export interface Final {
   spot: number;
 }
 
+/** How many times a fill is re-checked before it is written off as unresolved. */
+export const MAX_SETTLE_ATTEMPTS = 8;
+/** Grace period after a candle closes before a fill may be voided. */
+export const VOID_AFTER_MS = 60 * 60 * 1000;
+
+/** Wall-clock time a 15-minute candle closed, from its id. */
+export function candleCloseMs(candleId: number) {
+  return (candleId + 1) * 900_000;
+}
+
 export function gradeContract(
   dir: "YES" | "NO",
   finalSpot: number,
