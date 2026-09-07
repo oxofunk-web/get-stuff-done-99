@@ -90,6 +90,7 @@ export interface ServerBotRow {
   min_skew?: number | null;
   max_spread?: number | null;
   min_sigma_dist?: number | null;
+  gate_secs?: number | null;
   gate_preset?: string | null;
   run_lease_id?: string | null;
   run_lease_until?: string | null;
@@ -143,6 +144,8 @@ export interface ServerBotState {
   minSkew: number;
   maxSpread: number;
   minSigmaDist: number;
+  /** Seconds into the 15-minute candle before the bot may look for a trade. */
+  gateSecs: number;
   gatePreset: string;
   lastTickAt: string | null;
   lastTickMsg: string | null;
@@ -214,6 +217,7 @@ export async function getServerBotState(db: Db): Promise<ServerBotState> {
     minSkew: s.min_skew ?? MIN_SKEW,
     maxSpread: s.max_spread ?? MAX_SPREAD,
     minSigmaDist: s.min_sigma_dist ?? MIN_SIGMA_DIST,
+    gateSecs: s.gate_secs ?? GATE_SECS,
     gatePreset: s.gate_preset ?? "balanced",
     lastTickAt: s.last_tick_at,
     lastTickMsg: s.last_tick_msg,
@@ -308,6 +312,8 @@ async function loadCalibration(db: Db) {
     .eq("status", "placed")
     .eq("strategy_version", STRATEGY_VERSION)
     .not("outcome", "is", null)
+    // Unresolved contracts carry no information — they must never shape confidence.
+    .neq("outcome", "void")
     .not("conf", "is", null)
     .limit(20000);
   const edge = new Map<string, PairEdgeRow>();
@@ -487,6 +493,7 @@ async function runOwnedServerBotTick(db: Db) {
     minSkew: settings.min_skew ?? MIN_SKEW,
     maxSpread: settings.max_spread ?? MAX_SPREAD,
     minSigmaDist: settings.min_sigma_dist ?? MIN_SIGMA_DIST,
+    gateSecs: settings.gate_secs ?? GATE_SECS,
   });
   const cal = await loadCalibration(db);
   setCalibration(cal.table, cal.pairTable);
@@ -506,7 +513,7 @@ async function runOwnedServerBotTick(db: Db) {
       .eq("source", "server")
       .gte("ts", dayStart.toISOString())
     const riskRows = (dayRows ?? []) as { pnl: number | null; stake: number | null; status: string; outcome: string | null }[];
-    const dayPnl = riskRows.reduce((a, r) => a + (r.pnl ?? 0), 0);
+    const dayPnl = riskRows.reduce((a, r) => a + (r.outcome === "void" ? 0 : r.pnl ?? 0), 0);
     const openRisk = riskRows.reduce(
       (a, r) => a + (r.status === "placed" && r.outcome == null ? Math.max(0, r.stake ?? 0) : 0),
       0,
@@ -601,6 +608,7 @@ async function runOwnedServerBotTick(db: Db) {
       minSkew: settings.min_skew ?? MIN_SKEW,
       maxSpread: settings.max_spread ?? MAX_SPREAD,
       minSigmaDist: settings.min_sigma_dist ?? MIN_SIGMA_DIST,
+      gateSecs: settings.gate_secs ?? GATE_SECS,
     });
     // Spot first: the strike nearest spot is the only tradable one of the many
     // strikes each candle lists, so the market pull needs the price.
@@ -779,7 +787,8 @@ async function runOwnedServerBotTick(db: Db) {
 
 
     // ---- 5. Trade, only when enabled and inside the window ----------------
-    const inWindow = c.elapsed >= GATE_SECS && c.elapsed < CLOSE_SECS - ORDER_CUTOFF_BUFFER_SECS;
+    const gateSecs = settings.gate_secs ?? GATE_SECS;
+    const inWindow = c.elapsed >= gateSecs && c.elapsed < CLOSE_SECS - ORDER_CUTOFF_BUFFER_SECS;
     if (!enabledNow) {
       lastMsg = `tape ok · ${signals.length} live signal(s) · server bot OFF`;
     } else if (!inWindow) {
@@ -1015,7 +1024,20 @@ async function runOwnedServerBotTick(db: Db) {
     await heartbeat("feeds unavailable — no spot prices this tick");
     return { ok: false, error: "no spot prices", ms: Date.now() - startedAt };
   }
-  if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks`);
+
+  // Grade closed candles on every tick, so real fill results feed confidence
+  // without waiting on an external schedule.
+  let settleNote = "";
+  try {
+    const { settlePending } = await import("./settle.server");
+    const r = await settlePending(6);
+    if (r.trades) settleNote = ` · graded ${r.trades} fill(s)`;
+    if (r.voided) settleNote += ` · ${r.voided} void`;
+  } catch {
+    // Settlement is best-effort; a failure here must not stop sampling.
+  }
+
+  if (fundsOk) await heartbeat(`${lastMsg} · ${rounds} looks${settleNote}`);
   return {
     ok: true,
     sampled,

@@ -22,6 +22,7 @@ export type Database = {
           ev_margin: number
           first_enabled_at: string | null
           gate_preset: string
+          gate_secs: number
           id: boolean
           last_tick_at: string | null
           last_tick_msg: string | null
@@ -47,6 +48,7 @@ export type Database = {
           ev_margin?: number
           first_enabled_at?: string | null
           gate_preset?: string
+          gate_secs?: number
           id?: boolean
           last_tick_at?: string | null
           last_tick_msg?: string | null
@@ -72,6 +74,7 @@ export type Database = {
           ev_margin?: number
           first_enabled_at?: string | null
           gate_preset?: string
+          gate_secs?: number
           id?: boolean
           last_tick_at?: string | null
           last_tick_msg?: string | null
@@ -273,6 +276,8 @@ export type Database = {
           pnl: number | null
           quote_age_ms: number | null
           requested_contracts: number | null
+          settle_attempts: number
+          settle_checked_at: string | null
           settled_at: string | null
           source: string
           stake: number | null
@@ -305,6 +310,8 @@ export type Database = {
           pnl?: number | null
           quote_age_ms?: number | null
           requested_contracts?: number | null
+          settle_attempts?: number
+          settle_checked_at?: string | null
           settled_at?: string | null
           source?: string
           stake?: number | null
@@ -337,6 +344,8 @@ export type Database = {
           pnl?: number | null
           quote_age_ms?: number | null
           requested_contracts?: number | null
+          settle_attempts?: number
+          settle_checked_at?: string | null
           settled_at?: string | null
           source?: string
           stake?: number | null

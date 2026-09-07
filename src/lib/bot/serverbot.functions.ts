@@ -36,6 +36,7 @@ interface SettingsPatch {
   min_skew?: number;
   max_spread?: number;
   min_sigma_dist?: number;
+  gate_secs?: number;
   gate_preset?: string;
   updated_at: string;
 }
@@ -56,6 +57,7 @@ export const updateServerBot = createServerFn({ method: "POST" })
         minSkew: z.number().min(0).max(0.2).optional(),
         maxSpread: z.number().min(0.01).max(0.2).optional(),
         minSigmaDist: z.number().min(0).max(2).optional(),
+        gateSecs: z.number().int().min(60).max(780).optional(),
         gatePreset: z.enum(["strict", "balanced", "aggressive", "custom"]).optional(),
       })
       .parse(d),
@@ -80,6 +82,7 @@ export const updateServerBot = createServerFn({ method: "POST" })
     if (data.minSkew !== undefined) patch.min_skew = data.minSkew;
     if (data.maxSpread !== undefined) patch.max_spread = data.maxSpread;
     if (data.minSigmaDist !== undefined) patch.min_sigma_dist = data.minSigmaDist;
+    if (data.gateSecs !== undefined) patch.gate_secs = data.gateSecs;
     if (data.gatePreset !== undefined) patch.gate_preset = data.gatePreset;
     // Hand-tuning any single gate means the saved preset no longer describes it.
     const touchedGate =
