@@ -33,7 +33,9 @@ export const MAX_SPREAD = 0.07; // skip illiquid books wider than 7¢
 export const MIN_YES_MID = 0.08; // skip lottery-ticket longshots
 export const MAX_YES_MID = 0.94; // skip near-certain, no edge left
 export const MIN_SKEW = 0.02; // book must lean at least 2¢ one way
-export const MIN_TICKS = 24; // enough spot history to trust momentum
+export const MIN_TICKS = 60; // enough spot history *inside this candle* to trust momentum
+/** How many recent ticks the volatility estimate looks back over. */
+export const TICK_LOOKBACK = 60;
 /** Minimum expected value per dollar risked — kills "95% read at 92¢" trades. */
 export const EV_MARGIN = 0.04;
 /** Minimum cushion between spot and strike, in standard deviations of movement. */
