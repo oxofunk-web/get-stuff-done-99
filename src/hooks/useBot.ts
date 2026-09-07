@@ -419,6 +419,22 @@ export function useBot() {
     return () => clearInterval(i);
   }, [refreshPortfolio]);
 
+  // Coming back from the background: every interval was frozen, so pull all the
+  // panels once instead of waiting out the next poll.
+  useEffect(() => {
+    if (!wakeCount) return;
+    setNow(Date.now());
+    seenSigIds.current = new Set();
+    loggedSigRef.current = new Set();
+    pullRef.current();
+    void refreshServer();
+    void refreshLive();
+    void refreshPortfolio();
+    void refreshAccuracy();
+  }, [wakeCount, refreshServer, refreshLive, refreshPortfolio, refreshAccuracy]);
+
+
+
   const rawSignals = useMemo(
     () => computeSignals(spot, markets, historyRef.current, now),
     // `tick` forces recompute as websocket ticks mutate the spot ref
