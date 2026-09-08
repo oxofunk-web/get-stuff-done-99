@@ -489,14 +489,14 @@ export function useBot() {
   // Signal cards come from the server runner's saved decisions for the current
   // candle, so a refresh (or a locked phone) never blanks the panel.
   const signals = useMemo<Signal[]>(() => {
-    return serverLooks
+    return serverFired
       .filter(
         (r) =>
-          r.verdict === "fired" &&
           r.candleId === candle.id &&
           (r.dir === "YES" || r.dir === "NO") &&
           PAIRS.some((p) => p.id === r.pair),
       )
+
       .map((r) => ({
         id: `${r.candleId}-${r.pair}-${r.dir}-${r.secondsIn}`,
         pair: r.pair as PairId,
