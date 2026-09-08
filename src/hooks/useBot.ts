@@ -20,7 +20,7 @@ import {
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { pairVetoed, setPairEdge } from "@/lib/bot/ranking";
-import { advanceStableSignal, isStable, type StableSignalCandidate } from "@/lib/bot/stability";
+
 import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
@@ -39,7 +39,7 @@ import {
   type ServerBotState,
 } from "@/lib/bot/serverbot.functions";
 
-import type { KalshiMarket, TradeLogEntry } from "@/lib/bot/types";
+import type { KalshiMarket, Signal, TradeLogEntry } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio } from "@/lib/kalshi.functions";
 
 
@@ -118,19 +118,24 @@ export function useBot() {
   // browser's own copy of the scoring code only sees this device's price
   // frames, so it must never be presented as the decision.
   const [serverLooks, setServerLooks] = useState<ServerLookRow[]>([]);
+  const [serverFired, setServerFired] = useState<ServerLookRow[]>([]);
   useEffect(() => {
     const pull = async () => {
       try {
         const r = await getServerLooks();
-        if (r.ok) setServerLooks(r.rows);
+        if (r.ok) {
+          setServerLooks(r.rows);
+          setServerFired(r.fired);
+        }
       } catch {
         // keep last known looks
       }
     };
     void pull();
-    const i = setInterval(() => void pull(), 10000);
+    const i = setInterval(() => void pull(), 5000);
     return () => clearInterval(i);
   }, []);
+
 
   const [sigCount, setSigCount] = useState(0);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -471,34 +476,50 @@ export function useBot() {
 
 
 
-  const rawSignals = useMemo(
+  // The phone's own scoring copy stays for the live tiles and the tape, but it
+  // never decides what the user sees: it restarts empty on every refresh.
+  const localSignals = useMemo(
     () => computeSignals(spot, markets, historyRef.current, now),
     // `tick` forces recompute as websocket ticks mutate the spot ref
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [markets, now, tick],
   );
-  const displayCandidates = useRef(new Map<PairId, StableSignalCandidate>());
-  const signals = useMemo(() => {
-    const active = new Set<PairId>();
-    const stable = rawSignals.filter((signal) => {
-      active.add(signal.pair);
-      const ticker = markets[signal.pair]?.ticker;
-      if (!ticker) return false;
-      const next = advanceStableSignal(
-        displayCandidates.current.get(signal.pair),
-        `${ticker}:${signal.dir}`,
-        now,
-        1_000,
-        signal.sigmaDist,
-      );
-      displayCandidates.current.set(signal.pair, next);
-      return isStable(next);
-    });
-    for (const pair of [...displayCandidates.current.keys()]) {
-      if (!active.has(pair)) displayCandidates.current.delete(pair);
-    }
-    return stable;
-  }, [markets, now, rawSignals]);
+  void localSignals;
+
+  // Signal cards come from the server runner's saved decisions for the current
+  // candle, so a refresh (or a locked phone) never blanks the panel.
+  const signals = useMemo<Signal[]>(() => {
+    return serverFired
+      .filter(
+        (r) =>
+          r.candleId === candle.id &&
+          (r.dir === "YES" || r.dir === "NO") &&
+          PAIRS.some((p) => p.id === r.pair),
+      )
+
+      .map((r) => ({
+        id: `${r.candleId}-${r.pair}-${r.dir}-${r.secondsIn}`,
+        pair: r.pair as PairId,
+        dir: r.dir as "YES" | "NO",
+        conf: r.conf ?? 0,
+        yesMid: r.yesMid ?? 0,
+        spread: r.spread ?? 0,
+        spotMom: r.spotMom ?? 0,
+        kMom: r.kMom ?? 0,
+        lagDetected: false,
+        calibrated: r.calibrated ?? 0,
+        calibrationReady: false,
+        calibrationSamples: 0,
+        entry: r.entryPrice ?? r.yesMid ?? 0,
+        ev: r.ev ?? 0,
+        sigmaDist: r.sigmaDist ?? 0,
+        skew: (r.yesMid ?? 0.5) - 0.5,
+        reason: r.reason ?? "server signal",
+        elapsed: r.secondsIn,
+        remain: Math.max(0, candle.remain),
+      }))
+      .sort((a, b) => b.conf - a.conf);
+  }, [serverFired, candle.id, candle.remain]);
 
   // Why each pair is idle right now — so "no signals" reads as "here's what
   // every pair is waiting for" instead of a blank panel.
@@ -537,6 +558,7 @@ export function useBot() {
     setSigCount((c) => c + fresh.length);
   }, [signals]);
 
+
   // Market tape recorder — one batched write every 5s, not one per tick.
   useEffect(() => {
     const push = () => {
@@ -568,53 +590,10 @@ export function useBot() {
     return () => clearInterval(i);
   }, []);
 
-  // Signal recorder — every decision, fired or rejected, once per 5s slot.
-  const signalsRef = useRef(signals);
-  signalsRef.current = signals;
-  useEffect(() => {
-    const push = () => {
-      const c = candleInfo(Date.now());
-      const slot = Math.floor(c.elapsed / 5) * 5;
-      const trace = getSignalTrace();
-      const fired = new Map(signalsRef.current.map((s) => [s.pair, s]));
-      const rows = trace
-        .filter((t) => {
-          const key = `${c.id}-${t.pair}-${t.verdict}-${slot}`;
-          if (loggedSigRef.current.has(key)) return false;
-          loggedSigRef.current.add(key);
-          return true;
-        })
-        .map((t) => {
-          const s = fired.get(t.pair);
-          const m = marketsRef.current[t.pair];
-          return {
-            candle_id: c.id,
-            seconds_in: slot,
-            pair: t.pair as string,
-            verdict: t.verdict,
-            reason: t.reason,
-            dir: s?.dir ?? t.dir ?? null,
-            conf: s?.conf ?? null,
-            calibrated: s?.calibrated ?? null,
-            entry_price: s?.entry ?? null,
-            ev: s?.ev ?? null,
-            yes_mid: m?.yesMid ?? null,
-            spread: m?.spread ?? null,
-            skew: s?.skew ?? null,
-            spot_mom: s?.spotMom ?? null,
-            k_mom: s?.kMom ?? null,
-            sigma_dist: s?.sigmaDist ?? null,
-            spot: spotRef.current[t.pair]?.price ?? null,
-            strike: m?.strike ?? null,
-            strike_type: m?.strikeType ?? null,
-            strategy_version: "stable-v2",
-          };
-        });
-      if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);
-    };
-    const i = setInterval(push, 5000);
-    return () => clearInterval(i);
-  }, []);
+  // No client-side signal logging: the server runner records every decision it
+  // makes, and a second writer from an open tab only creates conflicting rows.
+
+
 
   // ---- read models derived from the server bot + Kalshi account -------------
 
