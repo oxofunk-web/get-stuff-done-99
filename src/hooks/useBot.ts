@@ -39,7 +39,7 @@ import {
   type ServerBotState,
 } from "@/lib/bot/serverbot.functions";
 
-import type { KalshiMarket, TradeLogEntry } from "@/lib/bot/types";
+import type { KalshiMarket, Signal, TradeLogEntry } from "@/lib/bot/types";
 import { getLiveStatus, getMarkets, getPortfolio } from "@/lib/kalshi.functions";
 
 
