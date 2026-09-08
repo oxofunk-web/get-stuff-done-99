@@ -145,7 +145,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
 
 export type GatePresetName = keyof typeof GATE_PRESETS;
 
-export type PairId = "BTC" | "ETH" | "SOL" | "XRP" | "BNB" | "NEAR" | "DOGE";
+export type PairId = "BTC" | "ETH" | "SOL" | "XRP";
 
 export interface Pair {
   id: PairId;
@@ -189,43 +189,16 @@ export const PAIRS: Pair[] = [
     colorClass: "text-xrp",
     colorVar: "var(--color-xrp)",
   },
-  {
-    id: "BNB",
-    name: "BNB",
-    series: "KXBNB15M",
-    wsKey: "bnbusdt",
-    colorClass: "text-bnb",
-    colorVar: "var(--color-bnb)",
-  },
-  {
-    id: "NEAR",
-    name: "NEAR",
-    series: "KXNEAR15M",
-    wsKey: "nearusdt",
-    colorClass: "text-near",
-    colorVar: "var(--color-near)",
-  },
-  {
-    id: "DOGE",
-    name: "Dogecoin",
-    series: "KXDOGE15M",
-    wsKey: "dogeusdt",
-    colorClass: "text-doge",
-    colorVar: "var(--color-doge)",
-  },
 ];
 
 export const WS_URL =
-  "wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker/xrpusdt@ticker/bnbusdt@ticker/nearusdt@ticker/dogeusdt@ticker";
+  "wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker/xrpusdt@ticker";
 
 export const WS_MAP: Record<string, PairId> = {
   btcusdt: "BTC",
   ethusdt: "ETH",
   solusdt: "SOL",
   xrpusdt: "XRP",
-  bnbusdt: "BNB",
-  nearusdt: "NEAR",
-  dogeusdt: "DOGE",
 };
 
 /**
@@ -234,24 +207,13 @@ export const WS_MAP: Record<string, PairId> = {
  */
 export const CB_WS_URL = "wss://ws-feed.exchange.coinbase.com";
 
-export const CB_PRODUCTS = [
-  "BTC-USD",
-  "ETH-USD",
-  "SOL-USD",
-  "XRP-USD",
-  "BNB-USD",
-  "NEAR-USD",
-  "DOGE-USD",
-] as const;
+export const CB_PRODUCTS = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"] as const;
 
 export const CB_MAP: Record<string, PairId> = {
   "BTC-USD": "BTC",
   "ETH-USD": "ETH",
   "SOL-USD": "SOL",
   "XRP-USD": "XRP",
-  "BNB-USD": "BNB",
-  "NEAR-USD": "NEAR",
-  "DOGE-USD": "DOGE",
 };
 
 /** How long to wait for a first frame before failing over to the next source. */
