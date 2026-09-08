@@ -585,53 +585,10 @@ export function useBot() {
     return () => clearInterval(i);
   }, []);
 
-  // Signal recorder — every decision, fired or rejected, once per 5s slot.
-  const signalsRef = useRef(signals);
-  signalsRef.current = signals;
-  useEffect(() => {
-    const push = () => {
-      const c = candleInfo(Date.now());
-      const slot = Math.floor(c.elapsed / 5) * 5;
-      const trace = getSignalTrace();
-      const fired = new Map(signalsRef.current.map((s) => [s.pair, s]));
-      const rows = trace
-        .filter((t) => {
-          const key = `${c.id}-${t.pair}-${t.verdict}-${slot}`;
-          if (loggedSigRef.current.has(key)) return false;
-          loggedSigRef.current.add(key);
-          return true;
-        })
-        .map((t) => {
-          const s = fired.get(t.pair);
-          const m = marketsRef.current[t.pair];
-          return {
-            candle_id: c.id,
-            seconds_in: slot,
-            pair: t.pair as string,
-            verdict: t.verdict,
-            reason: t.reason,
-            dir: s?.dir ?? t.dir ?? null,
-            conf: s?.conf ?? null,
-            calibrated: s?.calibrated ?? null,
-            entry_price: s?.entry ?? null,
-            ev: s?.ev ?? null,
-            yes_mid: m?.yesMid ?? null,
-            spread: m?.spread ?? null,
-            skew: s?.skew ?? null,
-            spot_mom: s?.spotMom ?? null,
-            k_mom: s?.kMom ?? null,
-            sigma_dist: s?.sigmaDist ?? null,
-            spot: spotRef.current[t.pair]?.price ?? null,
-            strike: m?.strike ?? null,
-            strike_type: m?.strikeType ?? null,
-            strategy_version: "stable-v2",
-          };
-        });
-      if (rows.length) void recordSignals({ data: { rows } }).catch(() => undefined);
-    };
-    const i = setInterval(push, 5000);
-    return () => clearInterval(i);
-  }, []);
+  // No client-side signal logging: the server runner records every decision it
+  // makes, and a second writer from an open tab only creates conflicting rows.
+
+
 
   // ---- read models derived from the server bot + Kalshi account -------------
 
