@@ -471,34 +471,50 @@ export function useBot() {
 
 
 
-  const rawSignals = useMemo(
+  // The phone's own scoring copy stays for the live tiles and the tape, but it
+  // never decides what the user sees: it restarts empty on every refresh.
+  const localSignals = useMemo(
     () => computeSignals(spot, markets, historyRef.current, now),
     // `tick` forces recompute as websocket ticks mutate the spot ref
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [markets, now, tick],
   );
-  const displayCandidates = useRef(new Map<PairId, StableSignalCandidate>());
-  const signals = useMemo(() => {
-    const active = new Set<PairId>();
-    const stable = rawSignals.filter((signal) => {
-      active.add(signal.pair);
-      const ticker = markets[signal.pair]?.ticker;
-      if (!ticker) return false;
-      const next = advanceStableSignal(
-        displayCandidates.current.get(signal.pair),
-        `${ticker}:${signal.dir}`,
-        now,
-        1_000,
-        signal.sigmaDist,
-      );
-      displayCandidates.current.set(signal.pair, next);
-      return isStable(next);
-    });
-    for (const pair of [...displayCandidates.current.keys()]) {
-      if (!active.has(pair)) displayCandidates.current.delete(pair);
-    }
-    return stable;
-  }, [markets, now, rawSignals]);
+  void localSignals;
+
+  // Signal cards come from the server runner's saved decisions for the current
+  // candle, so a refresh (or a locked phone) never blanks the panel.
+  const signals = useMemo<Signal[]>(() => {
+    return serverLooks
+      .filter(
+        (r) =>
+          r.verdict === "fired" &&
+          r.candleId === candle.id &&
+          (r.dir === "YES" || r.dir === "NO") &&
+          PAIRS.some((p) => p.id === r.pair),
+      )
+      .map((r) => ({
+        id: `${r.candleId}-${r.pair}-${r.dir}-${r.secondsIn}`,
+        pair: r.pair as PairId,
+        dir: r.dir as "YES" | "NO",
+        conf: r.conf ?? 0,
+        yesMid: r.yesMid ?? 0,
+        spread: r.spread ?? 0,
+        spotMom: r.spotMom ?? 0,
+        kMom: r.kMom ?? 0,
+        lagDetected: false,
+        calibrated: r.calibrated ?? 0,
+        calibrationReady: false,
+        calibrationSamples: 0,
+        entry: r.entryPrice ?? r.yesMid ?? 0,
+        ev: r.ev ?? 0,
+        sigmaDist: r.sigmaDist ?? 0,
+        skew: (r.yesMid ?? 0.5) - 0.5,
+        reason: r.reason ?? "server signal",
+        elapsed: r.secondsIn,
+        remain: Math.max(0, candle.remain),
+      }))
+      .sort((a, b) => b.conf - a.conf);
+  }, [serverLooks, candle.id, candle.remain]);
 
   // Why each pair is idle right now — so "no signals" reads as "here's what
   // every pair is waiting for" instead of a blank panel.
@@ -536,6 +552,7 @@ export function useBot() {
     fresh.forEach((s) => seenSigIds.current.add(s.id));
     setSigCount((c) => c + fresh.length);
   }, [signals]);
+
 
   // Market tape recorder — one batched write every 5s, not one per tick.
   useEffect(() => {
