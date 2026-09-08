@@ -265,7 +265,7 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
       return { ok: true, rows: [...latest.values()], fired: [...fired.values()] };
     } catch (e) {
 
-      return { ok: false, rows: [], error: e instanceof Error ? e.message : "unavailable" };
+      return { ok: false, rows: [], fired: [], error: e instanceof Error ? e.message : "unavailable" };
     }
   },
 );
