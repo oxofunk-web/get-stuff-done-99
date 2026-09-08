@@ -118,19 +118,24 @@ export function useBot() {
   // browser's own copy of the scoring code only sees this device's price
   // frames, so it must never be presented as the decision.
   const [serverLooks, setServerLooks] = useState<ServerLookRow[]>([]);
+  const [serverFired, setServerFired] = useState<ServerLookRow[]>([]);
   useEffect(() => {
     const pull = async () => {
       try {
         const r = await getServerLooks();
-        if (r.ok) setServerLooks(r.rows);
+        if (r.ok) {
+          setServerLooks(r.rows);
+          setServerFired(r.fired);
+        }
       } catch {
         // keep last known looks
       }
     };
     void pull();
-    const i = setInterval(() => void pull(), 10000);
+    const i = setInterval(() => void pull(), 5000);
     return () => clearInterval(i);
   }, []);
+
 
   const [sigCount, setSigCount] = useState(0);
   const [toast, setToast] = useState<Toast | null>(null);
