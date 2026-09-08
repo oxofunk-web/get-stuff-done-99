@@ -204,7 +204,7 @@ export interface ServerLookRow {
  * rebuilt from these rows — they survive a refresh because they live in the DB.
  */
 export const getServerLooks = createServerFn({ method: "GET" }).handler(
-  async (): Promise<{ ok: boolean; rows: ServerLookRow[]; error?: string }> => {
+  async (): Promise<{ ok: boolean; rows: ServerLookRow[]; fired: ServerLookRow[]; error?: string }> => {
     try {
       const db = await admin();
       const since = new Date(Date.now() - 20 * 60_000).toISOString();
@@ -217,9 +217,10 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
         .gte("ts", since)
         .order("ts", { ascending: false })
         .limit(2000);
-      if (error) return { ok: false, rows: [], error: error.message };
+      if (error) return { ok: false, rows: [], fired: [], error: error.message };
 
       const latest = new Map<string, ServerLookRow>();
+      const fired = new Map<string, ServerLookRow>();
       for (const r of (data ?? []) as {
         pair: string;
         verdict: string;
@@ -238,8 +239,7 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
         k_mom: number | null;
         sigma_dist: number | null;
       }[]) {
-        if (latest.has(r.pair)) continue; // rows arrive newest-first
-        latest.set(r.pair, {
+        const row: ServerLookRow = {
           pair: r.pair,
           verdict: r.verdict,
           reason: r.reason,
@@ -256,10 +256,15 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
           spotMom: r.spot_mom,
           kMom: r.k_mom,
           sigmaDist: r.sigma_dist,
-        });
+        };
+        // Rows arrive newest-first: keep the last look, and separately the last
+        // fired read, so a signal stays on screen after later rejections.
+        if (!latest.has(r.pair)) latest.set(r.pair, row);
+        if (r.verdict === "fired" && !fired.has(r.pair)) fired.set(r.pair, row);
       }
-      return { ok: true, rows: [...latest.values()] };
+      return { ok: true, rows: [...latest.values()], fired: [...fired.values()] };
     } catch (e) {
+
       return { ok: false, rows: [], error: e instanceof Error ? e.message : "unavailable" };
     }
   },
