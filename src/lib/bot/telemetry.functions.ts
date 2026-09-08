@@ -185,12 +185,23 @@ export interface ServerLookRow {
   secondsIn: number;
   ts: string;
   candleId: number;
+  dir: string | null;
+  conf: number | null;
+  calibrated: number | null;
+  entryPrice: number | null;
+  ev: number | null;
+  yesMid: number | null;
+  spread: number | null;
+  spotMom: number | null;
+  kMom: number | null;
+  sigmaDist: number | null;
 }
 
 /**
  * The dashboard runs its own copy of the scoring code purely for display, and
  * that copy only sees the price frames this device received. The authoritative
- * read is the server runner's, so the idle panel shows these rows instead.
+ * read is the server runner's, so both the signal cards and the idle panel are
+ * rebuilt from these rows — they survive a refresh because they live in the DB.
  */
 export const getServerLooks = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ ok: boolean; rows: ServerLookRow[]; error?: string }> => {
@@ -199,7 +210,9 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
       const since = new Date(Date.now() - 20 * 60_000).toISOString();
       const { data, error } = await db
         .from("signal_log")
-        .select("pair, verdict, reason, seconds_in, ts, candle_id")
+        .select(
+          "pair, verdict, reason, seconds_in, ts, candle_id, dir, conf, calibrated, entry_price, ev, yes_mid, spread, spot_mom, k_mom, sigma_dist",
+        )
         .eq("source", "server")
         .gte("ts", since)
         .order("ts", { ascending: false })
@@ -214,6 +227,16 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
         seconds_in: number;
         ts: string;
         candle_id: number;
+        dir: string | null;
+        conf: number | null;
+        calibrated: number | null;
+        entry_price: number | null;
+        ev: number | null;
+        yes_mid: number | null;
+        spread: number | null;
+        spot_mom: number | null;
+        k_mom: number | null;
+        sigma_dist: number | null;
       }[]) {
         if (latest.has(r.pair)) continue; // rows arrive newest-first
         latest.set(r.pair, {
@@ -223,6 +246,16 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
           secondsIn: r.seconds_in,
           ts: r.ts,
           candleId: r.candle_id,
+          dir: r.dir,
+          conf: r.conf,
+          calibrated: r.calibrated,
+          entryPrice: r.entry_price,
+          ev: r.ev,
+          yesMid: r.yes_mid,
+          spread: r.spread,
+          spotMom: r.spot_mom,
+          kMom: r.k_mom,
+          sigmaDist: r.sigma_dist,
         });
       }
       return { ok: true, rows: [...latest.values()] };
@@ -231,6 +264,7 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
     }
   },
 );
+
 
 
 
