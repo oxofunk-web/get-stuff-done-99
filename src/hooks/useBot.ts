@@ -519,7 +519,7 @@ export function useBot() {
         remain: Math.max(0, candle.remain),
       }))
       .sort((a, b) => b.conf - a.conf);
-  }, [serverLooks, candle.id, candle.remain]);
+  }, [serverFired, candle.id, candle.remain]);
 
   // Why each pair is idle right now — so "no signals" reads as "here's what
   // every pair is waiting for" instead of a blank panel.
