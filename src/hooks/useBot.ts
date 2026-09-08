@@ -20,7 +20,7 @@ import {
 } from "@/lib/bot/constants";
 import { computeSignals, getSignalTrace, setCalibration } from "@/lib/bot/signals";
 import { pairVetoed, setPairEdge } from "@/lib/bot/ranking";
-import { advanceStableSignal, isStable, type StableSignalCandidate } from "@/lib/bot/stability";
+
 import { setTuning } from "@/lib/bot/tuning";
 import {
   getAccuracy,
