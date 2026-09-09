@@ -20,7 +20,7 @@ export function LogPanel({ log }: { log: TradeLogEntry[] }) {
               <div key={t.id} className="px-3 py-1.5">
                 <div className="flex items-center gap-2 text-[9px]">
                   <span className="tabular-nums text-dim">{t.time}</span>
-                  <span className={`font-sans font-bold ${pair.colorClass}`}>{t.pair}</span>
+                  <span className={`font-sans font-bold ${colorClass}`}>{t.pair}</span>
                   <span className={isYes ? "text-yes" : "text-no"}>{isYes ? "▲ YES" : "▼ NO"}</span>
                   <span className={`tabular-nums ${isYes ? "text-yes" : "text-no"}`}>
                     {t.conf.toFixed(1)}%

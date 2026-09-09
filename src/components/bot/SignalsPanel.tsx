@@ -62,7 +62,7 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
                       >
                         {s.lagDetected ? "⚡ LAG" : isYes ? "▲ YES" : "▼ NO"}
                       </span>
-                      <span className={`font-sans text-[12px] font-extrabold ${pair.colorClass}`}>
+                      <span className={`font-sans text-[12px] font-extrabold ${colorClass}`}>
                         {s.pair}
                       </span>
                       <span className="rounded border border-wire px-1 text-[7px] tracking-widest text-dim">
