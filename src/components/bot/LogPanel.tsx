@@ -13,13 +13,14 @@ export function LogPanel({ log }: { log: TradeLogEntry[] }) {
       ) : (
         <div className="divide-y divide-wire">
           {log.map((t) => {
-            const pair = PAIRS.find((p) => p.id === t.pair)!;
+            const pair = PAIRS.find((p) => p.id === t.pair);
+            const colorClass = pair?.colorClass ?? "text-foreground";
             const isYes = t.dir === "YES";
             return (
               <div key={t.id} className="px-3 py-1.5">
                 <div className="flex items-center gap-2 text-[9px]">
                   <span className="tabular-nums text-dim">{t.time}</span>
-                  <span className={`font-sans font-bold ${pair.colorClass}`}>{t.pair}</span>
+                  <span className={`font-sans font-bold ${colorClass}`}>{t.pair}</span>
                   <span className={isYes ? "text-yes" : "text-no"}>{isYes ? "▲ YES" : "▼ NO"}</span>
                   <span className={`tabular-nums ${isYes ? "text-yes" : "text-no"}`}>
                     {t.conf.toFixed(1)}%
