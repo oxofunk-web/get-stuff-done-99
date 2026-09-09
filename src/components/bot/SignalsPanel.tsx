@@ -38,7 +38,8 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
           </>
         ) : (
           signals.map((s) => {
-            const pair = PAIRS.find((p) => p.id === s.pair)!;
+            const pair = PAIRS.find((p) => p.id === s.pair);
+            const colorClass = pair?.colorClass ?? "text-foreground";
             const isYes = s.dir === "YES";
             const accent = s.lagDetected ? "var(--gold)" : isYes ? "var(--yes)" : "var(--no)";
             const st = tradeStatus[s.id];

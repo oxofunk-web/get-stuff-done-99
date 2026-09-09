@@ -13,7 +13,8 @@ export function LogPanel({ log }: { log: TradeLogEntry[] }) {
       ) : (
         <div className="divide-y divide-wire">
           {log.map((t) => {
-            const pair = PAIRS.find((p) => p.id === t.pair)!;
+            const pair = PAIRS.find((p) => p.id === t.pair);
+            const colorClass = pair?.colorClass ?? "text-foreground";
             const isYes = t.dir === "YES";
             return (
               <div key={t.id} className="px-3 py-1.5">
