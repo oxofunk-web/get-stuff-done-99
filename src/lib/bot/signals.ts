@@ -420,15 +420,27 @@ export function computeSignals(
     else if (Math.abs(skew) > (Math.abs(spotMom) / LAG_PCT) * 0.01) dir = skew > 0 ? "YES" : "NO";
     else dir = spotMom > 0 ? "YES" : "NO";
 
-    if (conf < T.threshold) {
+    // High-probability legs already carry the book's agreement, so demanding
+    // the full dial double-counts the same evidence — discount the threshold.
+    const priceEstimate = Math.min(
+      0.99,
+      Math.max(0.01, dir === "YES" ? km.yesAsk || ym + km.spread / 2 : km.noAsk || 1 - ym + km.spread / 2),
+    );
+    const effectiveThreshold =
+      priceEstimate >= HIGH_PROB_PRICE
+        ? Math.max(0, T.threshold - HIGH_PROB_THRESHOLD_DISCOUNT)
+        : T.threshold;
+
+    if (conf < effectiveThreshold) {
       note(
         p.id,
         "rejected",
-        `confidence below threshold — missed by ${(T.threshold - conf).toFixed(1)}`,
+        `confidence below threshold — missed by ${(effectiveThreshold - conf).toFixed(1)}`,
         {
           conf: Number(conf.toFixed(1)),
-          threshold: T.threshold,
-          missedBy: Number((T.threshold - conf).toFixed(1)),
+          threshold: effectiveThreshold,
+          fullThreshold: T.threshold,
+          missedBy: Number((effectiveThreshold - conf).toFixed(1)),
           agreement,
           liq,
           sigmaDist: Number(sigmaDist.toFixed(2)),
