@@ -2,10 +2,11 @@ import type { KalshiMarket, Signal } from "./types";
 
 export const CANDLE_SECONDS = 900;
 export const ORDER_CUTOFF_BUFFER_SECS = 5;
-/** How many time-separated, matching observations a signal needs to count. */
-export const REQUIRED_STABLE_SAMPLES = 3;
+/** How many matching observations a signal needs to count. One read that
+ * passes every other filter can fire immediately. */
+export const REQUIRED_STABLE_SAMPLES = 1;
 /** Minimum elapsed time the confirmation window must span. */
-export const REQUIRED_STABLE_SPAN_MS = 6_000;
+export const REQUIRED_STABLE_SPAN_MS = 0;
 /** How much cushion decay is tolerated across the window, in sigma. */
 export const CUSHION_DECAY_TOLERANCE = 0.15;
 
