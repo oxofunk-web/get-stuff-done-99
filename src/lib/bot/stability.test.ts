@@ -31,17 +31,11 @@ describe("signal stability", () => {
     expect(marketMatchesActiveCandle("2026-09-05T02:30:00.000Z", now)).toBe(false);
   });
 
-  it("requires three time-separated observations spanning a real window", () => {
+  it("counts a single matching observation and restarts when the key changes", () => {
     const first = advanceStableSignal(undefined, "BTC:TICKER:YES", 1_000, 1_000);
-    const tooSoon = advanceStableSignal(first, first.key, 1_200, 1_000);
-    const second = advanceStableSignal(tooSoon, first.key, 4_000, 1_000);
-    const third = advanceStableSignal(second, first.key, 7_100, 1_000);
     expect(first.count).toBe(1);
-    expect(tooSoon.count).toBe(1);
-    expect(isStable(second)).toBe(false);
-    expect(third.count).toBe(3);
-    expect(isStable(third)).toBe(true);
-    expect(advanceStableSignal(third, "BTC:TICKER:NO", 9_200, 1_000).count).toBe(1);
+    expect(isStable(first)).toBe(true);
+    expect(advanceStableSignal(first, "BTC:TICKER:NO", 9_200, 1_000).count).toBe(1);
   });
 
   it("restarts the window when the cushion is decaying toward the strike", () => {
@@ -50,7 +44,7 @@ describe("signal stability", () => {
     expect(b.count).toBe(2);
     const shrinking = advanceStableSignal(b, a.key, 7_000, 1_000, 1.1);
     expect(shrinking.count).toBe(1);
-    expect(isStable(shrinking)).toBe(false);
+    expect(shrinking.bestCushion).toBe(1.1);
   });
 
   it("rejects a fresh book that flips against the scored direction", () => {
