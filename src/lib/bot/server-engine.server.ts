@@ -791,7 +791,7 @@ async function runOwnedServerBotTick(db: Db) {
         pair: t.pair as string,
         verdict: pending ? "rejected" : t.verdict,
         reason: pending
-          ? `confirming — ${stableCandidates.get(t.pair)?.count ?? 1} of ${REQUIRED_STABLE_SAMPLES} matching live samples`
+          ? `confirming — awaiting a matching live sample`
           : t.reason,
 
         source: "server",
