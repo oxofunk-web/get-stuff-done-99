@@ -49,17 +49,22 @@ export const MAX_SIGMA_DIST = 3.0;
 /** Cushion (in sigma) where the score peaks before decaying toward the band edge. */
 export const CUSHION_PEAK_SIGMA = 1.5;
 /**
- * Absolute ceiling on what the engine will pay for the leg it buys. Recorded
- * decisions show reads blocked between 65¢ and 89¢ won ~90% of the time, so a
- * flat 60¢ cap threw away the bulk of the opportunity. Anything past this is a
- * near-certainty the book has already fully paid for.
+ * Absolute ceiling on what the engine will pay for the leg it buys. Past this
+ * is a near-certainty the book has already fully paid for.
  */
-export const MAX_ENTRY_PRICE = 0.9;
+export const MAX_ENTRY_PRICE = 0.95;
 /**
  * Interim ceiling while confidence is still unproven: an unvalidated score may
- * not buy an expensive leg no matter how good it looks.
+ * not buy the most expensive legs no matter how good they look.
  */
-export const MAX_ENTRY_PRICE_UNPROVEN = 0.8;
+export const MAX_ENTRY_PRICE_UNPROVEN = 0.9;
+/**
+ * Legs priced at or above this already carry the market's agreement, so the
+ * confidence dial is discounted instead of double-counting the same evidence.
+ */
+export const HIGH_PROB_PRICE = 0.75;
+/** Points knocked off the confidence dial for legs at or above HIGH_PROB_PRICE. */
+export const HIGH_PROB_THRESHOLD_DISCOUNT = 10;
 /**
  * Above this price the leg must additionally justify itself on value, not just
  * sit under the ceiling.
