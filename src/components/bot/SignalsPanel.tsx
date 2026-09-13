@@ -81,7 +81,7 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
                         className="rounded px-1.5 py-px font-sans text-[9px] font-bold tracking-widest"
                         style={{ background: `color-mix(in oklab, ${accent} 18%, transparent)`, color: accent }}
                       >
-                        {s.lagDetected ? "⚡ LAG" : isYes ? "▲ YES" : "▼ NO"}
+                        {s.lagDetected ? "⚡ LAG" : betLabel}
                       </span>
                       <span className={`font-sans text-[12px] font-extrabold ${colorClass}`}>
                         {s.pair}
