@@ -105,6 +105,21 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
                     <div className="h-full" style={{ width: `${s.conf}%`, background: accent }} />
                   </div>
 
+                  {s.strike != null ? (
+                    <div className="mt-2 rounded border border-wire bg-surface-3 px-2 py-1 text-[9px] tracking-wider text-muted-foreground">
+                      NOW <b className="text-foreground">{s.spot != null ? fmtPrice(s.spot) : "—"}</b>
+                      {" · "}LINE <b className="text-foreground">{fmtPrice(s.strike)}</b>
+                      {dist != null ? (
+                        <>
+                          {" · "}
+                          <b style={{ color: accent }}>
+                            {fmtPrice(Math.abs(dist))} {dist >= 0 ? "ABOVE" : "BELOW"}
+                          </b>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] tracking-widest text-muted-foreground">
                     <span>
                       LEG COST <b className="text-foreground">{(s.entry * 100).toFixed(0)}¢</b>
@@ -113,7 +128,7 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
                       SPREAD <b className="text-foreground">{(s.spread * 100).toFixed(1)}¢</b>
                     </span>
                     <span>
-                      BRTI Δ{" "}
+                      LAST 10s DRIFT{" "}
                       <b className="text-foreground">
                         {s.spotMom >= 0 ? "+" : ""}
                         {(s.spotMom * 100).toFixed(3)}%
@@ -124,7 +139,10 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
                     </span>
                   </div>
 
-                  <p className="mt-2 text-[9px] leading-relaxed text-muted-foreground">{s.reason}</p>
+                  <p className="mt-2 text-[9px] leading-relaxed text-muted-foreground">
+                    {s.reason}
+                    {driftNote}
+                  </p>
 
                   {st ? (
                     <div
