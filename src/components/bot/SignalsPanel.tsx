@@ -18,6 +18,9 @@ interface Props {
   pairStatus?: PairStatusRow[] | undefined;
 }
 
+const fmtPrice = (n: number) =>
+  n.toLocaleString("en-US", { maximumFractionDigits: n < 100 ? 4 : 2 });
+
 export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: Props) {
   return (
     <section className="panel">
