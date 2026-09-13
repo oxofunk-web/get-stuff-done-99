@@ -658,7 +658,7 @@ export function computeSignals(
       ev,
       sigmaDist: dirCushion,
       skew,
-      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion +${dirCushion.toFixed(2)}σ on the ${dir} side · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · BRTI momentum ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${lagNote}`,
+      reason: `${calibrationReady ? `Betting ${dir} at ${(entry * 100).toFixed(0)}¢ · conservative edge ${(ev * 100).toFixed(0)}% per $` : `Shadow ${dir} at ${(entry * 100).toFixed(0)}¢ · score only, probability unproven`} · cushion +${dirCushion.toFixed(2)}σ on the ${dir} side · skew ${(Math.abs(skew) * 100).toFixed(1)}% ${dir} · last 10s drift ${spotMom >= 0 ? "+" : ""}${(spotMom * 100).toFixed(3)}%.${(dir === "YES" ? spotMom < 0 : spotMom > 0) ? ` Drift is running against this side — a small wiggle rarely covers the remaining distance in the time left.` : ""}${lagNote}`,
       elapsed: c.elapsed,
       remain: c.remain,
     });

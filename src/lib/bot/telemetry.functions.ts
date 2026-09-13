@@ -195,6 +195,9 @@ export interface ServerLookRow {
   spotMom: number | null;
   kMom: number | null;
   sigmaDist: number | null;
+  spot: number | null;
+  strike: number | null;
+  strikeType: string | null;
 }
 
 /**
@@ -211,7 +214,7 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
       const { data, error } = await db
         .from("signal_log")
         .select(
-          "pair, verdict, reason, seconds_in, ts, candle_id, dir, conf, calibrated, entry_price, ev, yes_mid, spread, spot_mom, k_mom, sigma_dist",
+          "pair, verdict, reason, seconds_in, ts, candle_id, dir, conf, calibrated, entry_price, ev, yes_mid, spread, spot_mom, k_mom, sigma_dist, spot, strike, strike_type",
         )
         .eq("source", "server")
         .gte("ts", since)
@@ -238,6 +241,9 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
         spot_mom: number | null;
         k_mom: number | null;
         sigma_dist: number | null;
+        spot: number | null;
+        strike: number | null;
+        strike_type: string | null;
       }[]) {
         const row: ServerLookRow = {
           pair: r.pair,
@@ -256,6 +262,9 @@ export const getServerLooks = createServerFn({ method: "GET" }).handler(
           spotMom: r.spot_mom,
           kMom: r.k_mom,
           sigmaDist: r.sigma_dist,
+          spot: r.spot,
+          strike: r.strike,
+          strikeType: r.strike_type,
         };
         // Rows arrive newest-first: keep the last look, and separately the last
         // fired read, so a signal stays on screen after later rejections.
