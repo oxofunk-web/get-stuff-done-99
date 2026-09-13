@@ -46,6 +46,24 @@ export function SignalsPanel({ signals, candle, tradeStatus = {}, pairStatus }: 
             const isYes = s.dir === "YES";
             const accent = s.lagDetected ? "var(--gold)" : isYes ? "var(--yes)" : "var(--no)";
             const st = tradeStatus[s.id];
+            // State the bet itself ("BTC finishes ABOVE 78,407") instead of a
+            // ▲/▼ arrow that collides with the drift reading next to it.
+            const betLabel =
+              s.strike != null
+                ? `${s.pair} FINISHES ${isYes ? "ABOVE" : "BELOW"} ${fmtPrice(s.strike)}`
+                : isYes
+                  ? "▲ YES"
+                  : "▼ NO";
+            const dist = s.strike != null && s.spot != null ? s.spot - s.strike : null;
+            // When the last-few-seconds drift fights the chosen side, say so
+            // directly instead of leaving two arrows pointing opposite ways.
+            const driftFights = isYes ? s.spotMom < 0 : s.spotMom > 0;
+            const driftNote =
+              driftFights && dist != null
+                ? ` Drifting ${s.spotMom > 0 ? "up" : "down"} but still ${fmtPrice(Math.abs(dist))} ${dist >= 0 ? "above" : "below"} the line with ${mmss(s.remain)} left.`
+                : driftFights
+                  ? ` Drifting ${s.spotMom > 0 ? "up" : "down"} against this side — recent noise, not the bot's view.`
+                  : "";
             return (
               <article
                 key={s.id}
