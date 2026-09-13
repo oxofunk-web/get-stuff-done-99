@@ -61,6 +61,12 @@ export interface Signal {
   skew: number;
   reason: string;
 
+  /** Strike line and contract rule for the card's plain-English bet. */
+  strike?: number | null;
+  strikeType?: "floor" | "cap" | null;
+  /** Coin price at the moment of the read. */
+  spot?: number | null;
+
   elapsed: number;
   remain: number;
 }
