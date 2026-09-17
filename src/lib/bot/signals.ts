@@ -273,9 +273,15 @@ export function computeSignals(
       continue;
     }
 
+    // A "floor" contract pays YES when spot finishes at or above the line, a
+    // "cap" contract pays YES when it finishes at or below it. So rising spot
+    // supports YES on a floor and NO on a cap: every momentum-derived side must
+    // be read through this sign, or cap markets get the opposite of the trade.
+    const momSign = km?.strikeType === "cap" ? -1 : 1;
+
     // Direction the engine leans before any gate runs, so even an early
     // rejection can be graded later against what the candle actually did.
-    const leanDir: "YES" | "NO" = spotMomentum(s) >= 0 ? "YES" : "NO";
+    const leanDir: "YES" | "NO" = momSign * spotMomentum(s) >= 0 ? "YES" : "NO";
 
     // Liquidity / pricing quality gates.
     if (km.spread > T.maxSpread) {
