@@ -372,7 +372,7 @@ export function computeSignals(
 
 
     const lagDetected = Math.abs(spotMom) > LAG_PCT && Math.abs(kMom) < 0.008;
-    const lagDir: "YES" | "NO" = spotMom > 0 ? "YES" : "NO";
+    const lagDir: "YES" | "NO" = momSign * spotMom > 0 ? "YES" : "NO";
 
     const liq = km.spread < 0.02 ? 1.05 : km.spread < 0.04 ? 0.9 : km.spread < 0.06 ? 0.75 : 0.55;
 
