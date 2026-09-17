@@ -379,7 +379,8 @@ export function computeSignals(
     const minuteIn = (c.elapsed - GATE) / 60;
     const tFac = minuteIn < 2 ? 1.0 : minuteIn < 3 ? 0.88 : 0.72;
 
-    const sDir = Math.sign(spotMom || spotMidMom);
+    // Expressed as a YES/NO lean already, so it can be compared with the book.
+    const sDir = Math.sign(momSign * (spotMom || spotMidMom));
     const skDir = Math.sign(skew);
     const kDir = Math.sign(kMom);
     const agreement =
