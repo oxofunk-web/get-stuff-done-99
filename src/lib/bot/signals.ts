@@ -490,7 +490,9 @@ export function computeSignals(
     // A tiny counter-tick is noise. Only block a material reversal when both
     // the short and broader spot windows confirm it against the chosen side.
     const reversalFloor = LAG_PCT * 0.5;
-    if (isMaterialMomentumReversal(dir, spotMom, spotMidMom)) {
+    // Momentum is re-expressed in the direction that helps this contract type,
+    // so a cap market is not judged as if YES meant "price up".
+    if (isMaterialMomentumReversal(dir, momSign * spotMom, momSign * spotMidMom)) {
       note(
         p.id,
         "rejected",
