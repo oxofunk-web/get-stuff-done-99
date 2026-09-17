@@ -273,9 +273,15 @@ export function computeSignals(
       continue;
     }
 
+    // A "floor" contract pays YES when spot finishes at or above the line, a
+    // "cap" contract pays YES when it finishes at or below it. So rising spot
+    // supports YES on a floor and NO on a cap: every momentum-derived side must
+    // be read through this sign, or cap markets get the opposite of the trade.
+    const momSign = km?.strikeType === "cap" ? -1 : 1;
+
     // Direction the engine leans before any gate runs, so even an early
     // rejection can be graded later against what the candle actually did.
-    const leanDir: "YES" | "NO" = spotMomentum(s) >= 0 ? "YES" : "NO";
+    const leanDir: "YES" | "NO" = momSign * spotMomentum(s) >= 0 ? "YES" : "NO";
 
     // Liquidity / pricing quality gates.
     if (km.spread > T.maxSpread) {
@@ -366,14 +372,15 @@ export function computeSignals(
 
 
     const lagDetected = Math.abs(spotMom) > LAG_PCT && Math.abs(kMom) < 0.008;
-    const lagDir: "YES" | "NO" = spotMom > 0 ? "YES" : "NO";
+    const lagDir: "YES" | "NO" = momSign * spotMom > 0 ? "YES" : "NO";
 
     const liq = km.spread < 0.02 ? 1.05 : km.spread < 0.04 ? 0.9 : km.spread < 0.06 ? 0.75 : 0.55;
 
     const minuteIn = (c.elapsed - GATE) / 60;
     const tFac = minuteIn < 2 ? 1.0 : minuteIn < 3 ? 0.88 : 0.72;
 
-    const sDir = Math.sign(spotMom || spotMidMom);
+    // Expressed as a YES/NO lean already, so it can be compared with the book.
+    const sDir = Math.sign(momSign * (spotMom || spotMidMom));
     const skDir = Math.sign(skew);
     const kDir = Math.sign(kMom);
     const agreement =
@@ -420,7 +427,7 @@ export function computeSignals(
     if (lagDetected && Math.abs(spotMom) > LAG_PCT * 1.5) dir = lagDir;
     else if (sDir === skDir) dir = sDir > 0 ? "YES" : "NO";
     else if (Math.abs(skew) > (Math.abs(spotMom) / LAG_PCT) * 0.01) dir = skew > 0 ? "YES" : "NO";
-    else dir = spotMom > 0 ? "YES" : "NO";
+    else dir = momSign * spotMom > 0 ? "YES" : "NO";
 
     // High-probability legs already carry the book's agreement, so demanding
     // the full dial double-counts the same evidence — discount the threshold.
@@ -483,7 +490,9 @@ export function computeSignals(
     // A tiny counter-tick is noise. Only block a material reversal when both
     // the short and broader spot windows confirm it against the chosen side.
     const reversalFloor = LAG_PCT * 0.5;
-    if (isMaterialMomentumReversal(dir, spotMom, spotMidMom)) {
+    // Momentum is re-expressed in the direction that helps this contract type,
+    // so a cap market is not judged as if YES meant "price up".
+    if (isMaterialMomentumReversal(dir, momSign * spotMom, momSign * spotMidMom)) {
       note(
         p.id,
         "rejected",
