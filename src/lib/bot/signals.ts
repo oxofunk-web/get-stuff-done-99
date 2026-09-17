@@ -427,7 +427,7 @@ export function computeSignals(
     if (lagDetected && Math.abs(spotMom) > LAG_PCT * 1.5) dir = lagDir;
     else if (sDir === skDir) dir = sDir > 0 ? "YES" : "NO";
     else if (Math.abs(skew) > (Math.abs(spotMom) / LAG_PCT) * 0.01) dir = skew > 0 ? "YES" : "NO";
-    else dir = spotMom > 0 ? "YES" : "NO";
+    else dir = momSign * spotMom > 0 ? "YES" : "NO";
 
     // High-probability legs already carry the book's agreement, so demanding
     // the full dial double-counts the same evidence — discount the threshold.
