@@ -4,7 +4,7 @@ import { Dashboard } from "@/components/bot/Dashboard";
 
 const title = "BOTTE-BY-OXOFUNK";
 const description =
-  "Automated 15-minute Kalshi crypto trading console: real-time BRTI spot feed, live YES/NO orderbooks, 80%+ confidence signals, live-only order execution with managed exits.";
+  "Live 15-minute direction reader for Bitcoin, Ethereum, Solana and XRP: each coin's own candlestick chart plus a plain call on whether the candle is finishing up or down, and the chance of it.";
 
 export const Route = createFileRoute("/")({
   head: () => ({

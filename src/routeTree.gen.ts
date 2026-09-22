@@ -10,17 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiPublicBotTickRouteImport } from './routes/api/public/bot-tick'
 import { Route as ApiPublicSettleRouteImport } from './routes/api/public/settle'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicBotTickRoute = ApiPublicBotTickRouteImport.update({
-  id: '/api/public/bot-tick',
-  path: '/api/public/bot-tick',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicSettleRoute = ApiPublicSettleRouteImport.update({
@@ -31,31 +25,27 @@ const ApiPublicSettleRoute = ApiPublicSettleRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api/public/bot-tick': typeof ApiPublicBotTickRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api/public/bot-tick': typeof ApiPublicBotTickRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api/public/bot-tick': typeof ApiPublicBotTickRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/bot-tick' | '/api/public/settle'
+  fullPaths: '/' | '/api/public/settle'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/bot-tick' | '/api/public/settle'
-  id: '__root__' | '/' | '/api/public/bot-tick' | '/api/public/settle'
+  to: '/' | '/api/public/settle'
+  id: '__root__' | '/' | '/api/public/settle'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiPublicBotTickRoute: typeof ApiPublicBotTickRoute
   ApiPublicSettleRoute: typeof ApiPublicSettleRoute
 }
 
@@ -66,13 +56,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/bot-tick': {
-      id: '/api/public/bot-tick'
-      path: '/api/public/bot-tick'
-      fullPath: '/api/public/bot-tick'
-      preLoaderRoute: typeof ApiPublicBotTickRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/settle': {
@@ -87,7 +70,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiPublicBotTickRoute: ApiPublicBotTickRoute,
   ApiPublicSettleRoute: ApiPublicSettleRoute,
 }
 export const routeTree = rootRouteImport
