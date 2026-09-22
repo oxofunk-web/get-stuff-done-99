@@ -100,7 +100,8 @@ export function directionCall(
   const z = (driftedPrice - open) / (price * horizon);
   const pUp = normCdf(z);
   const dir: "UP" | "DOWN" = pUp >= 0.5 ? "UP" : "DOWN";
-  const prob = (dir === "UP" ? pUp : 1 - pUp) * 100;
+  // Never show a certainty: a model reading can be strong, never guaranteed.
+  const prob = Math.min(97, (dir === "UP" ? pUp : 1 - pUp) * 100);
 
   const moved = Math.abs(deltaPct).toFixed(deltaPct === 0 ? 0 : 3);
   const driftWord = d > 0 ? "drifting up" : d < 0 ? "drifting down" : "flat";
