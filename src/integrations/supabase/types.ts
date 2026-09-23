@@ -161,6 +161,51 @@ export type Database = {
         }
         Relationships: []
       }
+      direction_calls: {
+        Row: {
+          candle_start: number
+          close_price: number | null
+          dir: string
+          graded_at: string | null
+          id: string
+          lock_price: number
+          lock_sec: number
+          locked_at: string
+          open_price: number
+          pair: string
+          prob: number
+          result: string | null
+        }
+        Insert: {
+          candle_start: number
+          close_price?: number | null
+          dir: string
+          graded_at?: string | null
+          id?: string
+          lock_price: number
+          lock_sec: number
+          locked_at?: string
+          open_price: number
+          pair: string
+          prob: number
+          result?: string | null
+        }
+        Update: {
+          candle_start?: number
+          close_price?: number | null
+          dir?: string
+          graded_at?: string | null
+          id?: string
+          lock_price?: number
+          lock_sec?: number
+          locked_at?: string
+          open_price?: number
+          pair?: string
+          prob?: number
+          result?: string | null
+        }
+        Relationships: []
+      }
       market_snapshots: {
         Row: {
           candle_id: number
