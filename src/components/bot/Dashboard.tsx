@@ -3,6 +3,7 @@ import { useState } from "react";
 import { CandleChart } from "./CandleChart";
 import { CallPanel } from "./CallPanel";
 import { LockPanel } from "./LockPanel";
+import { AutoTradePanel } from "./AutoTradePanel";
 import { useDirection } from "@/hooks/useDirection";
 import { fmtPrice, mmss } from "@/lib/bot/candle";
 import { PAIRS, type PairId } from "@/lib/bot/constants";
@@ -125,6 +126,7 @@ export function Dashboard() {
           <div className="lg:col-span-5">
             <CallPanel calls={d.calls} selected={pair} onSelect={(p) => setPair(p as PairId)} />
             <LockPanel calls={d.calls} />
+            <AutoTradePanel />
           </div>
         </div>
 

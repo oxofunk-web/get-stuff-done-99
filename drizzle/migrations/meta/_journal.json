@@ -8,6 +8,13 @@
       "when": 1790191380658,
       "tag": "0000_create_direction_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790448548302,
+      "tag": "0001_auto_trade_settings",
+      "breakpoints": true
     }
   ]
 }

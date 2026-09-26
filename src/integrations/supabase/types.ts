@@ -52,6 +52,9 @@ export type Database = {
       }
       bot_settings: {
         Row: {
+          auto_trade_enabled: boolean
+          auto_trade_last_msg: string | null
+          auto_trade_size: number
           bet_size: number
           bootstrap_enabled: boolean
           bootstrap_max_daily: number
@@ -82,6 +85,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_trade_enabled?: boolean
+          auto_trade_last_msg?: string | null
+          auto_trade_size?: number
           bet_size?: number
           bootstrap_enabled?: boolean
           bootstrap_max_daily?: number
@@ -112,6 +118,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_trade_enabled?: boolean
+          auto_trade_last_msg?: string | null
+          auto_trade_size?: number
           bet_size?: number
           bootstrap_enabled?: boolean
           bootstrap_max_daily?: number
