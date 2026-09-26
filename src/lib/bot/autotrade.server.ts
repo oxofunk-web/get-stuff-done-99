@@ -95,7 +95,7 @@ async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size
   const pnl = (today ?? []).reduce((a, t) => a + (t.pnl ?? 0), 0);
   const open = (today ?? []).reduce((a, t) => a + (t.status === "placed" && !t.outcome ? (t.stake ?? 0) : 0), 0);
   const cap = Number(settings?.daily_loss_cap ?? 20);
-  if (-pnl + open + size > cap + size && -pnl >= cap) {
+  if (-pnl + open >= cap) {
     await log({ status: "skipped", msg: `Daily loss cap $${cap} reached` });
     return `${pair}: loss cap`;
   }
