@@ -1,27 +1,40 @@
-# Auto-trade only when a call locks
+# Auto-trade on locked calls, even with the app closed
 
-The reader, chart, chances and lock rules stay exactly as they are. The only addition: the moment a coin's call locks (last 5 minutes), the bot places one Kalshi order for that call.
+Your live reading, chart, chance numbers and lock rules stay exactly as they are. This only adds new pieces.
 
-## How it works
+## What you get
 
-1. A call locks (e.g. BTC FINISHING UP, 81%).
-2. The bot finds that coin's current 15-minute Kalshi contract and buys the matching side (UP = "price above the line", DOWN = "price below the line").
-3. One order per coin per candle, never more. A flip after locking does not place a second order.
-4. The result is shown next to the locked call: FILLED at X¢, or SKIPPED with the reason.
+- **AUTO-TRADE switch (ON / OFF).** Starts OFF. Only you turn it on.
+- **Trade size buttons: $10 / $45 / $100.**
+- **Trades only when a call locks** in the last 5 minutes. One trade per coin per candle. A later flip never places a second trade.
+- **Runs with the app closed.** A copy of the same lock check runs on the server about every minute, using the same live prices. So it keeps watching and trading while your phone is locked.
+- Each locked call shows FILLED at X¢ or SKIPPED with the reason.
 
-## Safety kept on
+## How a trade is picked
 
-- Fixed $5 per trade, $20 daily loss cap (existing settings).
-- Won't buy if the contract costs more than 90¢ or the price jumped more than 3¢ since the lock.
-- An on-screen AUTO-TRADE switch, OFF by default, plus a "LIVE MONEY" confirm. Only you turn it on.
+1. Call locks (e.g. BTC UP 81%).
+2. The bot finds that coin's current 15-minute Kalshi contract and buys the side that matches (UP = finishes above Kalshi's line, DOWN = below).
+3. It skips if Kalshi's line is on the wrong side of your call, the contract costs over 90¢, or the book is empty.
+
+## Safety kept
+
+- Existing daily loss cap still applies (currently $20; at $45 or $100 sizes one loss hits it, so you may want to raise it).
+- A single fill-or-cancel order, no chasing the price.
+
+## Your new Kalshi key
+
+You pasted the private key into chat, so treat it as exposed. I'd recommend making a fresh key in Kalshi. Either way, after you approve I'll open a secure form where you paste the key ID and private key. They'll be saved privately, not in chat or code.
 
 ## Important limits
 
-- Your calls compare to the candle's **open price**; Kalshi pays on its own **line**, which can differ. If the line is on the wrong side of your call (e.g. you say UP but price is already below Kalshi's line), the order is skipped and the reason says so.
-- Orders fire only while the app is open on screen, the same as calls being saved today.
+- Your call compares to the candle's open price. Kalshi pays on its own line. They're usually close but not always the same.
+- The server checks less often than the open app does, so a lock can land a few seconds later.
 
 ## Technical notes
 
-- New server function `placeLockTrade` in a new file: reads `bot_settings` (enabled, live confirm, bet size, loss cap via `bot_risk_snapshot`), picks market with `fetchOpenMarketWithReason`, checks line side vs call, calls existing `placeLiveOrder`, writes to `trade_log` with `source='lock'`. Unique per pair+candle enforced by checking `trade_log` first.
-- `useLockedCalls` calls it right after `recordLock` when auto-trade is on; `LockPanel` gets the switch and order status line.
-- No changes to direction, lock, chart, or signal code.
+- New `src/lib/bot/autotrade.server.ts`: per pair, gather ~20s of spot samples, reuse `directionCall` + `stepLock` unchanged, persist lock state in `direction_calls`, then trade using `fetchOpenMarketWithReason` + existing `placeLiveOrder`; write `trade_log` with `source='lock'`. Uniqueness checked per pair+candle.
+- New cron route `src/routes/api/public/autotrade.ts` (verified with the existing cron token), scheduled every minute via pg_cron.
+- New `bot_settings` columns (additive): `auto_trade_enabled boolean default false`, `auto_trade_size numeric default 10`.
+- New server fns get/set these; `LockPanel` gets the switch, size buttons and status lines.
+- Update `KALSHI_API_KEY_ID` / `KALSHI_PRIVATE_KEY` through the secure form.
+- No changes to direction, lock, chart, or existing signal code.
