@@ -7,7 +7,7 @@ import { fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../k
 const CANDLE_MS = 900_000;
 const PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
-const MAX_ENTRY_CENTS = 95;
+const MAX_ENTRY_CENTS = 99;
 const CHASE_CENTS = 3;
 const SAMPLE_MS = 2000;
 const SAMPLES = 24; // ~48s per run
@@ -84,22 +84,9 @@ async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size
     return `${pair}: Kalshi key missing`;
   }
 
-  // Daily loss cap (existing setting) over lock trades: settled losses + open stakes.
-  const dayStart = new Date();
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const { data: settings } = await sb.from("bot_settings").select("daily_loss_cap").eq("id", true).maybeSingle();
-  const { data: today } = await sb
-    .from("trade_log")
-    .select("pnl,stake,status,outcome")
-    .eq("source", "lock")
-    .gte("ts", dayStart.toISOString());
-  const pnl = (today ?? []).reduce((a, t) => a + (t.pnl ?? 0), 0);
-  const open = (today ?? []).reduce((a, t) => a + (t.status === "placed" && !t.outcome ? (t.stake ?? 0) : 0), 0);
-  const cap = Number(settings?.daily_loss_cap ?? 20);
-  if (-pnl + open >= cap) {
-    await log({ status: "skipped", msg: `Daily loss cap $${cap} reached` });
-    return `${pair}: loss cap`;
-  }
+  // No daily loss cap on locked-call trades: every locked call is allowed to trade.
+
+
 
   const { market: raw, error } = await fetchOpenMarketWithReason(`KX${pair}15M`, lockSpot);
   if (!raw) {
