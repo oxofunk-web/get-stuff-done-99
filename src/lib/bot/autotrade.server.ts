@@ -7,7 +7,8 @@ import { fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../k
 const CANDLE_MS = 900_000;
 const PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
-const MAX_ENTRY_CENTS = 90;
+const MAX_ENTRY_CENTS = 95;
+const CHASE_CENTS = 3;
 const SAMPLE_MS = 2000;
 const SAMPLES = 24; // ~48s per run
 
@@ -125,7 +126,31 @@ async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size
     return `${pair}: too expensive`;
   }
   const count = Math.max(1, Math.floor(size / (askCents / 100)));
-  const res = await placeLiveOrder({ keyId, pem }, { ticker: m.ticker, side, priceCents: askCents, count, quote: m });
+  // Chase: limit up to CHASE_CENTS above the ask (capped at MAX_ENTRY_CENTS).
+  const send = (q: typeof m, ask: number) =>
+    placeLiveOrder(
+      { keyId, pem },
+      {
+        ticker: m.ticker,
+        side,
+        priceCents: Math.min(MAX_ENTRY_CENTS, ask + CHASE_CENTS),
+        maxPriceCents: MAX_ENTRY_CENTS,
+        count,
+        quote: q,
+      },
+    );
+  let res = await send(m, askCents);
+  if (!res.ok) {
+    // One immediate retry against a fresh book.
+    const again = await fetchOpenMarketWithReason(`KX${pair}15M`, lockSpot);
+    if (again.market) {
+      const m2 = normalizeMarket(again.market);
+      if (m2.ticker === m.ticker) {
+        const ask2 = Math.round((side === "yes" ? m2.yesAsk : m2.noAsk) * 100);
+        if (ask2 && ask2 <= MAX_ENTRY_CENTS) res = await send(m2, ask2);
+      }
+    }
+  }
   if (res.ok) {
     const entry = res.priceCents / 100;
     await log({
