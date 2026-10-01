@@ -2,6 +2,7 @@ import { directionCall } from "./direction";
 import { CALL_WINDOW_SECS, FINAL_SECS, emptyLock, stepLock, type LockState } from "./lock";
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
+import { dayRisk } from "./loss-cap.server";
 import { fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 
 const CANDLE_MS = 900_000;
@@ -207,30 +208,12 @@ export async function runAutoTrade() {
   if (elapsed < CALL_WINDOW_SECS - 60 || elapsed >= FINAL_SECS) return { ok: true, msg: "outside call window" };
 
   // Daily loss cap: once today's settled live P&L plus open risk reaches the
-  // cap, stop trading for the rest of the day. Same rule the server engine
-  // enforces — the lock path used to bypass it entirely.
+  // cap, stop trading for the rest of the day. Shared with the scalper — one
+  // cap covers every live strategy.
   const cap = Number(s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT);
   {
-    const dayStart = new Date();
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const { data: dayRows } = await sb
-      .from("trade_log")
-      .select("pnl, stake, status, outcome")
-      .eq("source", "lock")
-      .eq("mode", "live")
-      .gte("ts", dayStart.toISOString());
-    const riskRows = (dayRows ?? []) as {
-      pnl: number | null;
-      stake: number | null;
-      status: string;
-      outcome: string | null;
-    }[];
-    const dayPnl = riskRows.reduce((a, r) => a + (r.outcome === "void" ? 0 : r.pnl ?? 0), 0);
-    const openRisk = riskRows.reduce(
-      (a, r) => a + (r.status === "placed" && r.outcome == null ? Math.max(0, r.stake ?? 0) : 0),
-      0,
-    );
-    if (dayPnl - openRisk <= -cap) {
+    const { dayPnl, openRisk, breached } = await dayRisk(sb, cap, ["lock", "scalp"]);
+    if (breached) {
       const msg = `day stopped — $${openRisk.toFixed(2)} open risk + $${dayPnl.toFixed(2)} settled P&L reaches the $${cap.toFixed(0)} daily cap`;
       await sb
         .from("bot_settings")
