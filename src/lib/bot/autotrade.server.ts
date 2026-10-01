@@ -68,7 +68,8 @@ async function recentTicks(pair: string): Promise<{ ts: number; price: number }[
   }
 }
 
-async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size: number, lockSpot: number, paper: boolean) {
+/** Exported for unit tests: the paper/live fill decision for one locked call. */
+export async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size: number, lockSpot: number, paper: boolean) {
   const sb = await db();
   const { data: existing } = await sb
     .from("trade_log")
