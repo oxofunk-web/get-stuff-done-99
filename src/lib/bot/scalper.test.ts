@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSnap,
+  reentryBlock,
   SCALP_DRIFT_MIN_BP,
   SCALP_MOM_MIN_BP,
   SCALP_VOL_MIN,
@@ -87,5 +88,38 @@ describe("buildSnap", () => {
     const s = buildSnap(cs, START)!;
     expect(s.volRatio).toBeLessThan(SCALP_VOL_MIN);
     expect(scalpSignal(s)).toBe("SKIP");
+  });
+});
+
+describe("scalper re-entry policy", () => {
+  it("allows the first entry when nothing happened yet", () => {
+    expect(reentryBlock([], 0)).toBeNull();
+  });
+
+  it("blocks while a position is open", () => {
+    expect(reentryBlock([], 1)).toBe("open-position");
+  });
+
+  it("allows re-entry after take-profit and timeout exits", () => {
+    expect(reentryBlock([{ exit_reason: "profit" }], 0)).toBeNull();
+    expect(
+      reentryBlock([{ exit_reason: "profit" }, { exit_reason: "time" }], 0),
+    ).toBeNull();
+  });
+
+  it("blocks the rest of the candle after a stop-loss", () => {
+    expect(reentryBlock([{ exit_reason: "stop" }], 0)).toBe("stop-cooldown");
+    expect(
+      reentryBlock([{ exit_reason: "profit" }, { exit_reason: "stop" }], 0),
+    ).toBe("stop-cooldown");
+  });
+
+  it("caps round trips at three per candle", () => {
+    const three = [
+      { exit_reason: "profit" },
+      { exit_reason: "time" },
+      { exit_reason: "profit" },
+    ];
+    expect(reentryBlock(three, 0)).toBe("max-trips");
   });
 });
