@@ -54,7 +54,6 @@ export type Database = {
         Row: {
           auto_trade_enabled: boolean
           auto_trade_last_msg: string | null
-          auto_trade_paper: boolean
           auto_trade_size: number
           bet_size: number
           bootstrap_enabled: boolean
@@ -90,7 +89,6 @@ export type Database = {
         Insert: {
           auto_trade_enabled?: boolean
           auto_trade_last_msg?: string | null
-          auto_trade_paper?: boolean
           auto_trade_size?: number
           bet_size?: number
           bootstrap_enabled?: boolean
@@ -126,7 +124,6 @@ export type Database = {
         Update: {
           auto_trade_enabled?: boolean
           auto_trade_last_msg?: string | null
-          auto_trade_paper?: boolean
           auto_trade_size?: number
           bet_size?: number
           bootstrap_enabled?: boolean
