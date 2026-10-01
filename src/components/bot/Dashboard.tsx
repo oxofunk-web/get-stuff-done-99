@@ -134,12 +134,13 @@ export function Dashboard() {
 
         <footer className="pb-8 pt-3">
           <p className="rounded-md border border-wire bg-surface p-3 text-[9px] leading-relaxed text-muted-foreground">
-            <strong className="text-foreground">READ-ONLY:</strong> live prices come from Coinbase
+            <strong className="text-foreground">RISK:</strong> live prices come from Coinbase
             with a Binance fallback and a server relay when your network blocks both. For each
             15-minute candle the reader compares the current price with the candle's open and how
             far the coin can still travel in the time left, then states whether the candle is
-            finishing up or down and the chance of it. No orders are placed and no money is at
-            risk. Not financial advice.
+            finishing up or down and the chance of it. When auto-trade is enabled and Kalshi
+            API keys are configured, this bot places real orders with real money on Kalshi.
+            Trading involves risk of loss. Not financial advice.
           </p>
         </footer>
       </main>

@@ -10,7 +10,7 @@ async function state() {
   const sb = await db();
   const { data: s } = await sb
     .from("bot_settings")
-    .select("auto_trade_enabled,auto_trade_size,auto_trade_last_msg")
+    .select("auto_trade_enabled,auto_trade_paper,auto_trade_size,auto_trade_last_msg")
     .eq("id", true)
     .maybeSingle();
   const since = Math.floor(Date.now() / 900_000) * 900_000 - 900_000 * 4;
@@ -23,6 +23,8 @@ async function state() {
     .limit(20);
   return {
     enabled: !!s?.auto_trade_enabled,
+    /** True = simulated fills, no real orders. Defaults to true (safe). */
+    paper: s?.auto_trade_paper ?? true,
     size: Number(s?.auto_trade_size ?? 10),
     lastMsg: s?.auto_trade_last_msg ?? null,
     trades: trades ?? [],
@@ -36,14 +38,16 @@ export const setAutoTrade = createServerFn({ method: "POST" })
     z
       .object({
         enabled: z.boolean().optional(),
+        paper: z.boolean().optional(),
         size: z.union([z.literal(10), z.literal(45), z.literal(100)]).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const sb = await db();
-    const patch: { auto_trade_enabled?: boolean; auto_trade_size?: number } = {};
+    const patch: { auto_trade_enabled?: boolean; auto_trade_paper?: boolean; auto_trade_size?: number } = {};
     if (data.enabled !== undefined) patch.auto_trade_enabled = data.enabled;
+    if (data.paper !== undefined) patch.auto_trade_paper = data.paper;
     if (data.size !== undefined) patch.auto_trade_size = data.size;
     await sb.from("bot_settings").update(patch).eq("id", true);
     return state();

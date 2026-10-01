@@ -17,8 +17,9 @@ export function AutoTradePanel() {
     return () => clearInterval(id);
   }, []);
 
-  const save = async (data: { enabled?: boolean; size?: 10 | 45 | 100 }) => {
+  const save = async (data: { enabled?: boolean; paper?: boolean; size?: 10 | 45 | 100 }) => {
     if (data.enabled && !window.confirm(`Turn on AUTO-TRADE with real money at $${s?.size ?? 10} per locked call?`)) return;
+    if (data.paper === false && !window.confirm("Turn OFF paper mode? The bot will place REAL orders with REAL money on Kalshi.")) return;
     setBusy(true);
     try {
       setS(await setAutoTrade({ data }));
@@ -32,16 +33,29 @@ export function AutoTradePanel() {
     <section className="panel mt-3">
       <div className="panel-head">
         <span>Auto-trade on locked calls</span>
-        <button
-          type="button"
-          disabled={busy || !s}
-          onClick={() => void save({ enabled: !s?.enabled })}
-          className={`rounded border px-2 py-px text-[9px] font-bold tracking-widest ${
-            s?.enabled ? "border-yes/50 bg-yes/15 text-yes" : "border-wire text-dim"
-          }`}
-        >
-          AUTO-TRADE {s?.enabled ? "ON" : "OFF"}
-        </button>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            disabled={busy || !s}
+            title={s?.paper ? "Paper mode: simulated fills, no real money" : "LIVE: real orders, real money"}
+            onClick={() => void save({ paper: !s?.paper })}
+            className={`rounded border px-2 py-px text-[9px] font-bold tracking-widest ${
+              s?.paper ? "border-sky-400/50 bg-sky-400/15 text-sky-300" : "border-red-400/50 bg-red-400/15 text-red-300"
+            }`}
+          >
+            {s?.paper ? "PAPER" : "LIVE"}
+          </button>
+          <button
+            type="button"
+            disabled={busy || !s}
+            onClick={() => void save({ enabled: !s?.enabled })}
+            className={`rounded border px-2 py-px text-[9px] font-bold tracking-widest ${
+              s?.enabled ? "border-yes/50 bg-yes/15 text-yes" : "border-wire text-dim"
+            }`}
+          >
+            AUTO-TRADE {s?.enabled ? "ON" : "OFF"}
+          </button>
+        </div>
       </div>
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] tracking-widest text-muted-foreground">
         SIZE
@@ -71,7 +85,8 @@ export function AutoTradePanel() {
       </div>
       <div className="border-t border-wire px-3 py-2 text-[8px] leading-relaxed text-dim">
         One trade per coin per candle, only when its call locks. Runs on the server every minute,
-        even with this app closed. {s?.lastMsg ? `Last check: ${s.lastMsg}` : ""}
+        even with this app closed. {s?.paper ? "Paper mode: fills are simulated, no money moves. " : ""}
+        {s?.lastMsg ? `Last check: ${s.lastMsg}` : ""}
       </div>
     </section>
   );

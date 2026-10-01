@@ -1,13 +1,18 @@
 import { directionCall } from "./direction";
 import { CALL_WINDOW_SECS, FINAL_SECS, emptyLock, stepLock, type LockState } from "./lock";
-import type { PairId } from "./constants";
+import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 
 const CANDLE_MS = 900_000;
 const PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
-const MAX_ENTRY_CENTS = 99;
+/**
+ * Hard ceiling on what a locked-call trade will pay per contract. This used
+ * to be 99¢ — risking 99¢ to make 1¢ on a 15-minute binary. 75¢ keeps the
+ * worst case at 3:1 risk/reward.
+ */
+const MAX_ENTRY_CENTS = 75;
 const CHASE_CENTS = 3;
 const SAMPLE_MS = 2000;
 const SAMPLES = 24; // ~48s per run
@@ -63,7 +68,7 @@ async function recentTicks(pair: string): Promise<{ ts: number; price: number }[
   }
 }
 
-async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size: number, lockSpot: number) {
+async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size: number, lockSpot: number, paper: boolean) {
   const sb = await db();
   const { data: existing } = await sb
     .from("trade_log")
@@ -79,12 +84,13 @@ async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size
 
   const keyId = process.env["KALSHI_API_KEY_ID"];
   const pem = process.env["KALSHI_PRIVATE_KEY"];
-  if (!keyId || !pem) {
-    await log({ status: "skipped", msg: "Kalshi key missing" });
-    return `${pair}: Kalshi key missing`;
+  // Paper mode needs no keys; live mode stops here without them.
+  if (!paper) {
+    if (!keyId || !pem) {
+      await log({ status: "skipped", msg: "Kalshi key missing — add API keys or turn paper mode back on" });
+      return `${pair}: Kalshi key missing`;
+    }
   }
-
-  // No daily loss cap on locked-call trades: every locked call is allowed to trade.
 
 
 
@@ -113,6 +119,30 @@ async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size
     return `${pair}: too expensive`;
   }
   const count = Math.max(1, Math.floor(size / (askCents / 100)));
+  // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
+  // No keys needed. The settle pass still grades these rows, so paper P&L is
+  // realistic — but they never count toward the live daily loss cap.
+  if (paper) {
+    const entry = askCents / 100;
+    await log({
+      ...base,
+      mode: "paper",
+      status: "placed",
+      msg: `PAPER fill ${count} @ ${askCents}¢ — no real order sent`,
+      order_id: `paper-${candleStart}-${pair}`,
+      contracts: count,
+      requested_contracts: count,
+      entry_price: entry,
+      stake: count * entry,
+    });
+    return `${pair}: PAPER FILLED ${count} @ ${askCents}¢`;
+  }
+  // Live path only: keys are guaranteed present by the guard at the top of
+  // trade(). This second check is for the type-checker, not for logic.
+  if (!keyId || !pem) {
+    await log({ ...base, status: "skipped", msg: "Kalshi key missing" });
+    return `${pair}: Kalshi key missing`;
+  }
   // Chase: limit up to CHASE_CENTS above the ask (capped at MAX_ENTRY_CENTS).
   const send = (q: typeof m, ask: number) =>
     placeLiveOrder(
@@ -161,17 +191,53 @@ export async function runAutoTrade() {
   const sb = await db();
   const { data: s } = await sb
     .from("bot_settings")
-    .select("auto_trade_enabled,auto_trade_size")
+    .select("auto_trade_enabled,auto_trade_size,daily_loss_cap,auto_trade_paper")
     .eq("id", true)
     .maybeSingle();
   if (!s?.auto_trade_enabled) return { ok: true, msg: "auto-trade off" };
   const size = Number(s.auto_trade_size ?? 10);
+  /** Paper mode defaults to true: no real order until the dashboard toggle is flipped. */
+  const paper = s?.auto_trade_paper ?? true;
 
   const now0 = Date.now();
   const candleStart = Math.floor(now0 / CANDLE_MS) * CANDLE_MS;
   const elapsed = (now0 - candleStart) / 1000;
   // Start sampling ~50s before the call window so the 20s hold can complete at 10:00.
   if (elapsed < CALL_WINDOW_SECS - 60 || elapsed >= FINAL_SECS) return { ok: true, msg: "outside call window" };
+
+  // Daily loss cap: once today's settled live P&L plus open risk reaches the
+  // cap, stop trading for the rest of the day. Same rule the server engine
+  // enforces — the lock path used to bypass it entirely.
+  const cap = Number(s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT);
+  {
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { data: dayRows } = await sb
+      .from("trade_log")
+      .select("pnl, stake, status, outcome")
+      .eq("source", "lock")
+      .eq("mode", "live")
+      .gte("ts", dayStart.toISOString());
+    const riskRows = (dayRows ?? []) as {
+      pnl: number | null;
+      stake: number | null;
+      status: string;
+      outcome: string | null;
+    }[];
+    const dayPnl = riskRows.reduce((a, r) => a + (r.outcome === "void" ? 0 : r.pnl ?? 0), 0);
+    const openRisk = riskRows.reduce(
+      (a, r) => a + (r.status === "placed" && r.outcome == null ? Math.max(0, r.stake ?? 0) : 0),
+      0,
+    );
+    if (dayPnl - openRisk <= -cap) {
+      const msg = `day stopped — $${openRisk.toFixed(2)} open risk + $${dayPnl.toFixed(2)} settled P&L reaches the $${cap.toFixed(0)} daily cap`;
+      await sb
+        .from("bot_settings")
+        .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}` } as never)
+        .eq("id", true);
+      return { ok: true, msg };
+    }
+  }
 
   const opens: Record<string, number | null> = {};
   const spots: Record<string, SpotState> = {};
@@ -217,7 +283,7 @@ export async function runAutoTrade() {
             },
             { onConflict: "pair,candle_start", ignoreDuplicates: true },
           );
-          results.push(await trade(p, next.dir, candleStart, size, price));
+          results.push(await trade(p, next.dir, candleStart, size, price, paper));
         }
       }),
     );
