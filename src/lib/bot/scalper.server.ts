@@ -44,9 +44,17 @@ async function snapshot(pair: ScalpPair, candleStart: number) {
     coinbase<number[][]>(`/products/${PRODUCT[pair]}/candles?granularity=60&start=${iso(candleStart - 20 * 60_000)}&end=${iso(Date.now())}`),
     coinbase<{ time: string; price: string; size: string; side: string }[]>(`/products/${PRODUCT[pair]}/trades?limit=200`),
   ]);
-  const open = c15?.find((x) => (x[0] ?? 0) * 1000 === candleStart)?.[3] ?? null;
   const fresh = (trades ?? []).filter((t) => new Date(t.time).getTime() >= candleStart);
-  const last = Number(trades?.[0]?.price ?? 0) || null;
+  // Coinbase indexes a new 15m candle 30-60s late: fall back to the first 1m candle,
+  // then the oldest trade inside this candle.
+  const firstMin = (c1 ?? []).find((x) => (x[0] ?? 0) * 1000 === candleStart);
+  const oldestFresh = fresh.length ? Number(fresh[fresh.length - 1]!.price) : null;
+  const open = c15?.find((x) => (x[0] ?? 0) * 1000 === candleStart)?.[3] ?? firstMin?.[3] ?? oldestFresh ?? null;
+  let last = Number(trades?.[0]?.price ?? 0) || null;
+  if (!last) {
+    const t = await coinbase<{ price?: string }>(`/products/${PRODUCT[pair]}/ticker`);
+    last = Number(t?.price ?? 0) || null;
+  }
   // Coinbase "side" is the maker side: "sell" maker = aggressive buyer.
   let buyVol = 0;
   let sellVol = 0;
@@ -148,6 +156,8 @@ async function enter(pair: ScalpPair, candleStart: number, size: number, creds: 
 
   const snap = await snapshot(pair, candleStart);
   if (!snap.open || !snap.last) {
+    // Retry next loop while still inside the entry window; only log once it's over.
+    if ((Date.now() - candleStart) / 1000 < ENTRY_UNTIL - 5) return null;
     await log({ dir: "SKIP", status: "skipped", msg: "No price data yet" });
     return `${pair}: no data`;
   }
@@ -286,9 +296,15 @@ export async function runScalper() {
       for (const p of PAIRS) {
         if (tried.has(p)) continue;
         const { data: ex } = await sb.from("trade_log").select("id").eq("pair", p).eq("candle_id", candleStart).eq("source", "scalp").limit(1);
-        tried.add(p);
-        if (ex?.length) continue;
-        results.push(await enter(p, candleStart, size, creds));
+        if (ex?.length) {
+          tried.add(p);
+          continue;
+        }
+        const r = await enter(p, candleStart, size, creds);
+        if (r !== null) {
+          tried.add(p);
+          results.push(r);
+        }
       }
     }
     // Exits
