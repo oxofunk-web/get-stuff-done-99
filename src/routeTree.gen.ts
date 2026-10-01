@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicAutotradeRouteImport } from './routes/api/public/autotrade'
+import { Route as ApiPublicScalpRouteImport } from './routes/api/public/scalp'
 import { Route as ApiPublicSettleRouteImport } from './routes/api/public/settle'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const ApiPublicAutotradeRoute = ApiPublicAutotradeRouteImport.update({
   path: '/api/public/autotrade',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicScalpRoute = ApiPublicScalpRouteImport.update({
+  id: '/api/public/scalp',
+  path: '/api/public/scalp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicSettleRoute = ApiPublicSettleRouteImport.update({
   id: '/api/public/settle',
   path: '/api/public/settle',
@@ -32,30 +38,40 @@ const ApiPublicSettleRoute = ApiPublicSettleRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/autotrade': typeof ApiPublicAutotradeRoute
+  '/api/public/scalp': typeof ApiPublicScalpRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/autotrade': typeof ApiPublicAutotradeRoute
+  '/api/public/scalp': typeof ApiPublicScalpRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/public/autotrade': typeof ApiPublicAutotradeRoute
+  '/api/public/scalp': typeof ApiPublicScalpRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/autotrade' | '/api/public/settle'
+  fullPaths:
+    '/' | '/api/public/autotrade' | '/api/public/scalp' | '/api/public/settle'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/autotrade' | '/api/public/settle'
-  id: '__root__' | '/' | '/api/public/autotrade' | '/api/public/settle'
+  to: '/' | '/api/public/autotrade' | '/api/public/scalp' | '/api/public/settle'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/autotrade'
+    | '/api/public/scalp'
+    | '/api/public/settle'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicAutotradeRoute: typeof ApiPublicAutotradeRoute
+  ApiPublicScalpRoute: typeof ApiPublicScalpRoute
   ApiPublicSettleRoute: typeof ApiPublicSettleRoute
 }
 
@@ -75,6 +91,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicAutotradeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/scalp': {
+      id: '/api/public/scalp'
+      path: '/api/public/scalp'
+      fullPath: '/api/public/scalp'
+      preLoaderRoute: typeof ApiPublicScalpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/settle': {
       id: '/api/public/settle'
       path: '/api/public/settle'
@@ -88,6 +111,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicAutotradeRoute: ApiPublicAutotradeRoute,
+  ApiPublicScalpRoute: ApiPublicScalpRoute,
   ApiPublicSettleRoute: ApiPublicSettleRoute,
 }
 export const routeTree = rootRouteImport
