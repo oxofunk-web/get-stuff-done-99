@@ -13,15 +13,13 @@ export interface BotSettings {
   auto_trade_paper?: boolean;
   auto_trade_size?: number;
   daily_loss_cap?: number;
-  scalp_enabled?: boolean;
-  scalp_last_msg?: string | null;
   auto_trade_last_msg?: string | null;
 }
 
 const ALL_COLS =
-  "auto_trade_enabled,auto_trade_paper,auto_trade_size,daily_loss_cap,scalp_enabled,scalp_last_msg,auto_trade_last_msg";
+  "auto_trade_enabled,auto_trade_paper,auto_trade_size,daily_loss_cap,auto_trade_last_msg";
 const FALLBACK_COLS =
-  "auto_trade_enabled,auto_trade_size,daily_loss_cap,scalp_enabled,scalp_last_msg,auto_trade_last_msg";
+  "auto_trade_enabled,auto_trade_size,daily_loss_cap,auto_trade_last_msg";
 
 function missingPaperColumn(error: unknown): boolean {
   const msg = (error as { message?: string } | null)?.message ?? "";

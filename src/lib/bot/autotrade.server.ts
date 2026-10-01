@@ -194,7 +194,17 @@ export async function runAutoTrade() {
   const sb = await db();
   // Migration-tolerant: paper defaults to true if the column isn't there yet.
   const s = await getBotSettings(sb);
-  if (!s?.auto_trade_enabled) return { ok: true, msg: "auto-trade off" };
+  const stamp = () => new Date().toISOString().slice(11, 19) + "Z";
+  const note = async (msg: string) => {
+    await sb
+      .from("bot_settings")
+      .update({ auto_trade_last_msg: `${stamp()} ${msg}` } as never)
+      .eq("id", true);
+  };
+  if (!s?.auto_trade_enabled) {
+    await note("auto-trade is OFF — flip AUTO-TRADE on in the dashboard");
+    return { ok: true, msg: "auto-trade off" };
+  }
   const size = Number(s.auto_trade_size ?? 10);
   /** Paper mode defaults to true: no real order until the dashboard toggle is flipped. */
   const paper = s?.auto_trade_paper ?? true;
@@ -203,14 +213,16 @@ export async function runAutoTrade() {
   const candleStart = Math.floor(now0 / CANDLE_MS) * CANDLE_MS;
   const elapsed = (now0 - candleStart) / 1000;
   // Start sampling ~50s before the call window so the 20s hold can complete at 10:00.
-  if (elapsed < CALL_WINDOW_SECS - 60 || elapsed >= FINAL_SECS) return { ok: true, msg: "outside call window" };
+  if (elapsed < CALL_WINDOW_SECS - 60 || elapsed >= FINAL_SECS) {
+    await note("waiting for the trade window — entries only in minutes 9–14 of each 15-min candle");
+    return { ok: true, msg: "outside call window" };
+  }
 
   // Daily loss cap: once today's settled live P&L plus open risk reaches the
-  // cap, stop trading for the rest of the day. Shared with the scalper — one
-  // cap covers every live strategy.
+  // cap, stop trading for the rest of the day.
   const cap = Number(s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT);
   {
-    const { dayPnl, openRisk, breached } = await dayRisk(sb, cap, ["lock", "scalp"]);
+    const { dayPnl, openRisk, breached } = await dayRisk(sb, cap, ["lock"]);
     if (breached) {
       const msg = `day stopped — $${openRisk.toFixed(2)} open risk + $${dayPnl.toFixed(2)} settled P&L reaches the $${cap.toFixed(0)} daily cap`;
       await sb

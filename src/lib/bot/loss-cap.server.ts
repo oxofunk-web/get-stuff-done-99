@@ -1,8 +1,8 @@
 /**
- * Shared daily loss-cap accounting for live trades.
- * Both the locked-call engine and the scalper stop for the day once today's
- * settled live P&L plus unsettled open risk reaches the cap. Paper trades
- * never count — only mode="live" rows are included.
+ * Daily loss-cap accounting for live trades.
+ * The locked-call engine stops for the day once today's settled live P&L
+ * plus unsettled open risk reaches the cap. Paper trades never count —
+ * only mode="live" rows are included.
  */
 export interface DayRisk {
   dayPnl: number;

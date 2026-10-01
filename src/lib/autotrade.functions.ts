@@ -37,7 +37,7 @@ export const setAutoTrade = createServerFn({ method: "POST" })
       .object({
         enabled: z.boolean().optional(),
         paper: z.boolean().optional(),
-        size: z.union([z.literal(10), z.literal(45), z.literal(100)]).optional(),
+        size: z.number().int().min(1).max(10000).optional(),
       })
       .parse(d),
   )

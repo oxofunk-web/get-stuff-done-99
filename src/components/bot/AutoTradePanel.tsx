@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import { getAutoTrade, setAutoTrade } from "@/lib/autotrade.functions";
 
 type State = Awaited<ReturnType<typeof getAutoTrade>>;
-const SIZES = [10, 45, 100] as const;
 
 /** Auto-trade on locked calls. Runs on the server, even with the app closed. */
 export function AutoTradePanel() {
   const [s, setS] = useState<State | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sizeDraft, setSizeDraft] = useState<string | null>(null);
 
   useEffect(() => {
     const load = () => getAutoTrade().then(setS).catch(() => {});
@@ -17,7 +17,7 @@ export function AutoTradePanel() {
     return () => clearInterval(id);
   }, []);
 
-  const save = async (data: { enabled?: boolean; paper?: boolean; size?: 10 | 45 | 100 }) => {
+  const save = async (data: { enabled?: boolean; paper?: boolean; size?: number }) => {
     if (data.enabled && !window.confirm(`Turn on AUTO-TRADE with real money at $${s?.size ?? 10} per locked call?`)) return;
     if (data.paper === false && !window.confirm("Turn OFF paper mode? The bot will place REAL orders with REAL money on Kalshi.")) return;
     setBusy(true);
@@ -58,20 +58,25 @@ export function AutoTradePanel() {
         </div>
       </div>
       <div className="flex items-center gap-2 px-3 py-2 text-[9px] tracking-widest text-muted-foreground">
-        SIZE
-        {SIZES.map((v) => (
-          <button
-            key={v}
-            type="button"
-            disabled={busy}
-            onClick={() => void save({ size: v })}
-            className={`rounded border px-2 py-0.5 font-bold ${
-              s?.size === v ? "border-gold/60 bg-gold/15 text-gold" : "border-wire text-foreground"
-            }`}
-          >
-            ${v}
-          </button>
-        ))}
+        SIZE $
+        <input
+          type="number"
+          min={1}
+          max={10000}
+          disabled={busy}
+          value={sizeDraft ?? String(s?.size ?? 10)}
+          onChange={(e) => setSizeDraft(e.target.value)}
+          onBlur={() => {
+            const v = Math.floor(Number(sizeDraft));
+            setSizeDraft(null);
+            if (Number.isFinite(v) && v >= 1 && v <= 10000 && v !== s?.size) void save({ size: v });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          className="w-20 rounded border border-wire bg-transparent px-2 py-0.5 font-bold text-foreground"
+        />
+        <span className="normal-case tracking-normal">per locked call</span>
       </div>
       <div className="divide-y divide-wire border-t border-wire">
         {(s?.trades ?? []).filter((t) => t.candle_id === cur).map((t) => (

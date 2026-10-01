@@ -4,7 +4,6 @@ import { CandleChart } from "./CandleChart";
 import { CallPanel } from "./CallPanel";
 import { LockPanel } from "./LockPanel";
 import { AutoTradePanel } from "./AutoTradePanel";
-import { ScalpPanel } from "./ScalpPanel";
 import { useDirection } from "@/hooks/useDirection";
 import { fmtPrice, mmss } from "@/lib/bot/candle";
 import { PAIRS, type PairId } from "@/lib/bot/constants";
@@ -128,7 +127,6 @@ export function Dashboard() {
             <CallPanel calls={d.calls} selected={pair} onSelect={(p) => setPair(p as PairId)} />
             <LockPanel calls={d.calls} />
             <AutoTradePanel />
-            <ScalpPanel />
           </div>
         </div>
 

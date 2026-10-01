@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { authenticateScheduledRequest } from "@/lib/bot/cron-auth.server";
 
-/** Scheduled every minute: locked-call trades + the candle-start scalper. */
+/** Scheduled every minute: locked-call auto-trades. */
 export const Route = createFileRoute("/api/public/autotrade")({
   server: {
     handlers: {
@@ -10,9 +10,7 @@ export const Route = createFileRoute("/api/public/autotrade")({
         const denied = await authenticateScheduledRequest(request);
         if (denied) return denied;
         const { runAutoTrade } = await import("@/lib/bot/autotrade.server");
-        const { runScalper } = await import("@/lib/bot/scalper.server");
-        const [auto, scalp] = await Promise.all([runAutoTrade(), runScalper()]);
-        return Response.json({ auto, scalp });
+        return Response.json({ auto: await runAutoTrade() });
       },
     },
   },

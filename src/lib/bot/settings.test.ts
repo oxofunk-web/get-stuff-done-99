@@ -21,8 +21,8 @@ function stubDb(opts: { failPaperSelect?: boolean; failPaperUpdate?: boolean } =
               }
               // The fallback select has no paper column — like the real DB.
               const data = cols.includes("auto_trade_paper")
-                ? { scalp_enabled: true, auto_trade_paper: false, auto_trade_size: 45 }
-                : { scalp_enabled: true, auto_trade_size: 45 };
+                ? { auto_trade_enabled: true, auto_trade_paper: false, auto_trade_size: 45 }
+                : { auto_trade_enabled: true, auto_trade_size: 45 };
               return { data, error: null };
             },
           }),
@@ -49,29 +49,29 @@ describe("bot_settings migration tolerance", () => {
     const { sb } = stubDb();
     const s = await getBotSettings(sb);
     expect(s.auto_trade_paper).toBe(false);
-    expect(s.scalp_enabled).toBe(true);
+    expect(s.auto_trade_enabled).toBe(true);
   });
 
   it("falls back to paper=true when the migration hasn't applied", async () => {
     const { sb, calls } = stubDb({ failPaperSelect: true });
     const s = await getBotSettings(sb);
     expect(s.auto_trade_paper).toBeUndefined();
-    expect(s.scalp_enabled).toBe(true);
+    expect(s.auto_trade_enabled).toBe(true);
     expect(calls.filter((c) => c.startsWith("select:")).length).toBe(2);
   });
 
   it("writes normally when the column exists", async () => {
     const { sb, calls } = stubDb();
-    const persisted = await updateBotSettings(sb, { scalp_enabled: true, auto_trade_paper: false });
+    const persisted = await updateBotSettings(sb, { auto_trade_enabled: true, auto_trade_paper: false });
     expect(persisted).toBe(true);
-    expect(calls).toEqual(["update:scalp_enabled,auto_trade_paper"]);
+    expect(calls).toEqual(["update:auto_trade_enabled,auto_trade_paper"]);
   });
 
   it("retries without the paper key when the column is missing", async () => {
     const { sb, calls } = stubDb({ failPaperUpdate: true });
-    const persisted = await updateBotSettings(sb, { scalp_enabled: true, auto_trade_paper: false });
+    const persisted = await updateBotSettings(sb, { auto_trade_enabled: true, auto_trade_paper: false });
     expect(persisted).toBe(false);
-    expect(calls).toEqual(["update:scalp_enabled,auto_trade_paper", "update:scalp_enabled"]);
+    expect(calls).toEqual(["update:auto_trade_enabled,auto_trade_paper", "update:auto_trade_enabled"]);
   });
 
   it("updateBotSettings is a no-op-safe mock check", () => {
