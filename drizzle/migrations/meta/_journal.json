@@ -15,6 +15,13 @@
       "when": 1790448548302,
       "tag": "0001_auto_trade_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790860473416,
+      "tag": "0002_scalp_toggle",
+      "breakpoints": true
     }
   ]
 }

@@ -79,6 +79,8 @@ export type Database = {
           mode: string
           run_lease_id: string | null
           run_lease_until: string | null
+          scalp_enabled: boolean
+          scalp_last_msg: string | null
           stop_loss_cents: number
           take_profit_cents: number
           threshold: number
@@ -112,6 +114,8 @@ export type Database = {
           mode?: string
           run_lease_id?: string | null
           run_lease_until?: string | null
+          scalp_enabled?: boolean
+          scalp_last_msg?: string | null
           stop_loss_cents?: number
           take_profit_cents?: number
           threshold?: number
@@ -145,6 +149,8 @@ export type Database = {
           mode?: string
           run_lease_id?: string | null
           run_lease_until?: string | null
+          scalp_enabled?: boolean
+          scalp_last_msg?: string | null
           stop_loss_cents?: number
           take_profit_cents?: number
           threshold?: number
