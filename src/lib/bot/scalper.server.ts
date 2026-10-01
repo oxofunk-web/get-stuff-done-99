@@ -18,6 +18,7 @@
  */
 import { authedKalshi, fetchMarket, fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 import { dayRisk } from "./loss-cap.server";
+import { getBotSettings } from "./settings.server";
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import { mapOrderToBook } from "./order-map";
 
@@ -281,17 +282,8 @@ async function manage(row: OpenRow, creds: Creds | null, candleStart: number) {
 
 export async function runScalper() {
   const sb = await db();
-  const { data: s } = await sb
-    .from("bot_settings")
-    .select("scalp_enabled,auto_trade_paper,auto_trade_size,daily_loss_cap")
-    .eq("id", true)
-    .maybeSingle();
-  const settings = (s ?? {}) as {
-    scalp_enabled?: boolean;
-    auto_trade_paper?: boolean;
-    auto_trade_size?: number;
-    daily_loss_cap?: number;
-  };
+  // Migration-tolerant: paper defaults to true if the column isn't there yet.
+  const settings = await getBotSettings(sb);
   if (!settings.scalp_enabled) return { ok: true, msg: "scalper off" };
   /** Paper mode defaults to true: no real order until the dashboard toggle is flipped. */
   const paper = settings.auto_trade_paper ?? true;

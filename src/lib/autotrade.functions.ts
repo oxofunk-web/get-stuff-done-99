@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { getBotSettings, updateBotSettings } from "./bot/settings.server";
+
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
@@ -8,11 +10,7 @@ async function db() {
 
 async function state() {
   const sb = await db();
-  const { data: s } = await sb
-    .from("bot_settings")
-    .select("auto_trade_enabled,auto_trade_paper,auto_trade_size,auto_trade_last_msg")
-    .eq("id", true)
-    .maybeSingle();
+  const s = await getBotSettings(sb);
   const since = Math.floor(Date.now() / 900_000) * 900_000 - 900_000 * 4;
   const { data: trades } = await sb
     .from("trade_log")
@@ -49,6 +47,6 @@ export const setAutoTrade = createServerFn({ method: "POST" })
     if (data.enabled !== undefined) patch.auto_trade_enabled = data.enabled;
     if (data.paper !== undefined) patch.auto_trade_paper = data.paper;
     if (data.size !== undefined) patch.auto_trade_size = data.size;
-    await sb.from("bot_settings").update(patch).eq("id", true);
+    await updateBotSettings(sb, patch);
     return state();
   });

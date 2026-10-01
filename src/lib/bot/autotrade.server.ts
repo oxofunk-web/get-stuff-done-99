@@ -3,6 +3,7 @@ import { CALL_WINDOW_SECS, FINAL_SECS, emptyLock, stepLock, type LockState } fro
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { dayRisk } from "./loss-cap.server";
+import { getBotSettings } from "./settings.server";
 import { fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../kalshi.server";
 
 const CANDLE_MS = 900_000;
@@ -191,11 +192,8 @@ export async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: numbe
 /** One scheduled pass: watch prices ~48s, lock with the same rules, trade on lock. */
 export async function runAutoTrade() {
   const sb = await db();
-  const { data: s } = await sb
-    .from("bot_settings")
-    .select("auto_trade_enabled,auto_trade_size,daily_loss_cap,auto_trade_paper")
-    .eq("id", true)
-    .maybeSingle();
+  // Migration-tolerant: paper defaults to true if the column isn't there yet.
+  const s = await getBotSettings(sb);
   if (!s?.auto_trade_enabled) return { ok: true, msg: "auto-trade off" };
   const size = Number(s.auto_trade_size ?? 10);
   /** Paper mode defaults to true: no real order until the dashboard toggle is flipped. */

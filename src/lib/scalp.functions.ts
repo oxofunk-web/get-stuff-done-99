@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { getBotSettings } from "./bot/settings.server";
+
 async function db() {
   const { supabaseAdmin: sb } = await import("@/integrations/supabase/client.server");
   return sb;
@@ -8,11 +10,7 @@ async function db() {
 
 async function state() {
   const sb = await db();
-  const { data: s } = await sb
-    .from("bot_settings")
-    .select("scalp_enabled,scalp_last_msg,auto_trade_size,auto_trade_paper")
-    .eq("id", true)
-    .maybeSingle();
+  const s = await getBotSettings(sb);
   const since = Math.floor(Date.now() / 900_000) * 900_000 - 900_000 * 8;
   const { data: trades } = await sb
     .from("trade_log")
@@ -21,12 +19,12 @@ async function state() {
     .gte("candle_id", since)
     .order("ts", { ascending: false })
     .limit(16);
-  const row = s as {
+  const row: {
     scalp_enabled?: boolean;
     scalp_last_msg?: string | null;
     auto_trade_size?: number;
     auto_trade_paper?: boolean;
-  } | null;
+  } | null = s;
   return {
     enabled: !!row?.scalp_enabled,
     /** Shared PAPER/LIVE toggle with the lock engine. Read-only here. */
