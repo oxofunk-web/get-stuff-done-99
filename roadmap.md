@@ -32,4 +32,4 @@
 - [x] One decision per pair per candle in the server runner.
 - [x] Back on the strict profile: $5 stake, one trade per candle, live trading OFF.
 - [ ] Run shadow validation windows before considering live trading again.
-- [ ] Auto-sell locked-call trades when bid >= 93c
+- [x] Auto-sell locked-call trades when bid >= 93c

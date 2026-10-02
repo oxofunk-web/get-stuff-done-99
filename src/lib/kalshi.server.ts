@@ -460,3 +460,35 @@ export async function placeLiveOrder(
     return { ok: false as const, error: friendlyOrderError(error) };
   }
 }
+
+/** Sell-to-close an existing position with an IOC limit (unified YES-scale book). */
+export async function placeLiveSell(
+  creds: { keyId: string; pem: string },
+  input: { ticker: string; side: "yes" | "no"; priceCents: number; count: number },
+) {
+  try {
+    const c = Math.min(99, Math.max(1, Math.round(input.priceCents)));
+    // Selling YES offers on the YES book; selling NO = bidding YES at 100-c.
+    const book = input.side === "yes"
+      ? { side: "ask" as const, price: (c / 100).toFixed(4) }
+      : { side: "bid" as const, price: ((100 - c) / 100).toFixed(4) };
+    const response = await authedKalshi<CreateOrderResponse>(creds, "POST", "/portfolio/events/orders", {
+      ticker: input.ticker,
+      client_order_id: crypto.randomUUID(),
+      side: book.side,
+      count: input.count.toFixed(2),
+      price: book.price,
+      time_in_force: "immediate_or_cancel",
+      self_trade_prevention_type: "taker_at_cross",
+      post_only: false,
+      exchange_index: -1,
+    });
+    const filled = Number(response.fill_count);
+    if (Number.isFinite(filled) && filled > 0) {
+      return { ok: true as const, orderId: response.order_id, filled, priceCents: normalizeFillCents(response.average_fill_price, input.side) ?? c };
+    }
+    return { ok: false as const, error: `No sell fill at ${c}¢` };
+  } catch (error) {
+    return { ok: false as const, error: friendlyOrderError(error) };
+  }
+}
