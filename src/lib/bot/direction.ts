@@ -20,6 +20,20 @@ export interface DirectionCall {
   /** False while there is not yet enough live price history to call it. */
   ready: boolean;
   note: string;
+  /** Normal-model internals, so callers can price arbitrary strikes. Null when not ready. */
+  model: ProbModel | null;
+}
+
+/** The normal model directionCall fits: P(close > K) = Phi((driftedPrice - K) / priceHorizon). */
+export interface ProbModel {
+  driftedPrice: number;
+  priceHorizon: number;
+}
+
+/** Chance the candle closes above an arbitrary strike, under the fitted model. */
+export function probCloseAbove(strike: number, model: ProbModel): number {
+  if (!(model.priceHorizon > 0) || !Number.isFinite(strike)) return 0.5;
+  return normCdf((model.driftedPrice - strike) / model.priceHorizon);
 }
 
 /** Standard normal CDF (Abramowitz–Stegun 7.1.26 via erf approximation). */
@@ -79,6 +93,7 @@ export function directionCall(
     elapsed: c.elapsed,
     ready: false,
     note: "Gathering live prices for this candle…",
+    model: null,
   };
 
   const ticks = spot?.ticks ?? [];
@@ -113,5 +128,12 @@ export function directionCall(
     (against ? " against the call — recent noise, not the read." : ".") +
     ` Room left to move: ${(horizon * 100).toFixed(2)}%.`;
 
-  return { ...base, dir, prob, ready: true, note };
+  return {
+    ...base,
+    dir,
+    prob,
+    ready: true,
+    note,
+    model: { driftedPrice, priceHorizon: price * horizon },
+  };
 }

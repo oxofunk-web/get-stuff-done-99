@@ -76,15 +76,21 @@ export interface MarketFetchResult {
   error: string | null;
 }
 
+export interface CandleMarketsResult {
+  markets: RawMarket[];
+  /** Short human-readable reason when no markets could be returned. */
+  error: string | null;
+}
+
 /**
- * Same read as {@link fetchOpenMarket} but reports WHY it came back empty, so
- * the dashboard can show a real error instead of a silently missing row.
+ * All open contracts for the currently-trading candle in a 15-minute series.
+ * The API briefly exposes the closing and next contracts together — only the
+ * contracts whose close matches our active UTC quarter-hour are returned.
  */
-export async function fetchOpenMarketWithReason(
+export async function fetchCandleMarketsWithReason(
   series: string,
-  spot?: number | null,
   now = Date.now(),
-): Promise<MarketFetchResult> {
+): Promise<CandleMarketsResult> {
   const path = `/markets?series_ticker=${series}&status=open&limit=200`;
   let lastError: string | null = null;
   for (const base of [KALSHI_BASE, FALLBACK_BASE]) {
@@ -109,24 +115,41 @@ export async function fetchOpenMarketWithReason(
       const candle = upcoming
         .filter((x) => marketMatchesActiveCandle(x.m.close_time, now))
         .map((x) => x.m);
-      if (!candle.length) return { market: null, error: "no contract for this 15-minute period" };
-      // Pick deterministically by strike proximity. Re-ranking by live midpoint
-      // made the selected contract jump as prices moved.
-      const score = (m: RawMarket) => {
-        const strike = m.floor_strike ?? m.cap_strike ?? null;
-        if (spot && strike != null) return Math.abs(strike - spot) / spot;
-        return Math.abs(normalizeMarket(m).yesMid - 0.5);
-      };
-      const best = candle.reduce((acc, m) => {
-        const delta = score(m) - score(acc);
-        return delta < 0 || (delta === 0 && m.ticker < acc.ticker) ? m : acc;
-      }, candle[0]!);
-      return { market: best, error: null };
+      if (!candle.length) return { markets: [], error: "no contract for this 15-minute period" };
+      return { markets: candle, error: null };
     } catch (e) {
       lastError = e instanceof Error ? e.message : "network error";
     }
   }
-  return { market: null, error: lastError ?? "Kalshi unreachable" };
+  return { markets: [], error: lastError ?? "Kalshi unreachable" };
+}
+
+/**
+ * Same read as {@link fetchOpenMarket} but reports WHY it came back empty, so
+ * the dashboard can show a real error instead of a silently missing row.
+ *
+ * Returns the single contract closest to spot (or to 50¢) — the old behavior.
+ * For EV-based strike scanning, use {@link fetchCandleMarketsWithReason}.
+ */
+export async function fetchOpenMarketWithReason(
+  series: string,
+  spot?: number | null,
+  now = Date.now(),
+): Promise<MarketFetchResult> {
+  const { markets: candle, error } = await fetchCandleMarketsWithReason(series, now);
+  if (!candle.length) return { market: null, error };
+  // Pick deterministically by strike proximity. Re-ranking by live midpoint
+  // made the selected contract jump as prices moved.
+  const score = (m: RawMarket) => {
+    const strike = m.floor_strike ?? m.cap_strike ?? null;
+    if (spot && strike != null) return Math.abs(strike - spot) / spot;
+    return Math.abs(normalizeMarket(m).yesMid - 0.5);
+  };
+  const best = candle.reduce((acc, m) => {
+    const delta = score(m) - score(acc);
+    return delta < 0 || (delta === 0 && m.ticker < acc.ticker) ? m : acc;
+  }, candle[0]!);
+  return { market: best, error: null };
 }
 
 export async function fetchOpenMarket(

@@ -1,20 +1,28 @@
-import { directionCall } from "./direction";
+import { directionCall, probCloseAbove, type ProbModel } from "./direction";
 import { CALL_WINDOW_SECS, FINAL_SECS, emptyLock, stepLock, type LockState } from "./lock";
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { dayRisk } from "./loss-cap.server";
 import { getBotSettings } from "./settings.server";
-import { fetchOpenMarketWithReason, normalizeMarket, placeLiveOrder } from "../kalshi.server";
+import {
+  fetchCandleMarketsWithReason,
+  normalizeMarket,
+  placeLiveOrder,
+  type RawMarket,
+} from "../kalshi.server";
 
 const CANDLE_MS = 900_000;
 const PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
 /**
- * Hard ceiling on what a locked-call trade will pay per contract. This used
- * to be 99¢ — risking 99¢ to make 1¢ on a 15-minute binary. 75¢ keeps the
- * worst case at 3:1 risk/reward.
+ * Entry band for dynamic strike selection: only buy contracts priced
+ * 55¢–75¢. Below 55¢ the market says we're likely wrong; above 75¢ the
+ * payout doesn't justify the risk.
  */
+const MIN_ENTRY_CENTS = 55;
 const MAX_ENTRY_CENTS = 75;
+/** Minimum expected value (model prob minus ask) before a strike is tradable. */
+const MIN_EDGE_CENTS = 10;
 const CHASE_CENTS = 3;
 const SAMPLE_MS = 2000;
 const SAMPLES = 24; // ~48s per run
@@ -70,8 +78,77 @@ async function recentTicks(pair: string): Promise<{ ts: number; price: number }[
   }
 }
 
+interface StrikePick {
+  market: ReturnType<typeof normalizeMarket>;
+  side: "yes" | "no";
+  askCents: number;
+  /** Expected value in cents: model probability minus ask. */
+  evCents: number;
+}
+
+/**
+ * Dynamic strike selection: scan every contract for the active candle and
+ * take the strike with the best expected value inside the 55–75¢ band.
+ *
+ * The pick always expresses the locked direction (the take-profit pass
+ * reconstructs the side from strike_type + dir, so a counter-directional
+ * pick would be sold on the wrong side). The model's P(close > strike)
+ * prices each strike: for a floor contract YES wins above the line, for a
+ * cap contract YES wins below it. A pick needs at least MIN_EDGE_CENTS of
+ * edge — otherwise we skip instead of forcing it.
+ */
+export function selectStrike(
+  markets: RawMarket[],
+  model: ProbModel,
+  dir: "UP" | "DOWN",
+): { pick: StrikePick | null; note: string } {
+  const wantAbove = dir === "UP";
+  let best: StrikePick | null = null;
+  let bestEv = -Infinity;
+  let inBand = 0;
+  for (const raw of markets) {
+    const m = normalizeMarket(raw);
+    if (m.strike == null || !m.strikeType) continue;
+    // Same side mapping the take-profit pass uses: floor+UP → yes, cap+UP → no, etc.
+    const side: "yes" | "no" = (m.strikeType === "floor") === wantAbove ? "yes" : "no";
+    const pUp = probCloseAbove(m.strike, model); // P(close > strike)
+    const pWin =
+      side === "yes"
+        ? m.strikeType === "floor"
+          ? pUp
+          : 1 - pUp
+        : m.strikeType === "floor"
+          ? 1 - pUp
+          : pUp;
+    const ask = side === "yes" ? m.yesAsk : m.noAsk;
+    const askCents = Math.round(ask * 100);
+    if (!(askCents >= MIN_ENTRY_CENTS && askCents <= MAX_ENTRY_CENTS)) continue;
+    inBand++;
+    const evCents = (pWin - ask) * 100;
+    if (evCents > bestEv) {
+      bestEv = evCents;
+      best = { market: m, side, askCents, evCents };
+    }
+  }
+  if (!best || best.evCents < MIN_EDGE_CENTS) {
+    const note = !inBand
+      ? "no strike priced 55–75¢"
+      : `best edge ${bestEv.toFixed(1)}¢ below the ${MIN_EDGE_CENTS}¢ minimum`;
+    return { pick: null, note };
+  }
+  return { pick: best, note: "" };
+}
+
 /** Exported for unit tests: the paper/live fill decision for one locked call. */
-export async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: number, size: number, lockSpot: number, paper: boolean) {
+export async function trade(
+  pair: PairId,
+  dir: "UP" | "DOWN",
+  candleStart: number,
+  size: number,
+  lockSpot: number,
+  paper: boolean,
+  model: ProbModel | null,
+) {
   const sb = await db();
   const { data: existing } = await sb
     .from("trade_log")
@@ -97,30 +174,27 @@ export async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: numbe
 
 
 
-  const { market: raw, error } = await fetchOpenMarketWithReason(`KX${pair}15M`, lockSpot);
-  if (!raw) {
-    await log({ status: "skipped", msg: `No Kalshi contract: ${error}` });
-    return `${pair}: ${error}`;
+  if (!model) {
+    await log({ status: "skipped", msg: "no probability model for strike pricing" });
+    return `${pair}: no model`;
   }
-  const m = normalizeMarket(raw);
-  if (m.strike == null || !m.strikeType) {
-    await log({ status: "skipped", msg: "Contract has no line", ticker: m.ticker });
-    return `${pair}: no line`;
+  // Dynamic strike selection: scan every contract for this candle and take
+  // the best expected value in the 55–75¢ band (replaces the old "nearest
+  // strike or skip" behavior).
+  const getPick = async () => {
+    const { markets, error } = await fetchCandleMarketsWithReason(`KX${pair}15M`);
+    if (!markets.length) return { pick: null as StrikePick | null, note: error ?? "no contracts" };
+    return selectStrike(markets, model, dir);
+  };
+  const first = await getPick();
+  if (!first.pick) {
+    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in 55–75¢ — ${first.note}` });
+    return `${pair}: no edge (${first.note})`;
   }
-  // floor: YES = finishes above the line. cap: YES = finishes below the line.
-  const wantAbove = dir === "UP";
-  const side: "yes" | "no" = (m.strikeType === "floor") === wantAbove ? "yes" : "no";
-  const onSide = wantAbove ? lockSpot > m.strike : lockSpot < m.strike;
-  const base = { ticker: m.ticker, strike: m.strike, strike_type: m.strikeType };
-  if (!onSide) {
-    await log({ ...base, status: "skipped", msg: `Price is on the wrong side of Kalshi's line ${m.strike}` });
-    return `${pair}: wrong side of line`;
-  }
-  const askCents = Math.round((side === "yes" ? m.yesAsk : m.noAsk) * 100);
-  if (!askCents || askCents > MAX_ENTRY_CENTS) {
-    await log({ ...base, status: "skipped", msg: `Contract costs ${askCents}¢ (max ${MAX_ENTRY_CENTS}¢)` });
-    return `${pair}: too expensive`;
-  }
+  let pick = first.pick;
+  const base = { ticker: pick.market.ticker, strike: pick.market.strike, strike_type: pick.market.strikeType };
+  const askCents = pick.askCents;
+  const edgeNote = `edge +${pick.evCents.toFixed(1)}¢`;
   const count = Math.max(1, Math.floor(size / (askCents / 100)));
   // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
   // No keys needed. The settle pass still grades these rows, so paper P&L is
@@ -131,14 +205,14 @@ export async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: numbe
       ...base,
       mode: "paper",
       status: "placed",
-      msg: `PAPER fill ${count} @ ${askCents}¢ — no real order sent`,
+      msg: `PAPER fill ${count} @ ${askCents}¢ ${pick.side.toUpperCase()} (${edgeNote}) — no real order sent`,
       order_id: `paper-${candleStart}-${pair}`,
       contracts: count,
       requested_contracts: count,
       entry_price: entry,
       stake: count * entry,
     });
-    return `${pair}: PAPER FILLED ${count} @ ${askCents}¢`;
+    return `${pair}: PAPER FILLED ${count} @ ${askCents}¢ (+${pick.evCents.toFixed(1)}¢ edge)`;
   }
   // Live path only: keys are guaranteed present by the guard at the top of
   // trade(). This second check is for the type-checker, not for logic.
@@ -147,28 +221,25 @@ export async function trade(pair: PairId, dir: "UP" | "DOWN", candleStart: numbe
     return `${pair}: Kalshi key missing`;
   }
   // Chase: limit up to CHASE_CENTS above the ask (capped at MAX_ENTRY_CENTS).
-  const send = (q: typeof m, ask: number) =>
+  const send = (pk: StrikePick, ask: number) =>
     placeLiveOrder(
       { keyId, pem },
       {
-        ticker: m.ticker,
-        side,
+        ticker: pk.market.ticker,
+        side: pk.side,
         priceCents: Math.min(MAX_ENTRY_CENTS, ask + CHASE_CENTS),
         maxPriceCents: MAX_ENTRY_CENTS,
         count,
-        quote: q,
+        quote: pk.market,
       },
     );
-  let res = await send(m, askCents);
+  let res = await send(pick, askCents);
   if (!res.ok) {
-    // One immediate retry against a fresh book.
-    const again = await fetchOpenMarketWithReason(`KX${pair}15M`, lockSpot);
-    if (again.market) {
-      const m2 = normalizeMarket(again.market);
-      if (m2.ticker === m.ticker) {
-        const ask2 = Math.round((side === "yes" ? m2.yesAsk : m2.noAsk) * 100);
-        if (ask2 && ask2 <= MAX_ENTRY_CENTS) res = await send(m2, ask2);
-      }
+    // One immediate retry: re-scan the fresh book for the best edge.
+    const again = await getPick();
+    if (again.pick) {
+      pick = again.pick;
+      res = await send(pick, pick.askCents);
     }
   }
   if (res.ok) {
@@ -212,9 +283,9 @@ export async function runAutoTrade() {
   const now0 = Date.now();
   const candleStart = Math.floor(now0 / CANDLE_MS) * CANDLE_MS;
   const elapsed = (now0 - candleStart) / 1000;
-  // Start sampling ~50s before the call window so the 20s hold can complete at 10:00.
+  // Start sampling ~50s before the call window so the 20s hold can complete at 5:00.
   if (elapsed < CALL_WINDOW_SECS - 60 || elapsed >= FINAL_SECS) {
-    await note("waiting for the trade window — entries only in minutes 9–14 of each 15-min candle");
+    await note("waiting for the trade window — entries only in minutes 5–14 of each 15-min candle");
     return { ok: true, msg: "outside call window" };
   }
 
@@ -278,7 +349,7 @@ export async function runAutoTrade() {
             },
             { onConflict: "pair,candle_start", ignoreDuplicates: true },
           );
-          results.push(await trade(p, next.dir, candleStart, size, price, paper));
+          results.push(await trade(p, next.dir, candleStart, size, price, paper, call.model));
         }
       }),
     );

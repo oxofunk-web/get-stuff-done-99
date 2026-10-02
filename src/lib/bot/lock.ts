@@ -2,7 +2,7 @@ import type { DirectionCall } from "./direction";
 
 export type Phase = "WATCHING" | "CALL" | "FINAL";
 
-export const CALL_WINDOW_SECS = 600; // last 5 minutes start at 10:00
+export const CALL_WINDOW_SECS = 300; // entries from 5:00 — wider window, more shots
 export const FINAL_SECS = 840; // last minute frozen
 export const LOCK_PROB = 70;
 export const LOCK_HOLD_MS = 20_000;
