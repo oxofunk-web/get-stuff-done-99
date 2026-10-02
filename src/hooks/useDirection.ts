@@ -51,11 +51,17 @@ export function useDirection() {
   const now = Date.now();
   const candleStart = Math.floor(now / CANDLE_MS) * CANDLE_MS;
 
-  /** Candle open from the exchange when we have it, otherwise the first live tick. */
+  /**
+   * Pinned candle open: the exchange's forming candle when listed, otherwise the
+   * previous candle's close (same price in 24/7 markets). Only falls back to the
+   * live tick buffer — which slides forward — when neither is available.
+   */
   const openOf = (pair: PairId) => {
     const rows = candles[pair];
     const forming = rows?.find((k) => k.t === candleStart);
     if (forming?.o) return forming.o;
+    const prev = rows?.find((k) => k.t === candleStart - CANDLE_MS);
+    if (prev?.c) return prev.c;
     return spot[pair]?.ticks[0]?.price;
   };
 
