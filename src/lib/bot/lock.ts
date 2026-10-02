@@ -8,6 +8,8 @@ export const LOCK_PROB = 70;
 export const LOCK_HOLD_MS = 20_000;
 export const FLIP_PROB = 70; // opposite side must be this strong...
 export const FLIP_HOLD_MS = 20_000; // ...for this long
+/** Price must sit at least this % beyond the open before a call can lock. */
+export const LOCK_CUSHION_PCT = 0.03;
 
 export interface LockState {
   candleStart: number;
@@ -62,9 +64,11 @@ export function stepLock(
     if (s.dir && call.dir === s.dir) s = { ...s, prob: call.prob };
     return { ...s, candidateDir: null, candidateSince: null };
   }
-  // Flip also needs price to be on the new side of the open.
-  if (s.dir) {
-    const onSide = wants === "UP" ? call.now > call.open : call.now < call.open;
+  // Any lock or flip needs price decisively on that side of the open.
+  {
+    const cushion = call.open * (LOCK_CUSHION_PCT / 100);
+    const onSide =
+      wants === "UP" ? call.now > call.open + cushion : call.now < call.open - cushion;
     if (!onSide) return { ...s, candidateDir: null, candidateSince: null };
   }
   const since = s.candidateDir === wants && s.candidateSince ? s.candidateSince : now;

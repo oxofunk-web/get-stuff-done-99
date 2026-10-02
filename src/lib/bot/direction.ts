@@ -99,9 +99,11 @@ export function directionCall(
   const driftedPrice = price * (1 + d * (c.remain / 600));
   const z = (driftedPrice - open) / (price * horizon);
   const pUp = normCdf(z);
-  const dir: "UP" | "DOWN" = pUp >= 0.5 ? "UP" : "DOWN";
+  // Direction is strictly which side of the open price is on; drift only
+  // adjusts the confidence, it can never invert the call.
+  const dir: "UP" | "DOWN" = delta >= 0 ? "UP" : "DOWN";
   // Never show a certainty: a model reading can be strong, never guaranteed.
-  const prob = Math.min(97, (dir === "UP" ? pUp : 1 - pUp) * 100);
+  const prob = Math.max(0, Math.min(97, (dir === "UP" ? pUp : 1 - pUp) * 100));
 
   const moved = Math.abs(deltaPct).toFixed(deltaPct === 0 ? 0 : 3);
   const driftWord = d > 0 ? "drifting up" : d < 0 ? "drifting down" : "flat";
