@@ -247,6 +247,7 @@ export async function runAutoTrade() {
   );
 
   const results: string[] = [];
+  const noFeed = PAIRS.filter((p) => !opens[p]);
   for (let i = 0; i < SAMPLES; i++) {
     const now = Date.now();
     if (now >= candleStart + FINAL_SECS * 1000) break;
@@ -283,7 +284,13 @@ export async function runAutoTrade() {
     );
     await new Promise((r) => setTimeout(r, SAMPLE_MS));
   }
-  const msg = results.length ? results.join(" · ") : "watching, no new lock";
+  const msg = results.length
+    ? results.join(" · ")
+    : noFeed.length === PAIRS.length
+      ? "price feed down — Coinbase not responding, no trades possible"
+      : noFeed.length
+        ? `watching, no new lock (no price data for ${noFeed.join(",")})`
+        : "watching, no new lock";
   await sb
     .from("bot_settings")
     .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}` } as never)
