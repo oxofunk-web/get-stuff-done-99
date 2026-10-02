@@ -205,7 +205,7 @@ export async function trade(
       ...base,
       mode: "paper",
       status: "placed",
-      msg: `PAPER fill ${count} @ ${askCents}¢ ${pick.side.toUpperCase()} (${edgeNote}) — no real order sent`,
+      msg: `PAPER fill ${count} @ ${askCents}¢ ${pick.side.toUpperCase()} (${edgeNote}, tgt ~$${model.driftedPrice.toFixed(2)}) — no real order sent`,
       order_id: `paper-${candleStart}-${pair}`,
       contracts: count,
       requested_contracts: count,

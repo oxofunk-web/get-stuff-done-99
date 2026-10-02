@@ -68,6 +68,13 @@ export function CallPanel({ calls, selected, onSelect }: Props) {
                 <span>
                   NOW <b className="text-foreground">{fmtPrice(c.now)}</b>
                 </span>
+                {c.predictedClose ? (
+                  <span>
+                    TARGET{" "}
+                    <b className="text-foreground">~{fmtPrice(c.predictedClose)}</b>
+                    {c.closeSigma ? <span className="text-dim"> ±{fmtPrice(c.closeSigma)}</span> : null}
+                  </span>
+                ) : null}
                 <span>
                   MOVE{" "}
                   <b style={{ color: c.delta >= 0 ? "var(--yes)" : "var(--no)" }}>

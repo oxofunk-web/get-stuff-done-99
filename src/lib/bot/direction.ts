@@ -20,6 +20,10 @@ export interface DirectionCall {
   /** False while there is not yet enough live price history to call it. */
   ready: boolean;
   note: string;
+  /** The model's predicted close for this candle. Null when not ready. */
+  predictedClose: number | null;
+  /** One standard deviation around the predicted close. Null when not ready. */
+  closeSigma: number | null;
   /** Normal-model internals, so callers can price arbitrary strikes. Null when not ready. */
   model: ProbModel | null;
 }
@@ -93,6 +97,8 @@ export function directionCall(
     elapsed: c.elapsed,
     ready: false,
     note: "Gathering live prices for this candle…",
+    predictedClose: null,
+    closeSigma: null,
     model: null,
   };
 
@@ -134,6 +140,8 @@ export function directionCall(
     prob,
     ready: true,
     note,
+    predictedClose: driftedPrice,
+    closeSigma: price * horizon,
     model: { driftedPrice, priceHorizon: price * horizon },
   };
 }
