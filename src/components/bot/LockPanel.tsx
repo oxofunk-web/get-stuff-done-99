@@ -13,7 +13,8 @@ const rate = (t?: { wins: number; losses: number }) => {
 /** Steady last-5-minute calls plus a graded scorecard. Read-only. */
 export function LockPanel({ calls }: { calls: DirectionCall[] }) {
   const [alert, setAlert] = useState(false);
-  const { lockOf, score, flash } = useLockedCalls(calls, alert);
+  const [confirming, setConfirming] = useState(false);
+  const { lockOf, score, flash, resetScore } = useLockedCalls(calls, alert);
 
   return (
     <section className="panel mt-3">
@@ -55,7 +56,24 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
         })}
       </div>
       <div className="border-t border-wire px-3 py-2 text-[9px] text-muted-foreground">
-        <div className="mb-1 tracking-widest text-dim">SCORECARD (graded vs real close)</div>
+        <div className="mb-1 flex items-center justify-between tracking-widest text-dim">
+          <span>SCORECARD (graded vs real close)</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (!confirming) {
+                setConfirming(true);
+                setTimeout(() => setConfirming(false), 4000);
+                return;
+              }
+              setConfirming(false);
+              void resetScore();
+            }}
+            className="text-[8px] tracking-widest text-dim hover:text-foreground"
+          >
+            {confirming ? "TAP TO CONFIRM" : "RESET"}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-x-3">
           {["BTC", "ETH", "SOL", "XRP"].map((p) => (
             <span key={p}>

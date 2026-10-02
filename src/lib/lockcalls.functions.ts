@@ -54,6 +54,14 @@ async function closeOf(pair: string, start: number): Promise<number | null> {
   }
 }
 
+/** Wipe the scorecard: delete every recorded direction call. */
+export const resetScorecard = createServerFn({ method: "POST" }).handler(async () => {
+  const sb = await db();
+  const { error } = await sb.from("direction_calls").delete().gte("candle_start", 0);
+  if (error) console.error("resetScorecard", error);
+  return { ok: !error };
+});
+
 /** Grade finished candles, then return win rates by coin and by lock minute. */
 export const getScorecard = createServerFn({ method: "GET" }).handler(async () => {
   const sb = await db();

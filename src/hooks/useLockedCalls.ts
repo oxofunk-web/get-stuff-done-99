@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { DirectionCall } from "@/lib/bot/direction";
 import { emptyLock, stepLock, type LockState } from "@/lib/bot/lock";
-import { getScorecard, recordLock } from "@/lib/lockcalls.functions";
+import { getScorecard, recordLock, resetScorecard as resetScorecardFn } from "@/lib/lockcalls.functions";
 
 const CANDLE_MS = 900_000;
 type Score = Awaited<ReturnType<typeof getScorecard>>;
@@ -62,16 +62,22 @@ export function useLockedCalls(calls: DirectionCall[], alert: boolean) {
     if (changed) force((n) => n + 1);
   });
 
+  const loadScore = () => getScorecard().then(setScore).catch(() => {});
   useEffect(() => {
-    const load = () => getScorecard().then(setScore).catch(() => {});
-    load();
-    const id = setInterval(load, 60_000);
+    loadScore();
+    const id = setInterval(loadScore, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  const resetScore = async () => {
+    const r = await resetScorecardFn().catch(() => ({ ok: false }));
+    if (r?.ok) loadScore();
+    return r?.ok ?? false;
+  };
 
   const lockOf = (pair: string) => {
     const l = locks.current[pair];
     return l && l.candleStart === candleStart ? l : emptyLock(candleStart);
   };
-  return { lockOf, score, flash };
+  return { lockOf, score, flash, resetScore };
 }
