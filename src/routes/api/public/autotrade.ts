@@ -9,8 +9,9 @@ export const Route = createFileRoute("/api/public/autotrade")({
       POST: async ({ request }) => {
         const denied = await authenticateScheduledRequest(request);
         if (denied) return denied;
-        const { runAutoTrade } = await import("@/lib/bot/autotrade.server");
-        return Response.json({ auto: await runAutoTrade() });
+        const { runAutoTrade, runTakeProfit } = await import("@/lib/bot/autotrade.server");
+        const [auto, exits] = await Promise.all([runAutoTrade(), runTakeProfit()]);
+        return Response.json({ auto, exits });
       },
     },
   },

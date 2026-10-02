@@ -290,3 +290,52 @@ export async function runAutoTrade() {
     .eq("id", true);
   return { ok: true, msg };
 }
+
+/** Take-profit: sell a locked-call position once its bid reaches this. */
+export const TAKE_PROFIT_CENTS = 93;
+
+/** Watches open locked-call positions ~45s and sells any whose bid is >= 93¢. */
+export async function runTakeProfit() {
+  const { fetchMarket, placeLiveSell } = await import("../kalshi.server");
+  const sb = await db();
+  const keyId = process.env["KALSHI_API_KEY_ID"];
+  const pem = process.env["KALSHI_PRIVATE_KEY"];
+  const candleStart = Math.floor(Date.now() / CANDLE_MS) * CANDLE_MS;
+  const out: string[] = [];
+  const end = Date.now() + 45_000;
+  while (Date.now() < end) {
+    const { data: open } = await sb
+      .from("trade_log")
+      .select("id,pair,dir,mode,ticker,strike_type,contracts,entry_price")
+      .eq("source", "lock")
+      .eq("status", "placed")
+      .eq("candle_id", candleStart)
+      .is("exit_at", null);
+    if (!open?.length) break;
+    for (const t of open) {
+      if (!t.ticker || !t.contracts) continue;
+      const raw = await fetchMarket(t.ticker);
+      if (!raw) continue;
+      const m = normalizeMarket(raw);
+      const side: "yes" | "no" = (t.strike_type === "floor") === (t.dir === "UP") ? "yes" : "no";
+      const bid = Math.round((side === "yes" ? m.yesBid : m.noBid) * 100);
+      if (bid < TAKE_PROFIT_CENTS) continue;
+      let exit = { price: bid, id: `paper-exit-${t.id}`, n: t.contracts };
+      if (t.mode !== "paper") {
+        if (!keyId || !pem) continue;
+        const r = await placeLiveSell({ keyId, pem }, { ticker: t.ticker, side, priceCents: TAKE_PROFIT_CENTS, count: t.contracts });
+        if (!r.ok) { out.push(`${t.pair}: ${r.error}`); continue; }
+        exit = { price: r.priceCents, id: r.orderId, n: r.filled };
+      }
+      const pnl = exit.n * (exit.price / 100 - Number(t.entry_price ?? 0));
+      await sb.from("trade_log").update({
+        exit_price: exit.price / 100, exit_reason: "take_profit", exit_at: new Date().toISOString(),
+        exit_order_id: exit.id, exit_contracts: exit.n,
+        ...(exit.n >= t.contracts ? { outcome: "win", pnl, settled_at: new Date().toISOString() } : {}),
+      } as never).eq("id", t.id);
+      out.push(`${t.pair}: SOLD ${exit.n} @ ${exit.price}¢ (+$${pnl.toFixed(2)})`);
+    }
+    await new Promise((r) => setTimeout(r, SAMPLE_MS));
+  }
+  return out;
+}
