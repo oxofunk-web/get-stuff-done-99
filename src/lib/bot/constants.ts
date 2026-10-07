@@ -150,7 +150,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
 
 export type GatePresetName = keyof typeof GATE_PRESETS;
 
-export type PairId = "BTC" | "ETH" | "SOL" | "XRP";
+export type PairId = "BTC" | "ETH" | "SOL" | "XRP" | "DOGE";
 
 export interface Pair {
   id: PairId;
@@ -194,16 +194,25 @@ export const PAIRS: Pair[] = [
     colorClass: "text-xrp",
     colorVar: "var(--color-xrp)",
   },
+  {
+    id: "DOGE",
+    name: "Dogecoin",
+    series: "KXDOGE15M",
+    wsKey: "dogeusdt",
+    colorClass: "text-doge",
+    colorVar: "var(--color-doge)",
+  },
 ];
 
 export const WS_URL =
-  "wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker/xrpusdt@ticker";
+  "wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker/xrpusdt@ticker/dogeusdt@ticker";
 
 export const WS_MAP: Record<string, PairId> = {
   btcusdt: "BTC",
   ethusdt: "ETH",
   solusdt: "SOL",
   xrpusdt: "XRP",
+  dogeusdt: "DOGE",
 };
 
 /**
@@ -212,13 +221,14 @@ export const WS_MAP: Record<string, PairId> = {
  */
 export const CB_WS_URL = "wss://ws-feed.exchange.coinbase.com";
 
-export const CB_PRODUCTS = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"] as const;
+export const CB_PRODUCTS = ["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD"] as const;
 
 export const CB_MAP: Record<string, PairId> = {
   "BTC-USD": "BTC",
   "ETH-USD": "ETH",
   "SOL-USD": "SOL",
   "XRP-USD": "XRP",
+  "DOGE-USD": "DOGE",
 };
 
 /** How long to wait for a first frame before failing over to the next source. */

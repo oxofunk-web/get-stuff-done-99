@@ -12,8 +12,10 @@ import {
 } from "../kalshi.server";
 
 const CANDLE_MS = 900_000;
-const PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
-const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
+const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
+/** DOGE is paper-only and joins only after its feeds verify (see dogeReady). */
+const EXTRA_PAIRS: PairId[] = ["DOGE"];
+const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD", DOGE: "DOGE-USD" };
 /**
  * Entry band for dynamic strike selection: only buy contracts priced
  * 55¢–75¢. Below 55¢ the market says we're likely wrong; above 75¢ the
@@ -21,6 +23,36 @@ const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "
  */
 const MIN_ENTRY_CENTS = 55;
 const MAX_ENTRY_CENTS = 75;
+/** Paper-only wider band; the Bank net-edge filter remains the final gate. */
+export const PAPER_BAND = { min: 50, max: 80 } as const;
+const LIVE_BAND = { min: MIN_ENTRY_CENTS, max: MAX_ENTRY_CENTS } as const;
+
+let dogeCheck: { at: number; ok: boolean; why: string } | null = null;
+/** Verify Coinbase DOGE-USD ticks and KXDOGE15M lists markets with strikes. Cached 10 min per worker. */
+async function dogeReady(): Promise<{ ok: boolean; why: string }> {
+  if (dogeCheck && Date.now() - dogeCheck.at < 600_000) return dogeCheck;
+  let ok = false;
+  let why = "";
+  try {
+    const t = await fetch("https://api.exchange.coinbase.com/products/DOGE-USD/ticker", {
+      headers: { "User-Agent": "coin-direction-reader" },
+      signal: AbortSignal.timeout(5000),
+    });
+    const j = t.ok ? ((await t.json()) as { price?: string }) : {};
+    if (!(Number(j.price) > 0)) why = `Coinbase DOGE-USD ticker failed (${t.status})`;
+    else {
+      const { markets, error } = await fetchCandleMarketsWithReason("KXDOGE15M");
+      const withStrike = markets.filter((m) => normalizeMarket(m).strike != null);
+      if (!withStrike.length) why = `KXDOGE15M has no markets with strikes${error ? ` (${error})` : ""}`;
+      else ok = true;
+    }
+  } catch (e) {
+    why = `DOGE check error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  if (!ok) console.warn(`[autotrade] DOGE disabled, running original four: ${why}`);
+  dogeCheck = { at: Date.now(), ok, why };
+  return dogeCheck;
+}
 /** Minimum expected value (model prob minus ask) before a strike is tradable. */
 const MIN_EDGE_CENTS = 10;
 const CHASE_CENTS = 3;
@@ -92,6 +124,7 @@ export function selectStrike(
   markets: RawMarket[],
   model: ProbModel,
   dir: "UP" | "DOWN",
+  band: { min: number; max: number } = LIVE_BAND,
 ): { pick: StrikePick | null; note: string } {
   const wantAbove = dir === "UP";
   let best: StrikePick | null = null;
@@ -113,7 +146,7 @@ export function selectStrike(
           : pUp;
     const ask = side === "yes" ? m.yesAsk : m.noAsk;
     const askCents = Math.round(ask * 100);
-    if (!(askCents >= MIN_ENTRY_CENTS && askCents <= MAX_ENTRY_CENTS)) continue;
+    if (!(askCents >= band.min && askCents <= band.max)) continue;
     inBand++;
     const evCents = (pWin - ask) * 100;
     if (evCents > bestEv) {
@@ -123,7 +156,7 @@ export function selectStrike(
   }
   if (!best || best.evCents < MIN_EDGE_CENTS) {
     const note = !inBand
-      ? "no strike priced 55–75¢"
+      ? `no strike priced ${band.min}–${band.max}¢`
       : `best edge ${bestEv.toFixed(1)}¢ below the ${MIN_EDGE_CENTS}¢ minimum`;
     return { pick: null, note };
   }
@@ -202,11 +235,11 @@ export async function trade(
   const getPick = async () => {
     const { markets, error } = await fetchCandleMarketsWithReason(`KX${pair}15M`);
     if (!markets.length) return { pick: null as StrikePick | null, note: error ?? "no contracts" };
-    return selectStrike(markets, model, dir);
+    return selectStrike(markets, model, dir, paper ? PAPER_BAND : LIVE_BAND);
   };
   const first = await getPick();
   if (!first.pick) {
-    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in 55–75¢ — ${first.note}` });
+    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "55–75"}¢ — ${first.note}` });
     return `${pair}: no edge (${first.note})`;
   }
   let pick = first.pick;
@@ -334,6 +367,10 @@ export async function runAutoTrade() {
     }
   }
 
+  // DOGE: paper only, and only after its Coinbase + Kalshi feeds verify; otherwise the original four run unchanged.
+  const doge = paper ? await dogeReady() : { ok: false, why: "live mode" };
+  const PAIRS: PairId[] = doge.ok ? [...BASE_PAIRS, ...EXTRA_PAIRS] : BASE_PAIRS;
+  const dogeNote = paper && !doge.ok ? ` · DOGE off: ${doge.why}` : "";
   const opens: Record<string, number | null> = {};
   const spots: Record<string, SpotState> = {};
   const locks: Record<string, LockState> = {};
@@ -392,11 +429,12 @@ export async function runAutoTrade() {
       : noFeed.length
         ? `watching, no new lock (no price data for ${noFeed.join(",")})`
         : "watching, no new lock";
+  const fullMsg = msg + dogeNote;
   await sb
     .from("bot_settings")
-    .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}`, last_tick_at: new Date().toISOString() } as never)
+    .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${fullMsg}`, last_tick_at: new Date().toISOString() } as never)
     .eq("id", true);
-  return { ok: true, msg };
+  return { ok: true, msg: fullMsg };
 }
 
 /** Take-profit: sell a locked-call position once its bid reaches this. */
