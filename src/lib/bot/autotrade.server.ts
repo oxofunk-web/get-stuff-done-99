@@ -367,6 +367,10 @@ export async function runAutoTrade() {
     }
   }
 
+  // DOGE: paper only, and only after its Coinbase + Kalshi feeds verify; otherwise the original four run unchanged.
+  const doge = paper ? await dogeReady() : { ok: false, why: "live mode" };
+  const PAIRS: PairId[] = doge.ok ? [...BASE_PAIRS, ...EXTRA_PAIRS] : BASE_PAIRS;
+  const dogeNote = paper && !doge.ok ? ` · DOGE off: ${doge.why}` : "";
   const opens: Record<string, number | null> = {};
   const spots: Record<string, SpotState> = {};
   const locks: Record<string, LockState> = {};
