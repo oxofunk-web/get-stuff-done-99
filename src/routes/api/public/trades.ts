@@ -4,7 +4,12 @@ import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/api/public/trades")({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
+        const url = new URL(request.url);
+        const rawLimit = Number(url.searchParams.get("limit"));
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0
+          ? Math.min(Math.floor(rawLimit), 500)
+          : 500;
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const res = await supabaseAdmin
           .from("trade_log")
@@ -13,7 +18,7 @@ export const Route = createFileRoute("/api/public/trades")({
           )
           .eq("mode", "paper")
           .order("ts", { ascending: false })
-          .limit(200);
+          .limit(limit);
         if (res.error) return Response.json({ error: res.error.message }, { status: 500 });
         return Response.json({ trades: res.data ?? [] });
       },
