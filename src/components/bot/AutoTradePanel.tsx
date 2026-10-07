@@ -23,6 +23,9 @@ export function AutoTradePanel() {
     setBusy(true);
     try {
       setS(await setAutoTrade({ data }));
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Couldn't save the setting");
+      getAutoTrade().then(setS).catch(() => {});
     } finally {
       setBusy(false);
     }
