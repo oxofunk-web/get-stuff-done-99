@@ -10,8 +10,14 @@ export const Route = createFileRoute("/api/public/autotrade")({
         const denied = await authenticateScheduledRequest(request);
         if (denied) return denied;
         const { runAutoTrade, runTakeProfit } = await import("@/lib/bot/autotrade.server");
-        const [auto, exits] = await Promise.all([runAutoTrade(), runTakeProfit()]);
-        return Response.json({ auto, exits });
+        const { gradeDirectionCalls } = await import("@/lib/bot/feed.server");
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const [auto, exits, grading] = await Promise.all([
+          runAutoTrade(),
+          runTakeProfit(),
+          gradeDirectionCalls(supabaseAdmin).catch((e) => ({ error: String(e) })),
+        ]);
+        return Response.json({ auto, exits, grading });
       },
     },
   },
