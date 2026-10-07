@@ -152,3 +152,13 @@ describe("paper trading", () => {
     expect(placeLiveOrder).not.toHaveBeenCalled();
   });
 });
+
+describe("paper band 50–80¢", () => {
+  it("paper band accepts a 78¢ strike the live band rejects", async () => {
+    const { PAPER_BAND } = await import("./autotrade.server");
+    const strong = { driftedPrice: 130, priceHorizon: 10 };
+    const list = markets([{ strike: 100, yesAsk: 78 }]).markets as never[];
+    expect(selectStrike(list, strong, "UP").pick).toBeNull();
+    expect(selectStrike(list, strong, "UP", PAPER_BAND).pick?.askCents).toBe(78);
+  });
+});

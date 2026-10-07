@@ -429,11 +429,12 @@ export async function runAutoTrade() {
       : noFeed.length
         ? `watching, no new lock (no price data for ${noFeed.join(",")})`
         : "watching, no new lock";
+  const fullMsg = msg + dogeNote;
   await sb
     .from("bot_settings")
-    .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}`, last_tick_at: new Date().toISOString() } as never)
+    .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${fullMsg}`, last_tick_at: new Date().toISOString() } as never)
     .eq("id", true);
-  return { ok: true, msg };
+  return { ok: true, msg: fullMsg };
 }
 
 /** Take-profit: sell a locked-call position once its bid reaches this. */
