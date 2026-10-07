@@ -2,8 +2,8 @@
  * Resilient price feed: Coinbase first (with timeout + retry), Kraken as backup.
  * Used by the auto-trader spot reads and by the direction-call grader.
  */
-const CB: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
-const KR: Record<string, string> = { BTC: "XBTUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD" };
+const CB: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD", DOGE: "DOGE-USD" };
+const KR: Record<string, string> = { BTC: "XBTUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD", DOGE: "XDGUSD" };
 const HEADERS = { "User-Agent": "coin-direction-reader" };
 
 async function getJson<T>(url: string, tries = 2, timeoutMs = 4000): Promise<T | null> {

@@ -75,7 +75,7 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
           </button>
         </div>
         <div className="flex flex-wrap gap-x-3">
-          {["BTC", "ETH", "SOL", "XRP"].map((p) => (
+          {["BTC", "ETH", "SOL", "XRP", "DOGE"].map((p) => (
             <span key={p}>
               {p} <b className="text-foreground">{rate(score?.byPair[p])}</b>
             </span>

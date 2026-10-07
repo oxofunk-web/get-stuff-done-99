@@ -16,6 +16,7 @@ const CB_PRODUCT: Record<PairId, string> = {
   ETH: "ETH-USD",
   SOL: "SOL-USD",
   XRP: "XRP-USD",
+  DOGE: "DOGE-USD",
 };
 
 const BINANCE_SYMBOL: Record<PairId, string> = {
@@ -23,6 +24,7 @@ const BINANCE_SYMBOL: Record<PairId, string> = {
   ETH: "ETHUSDT",
   SOL: "SOLUSDT",
   XRP: "XRPUSDT",
+  DOGE: "DOGEUSDT",
 };
 
 async function fromCoinbase(pair: PairId): Promise<Candle[]> {

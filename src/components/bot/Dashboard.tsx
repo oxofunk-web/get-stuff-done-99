@@ -41,7 +41,7 @@ export function Dashboard() {
           </div>
         </div>
         <div className="border-t border-wire/70 bg-surface/70">
-          <div className="mx-auto grid max-w-[1180px] grid-cols-4">
+          <div className="mx-auto grid max-w-[1180px] grid-cols-5">
             {PAIRS.map((p) => {
               const c = d.calls.find((x) => x.pair === p.id);
               const isUp = c?.dir === "UP";
