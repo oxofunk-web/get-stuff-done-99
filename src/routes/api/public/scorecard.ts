@@ -15,7 +15,11 @@ export const Route = createFileRoute("/api/public/scorecard")({
             .maybeSingle(),
         ]);
         if (callsRes.error) return Response.json({ error: callsRes.error.message }, { status: 500 });
-        const s = settingsRes.data ?? {};
+        const s = (settingsRes.data ?? {}) as {
+          last_tick_at?: string | null;
+          auto_trade_last_msg?: string | null;
+          updated_at?: string | null;
+        };
         return Response.json({
           calls: callsRes.data ?? [],
           heartbeat: {
