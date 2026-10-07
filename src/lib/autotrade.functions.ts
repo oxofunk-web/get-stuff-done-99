@@ -48,5 +48,10 @@ export const setAutoTrade = createServerFn({ method: "POST" })
     if (data.paper !== undefined) patch.auto_trade_paper = data.paper;
     if (data.size !== undefined) patch.auto_trade_size = data.size;
     await updateBotSettings(sb, patch);
-    return state();
+    const next = await state();
+    // Fail loudly if the switch didn't actually save, so the dashboard never shows a fake ON.
+    if (data.enabled !== undefined && next.enabled !== data.enabled) {
+      throw new Error("AUTO-TRADE setting did not save — please try again");
+    }
+    return next;
   });
