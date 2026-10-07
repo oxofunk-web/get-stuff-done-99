@@ -269,7 +269,7 @@ export async function runAutoTrade() {
   const note = async (msg: string) => {
     await sb
       .from("bot_settings")
-      .update({ auto_trade_last_msg: `${stamp()} ${msg}` } as never)
+      .update({ auto_trade_last_msg: `${stamp()} ${msg}`, last_tick_at: new Date().toISOString() } as never)
       .eq("id", true);
   };
   if (!s?.auto_trade_enabled) {
@@ -298,7 +298,7 @@ export async function runAutoTrade() {
       const msg = `day stopped — $${openRisk.toFixed(2)} open risk + $${dayPnl.toFixed(2)} settled P&L reaches the $${cap.toFixed(0)} daily cap`;
       await sb
         .from("bot_settings")
-        .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}` } as never)
+        .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}`, last_tick_at: new Date().toISOString() } as never)
         .eq("id", true);
       return { ok: true, msg };
     }
@@ -364,7 +364,7 @@ export async function runAutoTrade() {
         : "watching, no new lock";
   await sb
     .from("bot_settings")
-    .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}` } as never)
+    .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}`, last_tick_at: new Date().toISOString() } as never)
     .eq("id", true);
   return { ok: true, msg };
 }
