@@ -15,7 +15,6 @@ const CANDLE_MS = 900_000;
 const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 /** DOGE is paper-only and joins only after its feeds verify (see dogeReady). */
 const EXTRA_PAIRS: PairId[] = ["DOGE"];
-const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD", DOGE: "DOGE-USD" };
 /**
  * Entry band for dynamic strike selection: only buy contracts priced
  * 55¢–75¢. Below 55¢ the market says we're likely wrong; above 75¢ the
