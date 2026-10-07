@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicAutotradeRouteImport } from './routes/api/public/autotrade'
 import { Route as ApiPublicScorecardRouteImport } from './routes/api/public/scorecard'
 import { Route as ApiPublicSettleRouteImport } from './routes/api/public/settle'
+import { Route as ApiPublicTradesRouteImport } from './routes/api/public/trades'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +35,25 @@ const ApiPublicSettleRoute = ApiPublicSettleRouteImport.update({
   path: '/api/public/settle',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTradesRoute = ApiPublicTradesRouteImport.update({
+  id: '/api/public/trades',
+  path: '/api/public/trades',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/autotrade': typeof ApiPublicAutotradeRoute
   '/api/public/scorecard': typeof ApiPublicScorecardRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
+  '/api/public/trades': typeof ApiPublicTradesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/autotrade': typeof ApiPublicAutotradeRoute
   '/api/public/scorecard': typeof ApiPublicScorecardRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
+  '/api/public/trades': typeof ApiPublicTradesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,6 +61,7 @@ export interface FileRoutesById {
   '/api/public/autotrade': typeof ApiPublicAutotradeRoute
   '/api/public/scorecard': typeof ApiPublicScorecardRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
+  '/api/public/trades': typeof ApiPublicTradesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -61,18 +70,21 @@ export interface FileRouteTypes {
     | '/api/public/autotrade'
     | '/api/public/scorecard'
     | '/api/public/settle'
+    | '/api/public/trades'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api/public/autotrade'
     | '/api/public/scorecard'
     | '/api/public/settle'
+    | '/api/public/trades'
   id:
     | '__root__'
     | '/'
     | '/api/public/autotrade'
     | '/api/public/scorecard'
     | '/api/public/settle'
+    | '/api/public/trades'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -80,6 +92,7 @@ export interface RootRouteChildren {
   ApiPublicAutotradeRoute: typeof ApiPublicAutotradeRoute
   ApiPublicScorecardRoute: typeof ApiPublicScorecardRoute
   ApiPublicSettleRoute: typeof ApiPublicSettleRoute
+  ApiPublicTradesRoute: typeof ApiPublicTradesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -112,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicSettleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/trades': {
+      id: '/api/public/trades'
+      path: '/api/public/trades'
+      fullPath: '/api/public/trades'
+      preLoaderRoute: typeof ApiPublicTradesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -120,6 +140,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicAutotradeRoute: ApiPublicAutotradeRoute,
   ApiPublicScorecardRoute: ApiPublicScorecardRoute,
   ApiPublicSettleRoute: ApiPublicSettleRoute,
+  ApiPublicTradesRoute: ApiPublicTradesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
