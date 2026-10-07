@@ -79,7 +79,10 @@ export function AutoTradePanel() {
           }}
           className="w-20 rounded border border-wire bg-transparent px-2 py-0.5 font-bold text-foreground"
         />
-        <span className="normal-case tracking-normal">per locked call</span>
+        <span className="normal-case tracking-normal">{s?.paper ? "live size (paper uses bank sizing)" : "per locked call"}</span>
+        <span className="ml-auto">
+          PAPER BANK <b className="text-foreground">${(s?.paperBankroll ?? 100).toFixed(2)}</b>
+        </span>
       </div>
       <div className="divide-y divide-wire border-t border-wire">
         {(s?.trades ?? []).filter((t) => t.candle_id === cur).map((t) => (

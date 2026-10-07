@@ -17,7 +17,10 @@ export const Route = createFileRoute("/api/public/autotrade")({
           runTakeProfit(),
           gradeDirectionCalls(supabaseAdmin).catch((e) => ({ error: String(e) })),
         ]);
-        return Response.json({ auto, exits, grading });
+        // Settle pass for paper bankroll (paper rows settled by exits or grading).
+        const { applyPaperBankroll } = await import("@/lib/bot/settle.server");
+        const bank = await applyPaperBankroll(supabaseAdmin).catch((e) => ({ error: String(e) }));
+        return Response.json({ auto, exits, grading, bank });
       },
     },
   },

@@ -14,10 +14,11 @@ export interface BotSettings {
   auto_trade_size?: number;
   daily_loss_cap?: number;
   auto_trade_last_msg?: string | null;
+  paper_bankroll?: number;
 }
 
 const ALL_COLS =
-  "auto_trade_enabled,auto_trade_paper,auto_trade_size,daily_loss_cap,auto_trade_last_msg";
+  "auto_trade_enabled,auto_trade_paper,auto_trade_size,daily_loss_cap,auto_trade_last_msg,paper_bankroll";
 const FALLBACK_COLS =
   "auto_trade_enabled,auto_trade_size,daily_loss_cap,auto_trade_last_msg";
 

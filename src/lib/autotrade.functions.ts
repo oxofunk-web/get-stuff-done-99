@@ -24,6 +24,7 @@ async function state() {
     /** True = simulated fills, no real orders. Defaults to true (safe). */
     paper: s?.auto_trade_paper ?? true,
     size: Number(s?.auto_trade_size ?? 10),
+    paperBankroll: Number(s?.paper_bankroll ?? 100),
     lastMsg: s?.auto_trade_last_msg ?? null,
     trades: trades ?? [],
   };

@@ -217,5 +217,14 @@ export async function settlePending(maxCandles = 12) {
     trades += r.trades;
     voided += r.voided ?? 0;
   }
-  return { ok: true, candles: ids.length, settled, trades, voided };
+  const bank = await applyPaperBankroll(db);
+  return { ok: true, candles: ids.length, settled, trades, voided, bank };
+}
+
+/** Paper only: fold each newly settled paper trade's pnl minus 14¢/contract fees into paper_bankroll. Idempotent. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function applyPaperBankroll(db: any) {
+  const { data, error } = await db.rpc("apply_paper_bankroll", { p_fee_per_contract: 0.14 });
+  if (error) return { error: error.message };
+  return (data as unknown[])?.[0] ?? null;
 }
