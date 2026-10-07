@@ -78,6 +78,7 @@ export type Database = {
           min_skew: number
           min_yes_mid: number
           mode: string
+          paper_bankroll: number
           run_lease_id: string | null
           run_lease_until: string | null
           scalp_enabled: boolean
@@ -114,6 +115,7 @@ export type Database = {
           min_skew?: number
           min_yes_mid?: number
           mode?: string
+          paper_bankroll?: number
           run_lease_id?: string | null
           run_lease_until?: string | null
           scalp_enabled?: boolean
@@ -150,6 +152,7 @@ export type Database = {
           min_skew?: number
           min_yes_mid?: number
           mode?: string
+          paper_bankroll?: number
           run_lease_id?: string | null
           run_lease_until?: string | null
           scalp_enabled?: boolean
@@ -382,6 +385,7 @@ export type Database = {
       }
       trade_log: {
         Row: {
+          bankroll_applied_at: string | null
           calibrated: number | null
           candle_id: number
           conf: number | null
@@ -416,6 +420,7 @@ export type Database = {
           visible_depth: number | null
         }
         Insert: {
+          bankroll_applied_at?: string | null
           calibrated?: number | null
           candle_id: number
           conf?: number | null
@@ -450,6 +455,7 @@ export type Database = {
           visible_depth?: number | null
         }
         Update: {
+          bankroll_applied_at?: string | null
           calibrated?: number | null
           candle_id?: number
           conf?: number | null
@@ -493,6 +499,14 @@ export type Database = {
       acquire_bot_run_lease: {
         Args: { p_lease_id: string; p_lease_seconds?: number }
         Returns: boolean
+      }
+      apply_paper_bankroll: {
+        Args: { p_fee_per_contract?: number }
+        Returns: {
+          applied: number
+          bankroll: number
+          delta: number
+        }[]
       }
       bot_risk_snapshot: {
         Args: { p_day_start: string }
