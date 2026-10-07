@@ -15,7 +15,6 @@ const CANDLE_MS = 900_000;
 const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 /** DOGE is paper-only and joins only after its feeds verify (see dogeReady). */
 const EXTRA_PAIRS: PairId[] = ["DOGE"];
-const PRODUCT: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD", DOGE: "DOGE-USD" };
 /**
  * Entry band for dynamic strike selection: only buy contracts priced
  * 55¢–75¢. Below 55¢ the market says we're likely wrong; above 75¢ the
@@ -64,41 +63,41 @@ async function db() {
   return supabaseAdmin;
 }
 
+/** Which provider served each read this run, per pair (for the dashboard status). */
+const feedUsed = new Map<string, Set<string>>();
+const mark = (pair: string, provider?: string) => {
+  if (!provider) return;
+  (feedUsed.get(pair) ?? feedUsed.set(pair, new Set()).get(pair)!).add(provider);
+};
+
 async function spot(pair: string): Promise<number | null> {
-  const { resilientSpot } = await import("./feed.server");
-  return resilientSpot(pair);
+  const { spotWithProvider } = await import("./feed.server");
+  const r = await spotWithProvider(pair);
+  mark(pair, r?.provider);
+  return r?.value ?? null;
 }
 
 async function candleOpen(pair: string, start: number): Promise<number | null> {
-  const iso = (ms: number) => new Date(ms).toISOString();
-  try {
-    const r = await fetch(
-      `https://api.exchange.coinbase.com/products/${PRODUCT[pair]}/candles?granularity=900&start=${iso(start)}&end=${iso(start + CANDLE_MS)}`,
-      { headers: { "User-Agent": "coin-direction-reader" } },
-    );
-    if (!r.ok) return null;
-    const rows = (await r.json()) as number[][];
-    return rows.find((x) => (x[0] ?? 0) * 1000 === start)?.[3] ?? null;
-  } catch {
-    return null;
-  }
+  const { candleOpenWithProvider } = await import("./feed.server");
+  const r = await candleOpenWithProvider(pair, start);
+  mark(pair, r?.provider);
+  return r?.value ?? null;
 }
 
 /** Extra history so the reader has enough ticks from the first sample. */
 async function recentTicks(pair: string): Promise<{ ts: number; price: number }[]> {
-  try {
-    const r = await fetch(`https://api.exchange.coinbase.com/products/${PRODUCT[pair]}/trades?limit=100`, {
-      headers: { "User-Agent": "coin-direction-reader" },
-    });
-    if (!r.ok) return [];
-    const rows = (await r.json()) as { time: string; price: string }[];
-    return rows
-      .map((t) => ({ ts: new Date(t.time).getTime(), price: Number(t.price) }))
-      .filter((t) => Number.isFinite(t.price))
-      .sort((a, b) => a.ts - b.ts);
-  } catch {
-    return [];
-  }
+  const { recentTradesWithProvider } = await import("./feed.server");
+  const r = await recentTradesWithProvider(pair);
+  mark(pair, r?.provider);
+  return r?.value ?? [];
+}
+
+/** "feed: coinbase" or e.g. "feed: coinbase · ETH kraken" when a pair fell back. */
+function feedSummary(): string {
+  const fallbacks = [...feedUsed].filter(([, s]) => [...s].some((p) => p !== "coinbase"));
+  if (!feedUsed.size) return "";
+  if (!fallbacks.length) return " · feed: coinbase";
+  return ` · feed: ${fallbacks.map(([pair, s]) => `${pair} ${[...s].join("+")}`).join(", ")}`;
 }
 
 interface StrikePick {
@@ -371,6 +370,7 @@ export async function runAutoTrade() {
   const doge = paper ? await dogeReady() : { ok: false, why: "live mode" };
   const PAIRS: PairId[] = doge.ok ? [...BASE_PAIRS, ...EXTRA_PAIRS] : BASE_PAIRS;
   const dogeNote = paper && !doge.ok ? ` · DOGE off: ${doge.why}` : "";
+  feedUsed.clear();
   const opens: Record<string, number | null> = {};
   const spots: Record<string, SpotState> = {};
   const locks: Record<string, LockState> = {};
@@ -425,11 +425,11 @@ export async function runAutoTrade() {
   const msg = results.length
     ? results.join(" · ")
     : noFeed.length === PAIRS.length
-      ? "price feed down — Coinbase not responding, no trades possible"
+      ? "price feed down — Coinbase, Kraken and Binance.US all failed, no trades possible"
       : noFeed.length
         ? `watching, no new lock (no price data for ${noFeed.join(",")})`
         : "watching, no new lock";
-  const fullMsg = msg + dogeNote;
+  const fullMsg = msg + feedSummary() + dogeNote;
   await sb
     .from("bot_settings")
     .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${fullMsg}`, last_tick_at: new Date().toISOString() } as never)
