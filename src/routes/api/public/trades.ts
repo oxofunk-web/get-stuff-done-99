@@ -9,7 +9,7 @@ export const Route = createFileRoute("/api/public/trades")({
         const rawLimit = Number(url.searchParams.get("limit"));
         const limit = Number.isFinite(rawLimit) && rawLimit > 0
           ? Math.min(Math.floor(rawLimit), 500)
-          : 500;
+          : 200;
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const res = await supabaseAdmin
           .from("trade_log")
