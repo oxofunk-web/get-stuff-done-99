@@ -33,17 +33,8 @@ async function db() {
 }
 
 async function spot(pair: string): Promise<number | null> {
-  try {
-    const r = await fetch(`https://api.exchange.coinbase.com/products/${PRODUCT[pair]}/ticker`, {
-      headers: { "User-Agent": "coin-direction-reader" },
-    });
-    if (!r.ok) return null;
-    const j = (await r.json()) as { price?: string };
-    const n = Number(j.price);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  } catch {
-    return null;
-  }
+  const { resilientSpot } = await import("./feed.server");
+  return resilientSpot(pair);
 }
 
 async function candleOpen(pair: string, start: number): Promise<number | null> {
