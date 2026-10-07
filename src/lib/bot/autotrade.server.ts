@@ -130,6 +130,31 @@ export function selectStrike(
   return { pick: best, note: "" };
 }
 
+/** Kalshi round-trip fees per contract, in dollars. */
+export const PAPER_FEE = 0.14;
+
+/** Paper-only quarter-Kelly sizing against the paper bankroll, net of fees. */
+export function bankSize(evCents: number, askCents: number, bankroll: number) {
+  const q = askCents / 100;
+  const pWin = evCents / 100 + q;
+  const W = 1 - q - PAPER_FEE;
+  const L = q + PAPER_FEE;
+  const net = pWin * W - (1 - pWin) * L;
+  const netEdgeCents = net * 100;
+  if (!(net >= 0.02) || W <= 0 || bankroll <= 0) {
+    return { ok: false as const, msg: `Bank: net edge ${netEdgeCents.toFixed(1)}¢ below 2¢ minimum`, netEdgeCents };
+  }
+  const f = net / (W * L);
+  const sizeDollars = bankroll * f * 0.25;
+  let contracts = Math.max(1, Math.floor(sizeDollars / q));
+  const maxByStake = Math.floor((bankroll * 0.25) / q);
+  contracts = Math.min(contracts, maxByStake);
+  if (contracts < 1) {
+    return { ok: false as const, msg: `Bank: $${bankroll.toFixed(2)} too small for 1 contract under 25% cap`, netEdgeCents };
+  }
+  return { ok: true as const, contracts, netEdgeCents, f };
+}
+
 /** Exported for unit tests: the paper/live fill decision for one locked call. */
 export async function trade(
   pair: PairId,
@@ -139,6 +164,8 @@ export async function trade(
   lockSpot: number,
   paper: boolean,
   model: ProbModel | null,
+  /** Paper bankroll for Kelly sizing; when omitted, paper falls back to flat sizing. */
+  paperBankroll?: number,
 ) {
   const sb = await db();
   const { data: existing } = await sb
@@ -186,17 +213,29 @@ export async function trade(
   const base = { ticker: pick.market.ticker, strike: pick.market.strike, strike_type: pick.market.strikeType };
   const askCents = pick.askCents;
   const edgeNote = `edge +${pick.evCents.toFixed(1)}¢`;
-  const count = Math.max(1, Math.floor(size / (askCents / 100)));
+  const flatCount = Math.max(1, Math.floor(size / (askCents / 100)));
+  const count = flatCount;
   // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
   // No keys needed. The settle pass still grades these rows, so paper P&L is
   // realistic — but they never count toward the live daily loss cap.
   if (paper) {
     const entry = askCents / 100;
+    let count = flatCount;
+    let bankNote = "";
+    if (paperBankroll != null && Number.isFinite(paperBankroll)) {
+      const k = bankSize(pick.evCents, askCents, paperBankroll);
+      if (!k.ok) {
+        await log({ ...base, mode: "paper", status: "skipped", msg: k.msg });
+        return `${pair}: ${k.msg}`;
+      }
+      count = k.contracts;
+      bankNote = `, net ${k.netEdgeCents.toFixed(1)}¢, bank $${paperBankroll.toFixed(2)}`;
+    }
     await log({
       ...base,
       mode: "paper",
       status: "placed",
-      msg: `PAPER fill ${count} @ ${askCents}¢ ${pick.side.toUpperCase()} (${edgeNote}, tgt ~$${model.driftedPrice.toFixed(2)}) — no real order sent`,
+      msg: `PAPER fill ${count} @ ${askCents}¢ ${pick.side.toUpperCase()} (${edgeNote}${bankNote}, tgt ~$${model.driftedPrice.toFixed(2)}) — no real order sent`,
       order_id: `paper-${candleStart}-${pair}`,
       contracts: count,
       requested_contracts: count,
@@ -340,7 +379,7 @@ export async function runAutoTrade() {
             },
             { onConflict: "pair,candle_start", ignoreDuplicates: true },
           );
-          results.push(await trade(p, next.dir, candleStart, size, price, paper, call.model));
+          results.push(await trade(p, next.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined));
         }
       }),
     );
