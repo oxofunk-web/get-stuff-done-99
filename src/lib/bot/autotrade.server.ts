@@ -63,6 +63,24 @@ async function db() {
   return supabaseAdmin;
 }
 
+/** The first lock formed in minutes 0–5 of this candle — it owns the coin for the candle. */
+async function firstLock(
+  sb: Awaited<ReturnType<typeof db>>,
+  pair: string,
+  candleStart: number,
+): Promise<{ id: string; dir: "UP" | "DOWN" } | null> {
+  const { data } = await sb
+    .from("direction_calls")
+    .select("id,dir")
+    .eq("pair", pair)
+    .eq("candle_start", candleStart)
+    .lte("lock_sec", LOCK_FORM_END_SECS)
+    .order("locked_at", { ascending: true })
+    .limit(1);
+  const r = data?.[0];
+  return r && (r.dir === "UP" || r.dir === "DOWN") ? { id: r.id, dir: r.dir } : null;
+}
+
 /** Which provider served each read this run, per pair (for the dashboard status). */
 const feedUsed = new Map<string, Set<string>>();
 const mark = (pair: string, provider?: string) => {
