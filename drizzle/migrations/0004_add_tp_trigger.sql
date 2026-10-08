@@ -1,0 +1,1 @@
+ALTER TABLE public.trade_log ADD COLUMN IF NOT EXISTS tp_trigger integer;
