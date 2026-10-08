@@ -17,11 +17,11 @@ const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
 const EXTRA_PAIRS: PairId[] = ["DOGE"];
 /**
  * Entry band for dynamic strike selection: only buy contracts priced
- * 55¢–75¢. Below 55¢ the market says we're likely wrong; above 75¢ the
+ * 50¢–85¢. Below 50¢ the market says we're likely wrong; above 85¢ the
  * payout doesn't justify the risk.
  */
-const MIN_ENTRY_CENTS = 55;
-const MAX_ENTRY_CENTS = 75;
+const MIN_ENTRY_CENTS = 50;
+const MAX_ENTRY_CENTS = 85;
 /** Paper-only wider band; the Bank net-edge filter remains the final gate. */
 export const PAPER_BAND = { min: 50, max: 80 } as const;
 const LIVE_BAND = { min: MIN_ENTRY_CENTS, max: MAX_ENTRY_CENTS } as const;
@@ -248,7 +248,7 @@ export async function trade(
   };
   const first = await getPick();
   if (!first.pick) {
-    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "55–75"}¢ — ${first.note}`, requested_contracts: 0 });
+    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "50–85"}¢ — ${first.note}`, requested_contracts: 0 });
     return `${pair}: no edge (${first.note})`;
   }
   let pick = first.pick;
