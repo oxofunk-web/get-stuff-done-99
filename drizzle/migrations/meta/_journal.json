@@ -43,6 +43,13 @@
       "when": 1791486208280,
       "tag": "0005_add_paper_bank_reset_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791495021540,
+      "tag": "0006_direction_calls_multi_lock",
+      "breakpoints": true
     }
   ]
 }

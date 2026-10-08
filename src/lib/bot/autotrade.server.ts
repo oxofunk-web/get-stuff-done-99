@@ -198,6 +198,11 @@ export async function trade(
   model: ProbModel | null,
   /** Paper bankroll for Kelly sizing; when omitted, paper falls back to flat sizing. */
   paperBankroll?: number,
+  /** Lock provenance + order-time re-confirmation (the server loop always passes this). */
+  lock?: {
+    lockId: string | null;
+    reconfirm: () => Promise<{ dir: "UP" | "DOWN"; prob: number } | null>;
+  },
 ) {
   const sb = await db();
   const { data: existing } = await sb
@@ -217,9 +222,29 @@ export async function trade(
   const log = async (row: Record<string, unknown>) => {
     const { error } = await sb
       .from("trade_log")
-      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
+      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), lock_id: lock?.lockId ?? null, ...row } as never);
     if (error) console.error(`[autotrade] trade_log insert failed for ${pair}: ${error.message}`);
     return error;
+  };
+
+  /** Order-time gate: a live lock row must exist for this coin/candle/direction and the signal must still hold ≥70%. */
+  const confirmLock = async (): Promise<string | null> => {
+    if (!lock) return null;
+    if (!lock.lockId) return "no live lock";
+    const { data: latest } = await sb
+      .from("direction_calls")
+      .select("id,dir")
+      .eq("pair", pair)
+      .eq("candle_start", candleStart)
+      .order("locked_at", { ascending: false })
+      .limit(1);
+    const row = latest?.[0];
+    if (!row || row.dir !== dir) return "no live lock";
+    const now = await lock.reconfirm();
+    if (!now || now.dir !== dir || now.prob < 70) {
+      return `lock decayed before fill${now ? ` (now ${now.dir} ${now.prob.toFixed(0)}%)` : " (no fresh price)"}`;
+    }
+    return null;
   };
 
   const keyId = process.env["KALSHI_API_KEY_ID"];
@@ -259,6 +284,13 @@ export async function trade(
   const count = flatCount;
   /** Attempted price/size, stamped on every skip so missed trades are measurable. */
   const attempt = { entry_price: askCents / 100, requested_contracts: count };
+  {
+    const why = await confirmLock();
+    if (why) {
+      await log({ ...base, ...attempt, ...(paper ? { mode: "paper" } : {}), status: "skipped", msg: why });
+      return `${pair}: ${why}`;
+    }
+  }
   // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
   // No keys needed. The settle pass still grades these rows, so paper P&L is
   // realistic — but they never count toward the live daily loss cap.
@@ -415,8 +447,10 @@ export async function runAutoTrade() {
         locks[p] = next;
         if (next.dir && next.lockedAt && next.lockedAt !== prev.lockedAt && !prev.dir) {
           done.add(p);
-          await sb.from("direction_calls").upsert(
-            {
+          // Every lock is its own row; never overwrite an earlier lock.
+          const { data: lockRow, error: lockErr } = await sb
+            .from("direction_calls")
+            .insert({
               pair: p,
               candle_start: candleStart,
               lock_sec: Math.round(next.lockSec ?? 0),
@@ -425,10 +459,26 @@ export async function runAutoTrade() {
               open_price: next.open,
               lock_price: next.lockPrice ?? price,
               locked_at: new Date().toISOString(),
-            },
-            { onConflict: "pair,candle_start", ignoreDuplicates: true },
+            })
+            .select("id")
+            .single();
+          if (lockErr) console.error(`[autotrade] direction_calls insert failed for ${p}: ${lockErr.message}`);
+          // Re-read the coin's live probability right before the order.
+          const reconfirm = async () => {
+            const px = await spot(p);
+            if (!px) return null;
+            const st2 = spots[p]!;
+            const t2 = Date.now();
+            const s2 = { ...st2, price: px, ticks: [...st2.ticks, { ts: t2, price: px }].slice(-200) } as SpotState;
+            const c2 = directionCall(p, s2, opens[p]!, t2);
+            return { dir: c2.dir, prob: c2.prob };
+          };
+          results.push(
+            await trade(p, next.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined, {
+              lockId: lockRow?.id ?? null,
+              reconfirm,
+            }),
           );
-          results.push(await trade(p, next.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined));
         }
       }),
     );

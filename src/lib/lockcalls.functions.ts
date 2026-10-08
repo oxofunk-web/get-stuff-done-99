@@ -32,9 +32,10 @@ export const recordLock = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     if (data.candle_start + 900_000 < Date.now()) return { ok: false };
     const sb = await db();
+    // Every lock is its own row — never overwrite an earlier lock.
     const { error } = await sb
       .from("direction_calls")
-      .upsert({ ...data, locked_at: new Date().toISOString() }, { onConflict: "pair,candle_start" });
+      .insert({ ...data, locked_at: new Date().toISOString() });
     if (error) console.error("recordLock", error);
     return { ok: !error };
   });
