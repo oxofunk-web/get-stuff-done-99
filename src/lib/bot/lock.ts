@@ -10,6 +10,8 @@ export const FLIP_PROB = 70; // opposite side must be this strong...
 export const FLIP_HOLD_MS = 20_000; // ...for this long
 /** Price must sit at least this % beyond the open before a call can lock. */
 export const LOCK_CUSHION_PCT = 0.03;
+/** Locks may only form up to this mark (the 20s hold must complete by 5:00). */
+export const LOCK_FORM_END_SECS = 300;
 
 export interface LockState {
   candleStart: number;
@@ -54,17 +56,14 @@ export function stepLock(
   now: number,
 ): LockState {
   let s = prev.candleStart === candleStart ? prev : emptyLock(candleStart);
-  const phase = phaseOf(call.elapsed);
-  if (!call.ready || phase === "WATCHING") return { ...s, candidateDir: null, candidateSince: null };
-  if (phase === "FINAL") return s; // frozen
+  // First lock wins the candle: once locked, never flip; only track its prob.
+  if (s.dir) return call.dir === s.dir ? { ...s, prob: call.prob } : s;
+  // Locks may only form in minutes 0–5; after that an unlocked coin sits out.
+  if (!call.ready || call.elapsed > LOCK_FORM_END_SECS) return { ...s, candidateDir: null, candidateSince: null };
 
-  const strong = call.prob >= (s.dir ? FLIP_PROB : LOCK_PROB);
-  const wants = strong && call.dir !== s.dir ? call.dir : null;
-  if (!wants) {
-    if (s.dir && call.dir === s.dir) s = { ...s, prob: call.prob };
-    return { ...s, candidateDir: null, candidateSince: null };
-  }
-  // Any lock or flip needs price decisively on that side of the open.
+  const wants = call.prob >= LOCK_PROB ? call.dir : null;
+  if (!wants) return { ...s, candidateDir: null, candidateSince: null };
+  // A lock needs price decisively on that side of the open.
   {
     const cushion = call.open * (LOCK_CUSHION_PCT / 100);
     const onSide =
@@ -72,8 +71,7 @@ export function stepLock(
     if (!onSide) return { ...s, candidateDir: null, candidateSince: null };
   }
   const since = s.candidateDir === wants && s.candidateSince ? s.candidateSince : now;
-  const hold = s.dir ? FLIP_HOLD_MS : LOCK_HOLD_MS;
-  if (now - since < hold) return { ...s, candidateDir: wants, candidateSince: since };
+  if (now - since < LOCK_HOLD_MS) return { ...s, candidateDir: wants, candidateSince: since };
   return {
     ...s,
     dir: wants,
@@ -84,6 +82,6 @@ export function stepLock(
     open: call.open,
     candidateDir: null,
     candidateSince: null,
-    flips: s.dir ? s.flips + 1 : 0,
+    flips: 0,
   };
 }

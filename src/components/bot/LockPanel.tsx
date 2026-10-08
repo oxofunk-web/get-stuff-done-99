@@ -39,12 +39,11 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
           const phase = phaseOf(c.elapsed);
           const color = l.dir === "UP" ? "var(--yes)" : l.dir === "DOWN" ? "var(--no)" : "var(--dim)";
           let label: string;
-          if (phase === "WATCHING")
-            label = c.ready ? `WATCHING · leaning ${c.dir} ${c.prob.toFixed(0)}%` : "WATCHING";
-          else if (l.dir)
+          if (l.dir)
             label = `${phase === "FINAL" ? "FINAL" : "CALL"}: ${l.dir} ${l.prob.toFixed(0)}% · locked ${mmss(l.lockSec ?? 0)}`;
-          else if (phase === "FINAL") label = "FINAL: no clear call";
-          else label = l.candidateDir ? `confirming ${l.candidateDir}…` : `waiting for ≥${LOCK_PROB}%`;
+          else if (phase !== "WATCHING") label = "no lock by 5:00 — sitting out this candle";
+          else if (l.candidateDir) label = `confirming ${l.candidateDir}…`;
+          else label = c.ready ? `WATCHING · leaning ${c.dir} ${c.prob.toFixed(0)}%` : "WATCHING";
           return (
             <div key={c.pair} className="flex items-center gap-2 px-3 py-2 text-[10px]">
               <b className="w-9 font-sans text-foreground">{c.pair}</b>
