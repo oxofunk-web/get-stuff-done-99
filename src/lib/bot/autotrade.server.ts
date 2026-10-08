@@ -212,8 +212,15 @@ export async function trade(
     .limit(1);
   if (existing?.length) return `${pair}: already traded this candle`;
 
-  const log = async (row: Record<string, unknown>) =>
-    sb.from("trade_log").insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
+  // Every decision — fill or skip — must persist. If the insert itself fails,
+  // surface that in the run message instead of vanishing silently.
+  const log = async (row: Record<string, unknown>) => {
+    const { error } = await sb
+      .from("trade_log")
+      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
+    if (error) console.error(`[autotrade] trade_log insert failed for ${pair}: ${error.message}`);
+    return error;
+  };
 
   const keyId = process.env["KALSHI_API_KEY_ID"];
   const pem = process.env["KALSHI_PRIVATE_KEY"];
@@ -241,7 +248,7 @@ export async function trade(
   };
   const first = await getPick();
   if (!first.pick) {
-    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "55–75"}¢ — ${first.note}` });
+    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "55–75"}¢ — ${first.note}`, requested_contracts: 0 });
     return `${pair}: no edge (${first.note})`;
   }
   let pick = first.pick;
@@ -250,6 +257,8 @@ export async function trade(
   const edgeNote = `edge +${pick.evCents.toFixed(1)}¢`;
   const flatCount = Math.max(1, Math.floor(size / (askCents / 100)));
   const count = flatCount;
+  /** Attempted price/size, stamped on every skip so missed trades are measurable. */
+  const attempt = { entry_price: askCents / 100, requested_contracts: count };
   // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
   // No keys needed. The settle pass still grades these rows, so paper P&L is
   // realistic — but they never count toward the live daily loss cap.
@@ -260,7 +269,7 @@ export async function trade(
     if (paperBankroll != null && Number.isFinite(paperBankroll)) {
       const k = bankSize(pick.evCents, askCents, paperBankroll);
       if (!k.ok) {
-        await log({ ...base, mode: "paper", status: "skipped", msg: k.msg });
+        await log({ ...base, ...attempt, mode: "paper", status: "skipped", msg: k.msg });
         return `${pair}: ${k.msg}`;
       }
       count = k.contracts;
@@ -282,7 +291,7 @@ export async function trade(
   // Live path only: keys are guaranteed present by the guard at the top of
   // trade(). This second check is for the type-checker, not for logic.
   if (!keyId || !pem) {
-    await log({ ...base, status: "skipped", msg: "Kalshi key missing" });
+    await log({ ...base, ...attempt, status: "skipped", msg: "Kalshi key missing" });
     return `${pair}: Kalshi key missing`;
   }
   // Chase: limit up to CHASE_CENTS above the ask (capped at MAX_ENTRY_CENTS).
@@ -321,7 +330,7 @@ export async function trade(
     });
     return `${pair}: FILLED ${res.filled} @ ${res.priceCents}¢`;
   }
-  await log({ ...base, status: "skipped", msg: res.error, requested_contracts: count });
+  await log({ ...base, ...attempt, status: "skipped", msg: res.error, requested_contracts: count });
   return `${pair}: ${res.error}`;
 }
 
