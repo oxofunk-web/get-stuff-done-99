@@ -110,7 +110,7 @@ interface StrikePick {
 
 /**
  * Dynamic strike selection: scan every contract for the active candle and
- * take the strike with the best expected value inside the 55–75¢ band.
+ * take the strike with the best expected value inside the 50–85¢ band.
  *
  * The pick always expresses the locked direction (the take-profit pass
  * reconstructs the side from strike_type + dir, so a counter-directional
@@ -239,7 +239,7 @@ export async function trade(
     return `${pair}: no model`;
   }
   // Dynamic strike selection: scan every contract for this candle and take
-  // the best expected value in the 55–75¢ band (replaces the old "nearest
+  // the best expected value in the 50–85¢ band (replaces the old "nearest
   // strike or skip" behavior).
   const getPick = async () => {
     const { markets, error } = await fetchCandleMarketsWithReason(`KX${pair}15M`);
