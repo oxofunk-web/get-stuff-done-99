@@ -153,12 +153,12 @@ describe("paper trading", () => {
   });
 });
 
-describe("paper band 50–80¢", () => {
-  it("paper band accepts a 78¢ strike the live band rejects", async () => {
-    const { PAPER_BAND } = await import("./autotrade.server");
+describe("live band 50–85¢", () => {
+  it("accepts an 82¢ strike and rejects a 90¢ strike", async () => {
     const strong = { driftedPrice: 130, priceHorizon: 10 };
-    const list = markets([{ strike: 100, yesAsk: 78 }]).markets as never[];
-    expect(selectStrike(list, strong, "UP").pick).toBeNull();
-    expect(selectStrike(list, strong, "UP", PAPER_BAND).pick?.askCents).toBe(78);
+    const list = markets([{ strike: 100, yesAsk: 82 }]).markets as never[];
+    expect(selectStrike(list, strong, "UP").pick?.askCents).toBe(82);
+    const high = markets([{ strike: 100, yesAsk: 90 }]).markets as never[];
+    expect(selectStrike(high, strong, "UP").pick).toBeNull();
   });
 });
