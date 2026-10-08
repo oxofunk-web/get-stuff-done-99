@@ -1,5 +1,5 @@
 import { directionCall, probCloseAbove, type ProbModel } from "./direction";
-import { CALL_WINDOW_SECS, FINAL_SECS, emptyLock, stepLock, type LockState } from "./lock";
+import { CALL_WINDOW_SECS, FINAL_SECS, LOCK_FORM_END_SECS, emptyLock, stepLock, type LockState } from "./lock";
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { dayRisk } from "./loss-cap.server";
@@ -61,6 +61,24 @@ const SAMPLES = 24; // ~48s per run
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+/** The first lock formed in minutes 0–5 of this candle — it owns the coin for the candle. */
+async function firstLock(
+  sb: Awaited<ReturnType<typeof db>>,
+  pair: string,
+  candleStart: number,
+): Promise<{ id: string; dir: "UP" | "DOWN" } | null> {
+  const { data } = await sb
+    .from("direction_calls")
+    .select("id,dir")
+    .eq("pair", pair)
+    .eq("candle_start", candleStart)
+    .lte("lock_sec", LOCK_FORM_END_SECS)
+    .order("locked_at", { ascending: true })
+    .limit(1);
+  const r = data?.[0];
+  return r && (r.dir === "UP" || r.dir === "DOWN") ? { id: r.id, dir: r.dir } : null;
 }
 
 /** Which provider served each read this run, per pair (for the dashboard status). */
@@ -231,15 +249,8 @@ export async function trade(
   const confirmLock = async (): Promise<string | null> => {
     if (!lock) return null;
     if (!lock.lockId) return "no live lock";
-    const { data: latest } = await sb
-      .from("direction_calls")
-      .select("id,dir")
-      .eq("pair", pair)
-      .eq("candle_start", candleStart)
-      .order("locked_at", { ascending: false })
-      .limit(1);
-    const row = latest?.[0];
-    if (!row || row.dir !== dir) return "no live lock";
+    const row = await firstLock(sb, pair, candleStart);
+    if (!row || row.id !== lock.lockId || row.dir !== dir) return "no live lock";
     const now = await lock.reconfirm();
     if (!now || now.dir !== dir || now.prob < 70) {
       return `lock decayed before fill${now ? ` (now ${now.dir} ${now.prob.toFixed(0)}%)` : " (no fresh price)"}`;
@@ -389,9 +400,9 @@ export async function runAutoTrade() {
   const now0 = Date.now();
   const candleStart = Math.floor(now0 / CANDLE_MS) * CANDLE_MS;
   const elapsed = (now0 - candleStart) / 1000;
-  // Start sampling ~50s before the call window so the 20s hold can complete at 5:00.
-  if (elapsed < CALL_WINDOW_SECS - 60 || elapsed >= FINAL_SECS) {
-    await note("waiting for the trade window — entries only in minutes 5–14 of each 15-min candle");
+  // Minutes 0–5: locks form. Minutes 5–14: trade the locked call. Last minute: nothing.
+  if (elapsed >= FINAL_SECS) {
+    await note("waiting for the next candle — locks form in minutes 0–5, entries in minutes 5–14");
     return { ok: true, msg: "outside call window" };
   }
 
@@ -430,27 +441,35 @@ export async function runAutoTrade() {
 
   const results: string[] = [];
   const noFeed = PAIRS.filter((p) => !opens[p]);
+  // The first lock recorded for this candle (server or dashboard) owns the coin.
+  const lockRows: Record<string, { id: string; dir: "UP" | "DOWN" }> = {};
+  for (const p of PAIRS) {
+    const r = await firstLock(sb, p, candleStart);
+    if (r) lockRows[p] = r;
+  }
   for (let i = 0; i < SAMPLES; i++) {
     const now = Date.now();
     if (now >= candleStart + FINAL_SECS * 1000) break;
+    const el = (now - candleStart) / 1000;
+    // Nothing left to do: every coin traded this run, or past 5:00 with no lock.
+    if (el > LOCK_FORM_END_SECS && PAIRS.every((p) => done.has(p) || !lockRows[p])) break;
     await Promise.all(
       PAIRS.map(async (p) => {
         if (done.has(p) || !opens[p]) return;
+        if (!lockRows[p] && el > LOCK_FORM_END_SECS) return; // sits out this candle
         const price = await spot(p);
         if (!price) return;
         const st = spots[p]!;
         const ticks = [...st.ticks, { ts: now, price }].slice(-200);
         spots[p] = { ...st, price, ticks } as SpotState;
         const call = directionCall(p, spots[p], opens[p]!, now);
-        const prev = locks[p]!;
-        const next = stepLock(prev, call, candleStart, now);
-        locks[p] = next;
-        if (next.dir && next.lockedAt && next.lockedAt !== prev.lockedAt && !prev.dir) {
-          done.add(p);
-          // Every lock is its own row; never overwrite an earlier lock.
-          const { data: lockRow, error: lockErr } = await sb
-            .from("direction_calls")
-            .insert({
+        if (!lockRows[p]) {
+          const prev = locks[p]!;
+          const next = stepLock(prev, call, candleStart, now);
+          locks[p] = next;
+          if (next.dir && next.lockedAt && !prev.dir) {
+            // Every lock is its own row; never overwrite an earlier lock.
+            const { error: lockErr } = await sb.from("direction_calls").insert({
               pair: p,
               candle_start: candleStart,
               lock_sec: Math.round(next.lockSec ?? 0),
@@ -459,27 +478,35 @@ export async function runAutoTrade() {
               open_price: next.open,
               lock_price: next.lockPrice ?? price,
               locked_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-          if (lockErr) console.error(`[autotrade] direction_calls insert failed for ${p}: ${lockErr.message}`);
-          // Re-read the coin's live probability right before the order.
-          const reconfirm = async () => {
-            const px = await spot(p);
-            if (!px) return null;
-            const st2 = spots[p]!;
-            const t2 = Date.now();
-            const s2 = { ...st2, price: px, ticks: [...st2.ticks, { ts: t2, price: px }].slice(-200) } as SpotState;
-            const c2 = directionCall(p, s2, opens[p]!, t2);
-            return { dir: c2.dir, prob: c2.prob };
-          };
-          results.push(
-            await trade(p, next.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined, {
-              lockId: lockRow?.id ?? null,
-              reconfirm,
-            }),
-          );
+            });
+            if (lockErr) console.error(`[autotrade] direction_calls insert failed for ${p}: ${lockErr.message}`);
+            const r = await firstLock(sb, p, candleStart);
+            if (r) {
+              lockRows[p] = r;
+              results.push(`${p}: LOCKED ${r.dir}`);
+            }
+          }
+          return;
         }
+        // Entry window: trade only the locked call, once per run.
+        if (el < CALL_WINDOW_SECS) return;
+        done.add(p);
+        const lr = lockRows[p]!;
+        const reconfirm = async () => {
+          const px = await spot(p);
+          if (!px) return null;
+          const st2 = spots[p]!;
+          const t2 = Date.now();
+          const s2 = { ...st2, price: px, ticks: [...st2.ticks, { ts: t2, price: px }].slice(-200) } as SpotState;
+          const c2 = directionCall(p, s2, opens[p]!, t2);
+          return { dir: c2.dir, prob: c2.prob };
+        };
+        results.push(
+          await trade(p, lr.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined, {
+            lockId: lr.id,
+            reconfirm,
+          }),
+        );
       }),
     );
     await new Promise((r) => setTimeout(r, SAMPLE_MS));
