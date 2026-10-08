@@ -1,5 +1,5 @@
 import { directionCall, probCloseAbove, type ProbModel } from "./direction";
-import { CALL_WINDOW_SECS, FINAL_SECS, emptyLock, stepLock, type LockState } from "./lock";
+import { CALL_WINDOW_SECS, FINAL_SECS, LOCK_FORM_END_SECS, emptyLock, stepLock, type LockState } from "./lock";
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { dayRisk } from "./loss-cap.server";
