@@ -87,10 +87,10 @@ describe("dynamic strike selection", () => {
     expect(note).toContain("below the 10¢ minimum");
   });
 
-  it("skips when no strike is priced in the 55–75¢ band", () => {
+  it("skips when no strike is priced in the 50–85¢ band", () => {
     const { pick, note } = selectStrike(markets([{ strike: 100, yesAsk: 95 }]).markets as never[], model(), "UP");
     expect(pick).toBeNull();
-    expect(note).toContain("55–75¢");
+    expect(note).toContain("50–85¢");
   });
 
   it("DOWN lock buys NO on a floor — the side the take-profit pass reconstructs", () => {
