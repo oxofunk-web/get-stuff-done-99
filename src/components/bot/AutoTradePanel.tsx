@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { getAutoTrade, setAutoTrade } from "@/lib/autotrade.functions";
+import { getAutoTrade, resetPaperBank, setAutoTrade } from "@/lib/autotrade.functions";
 
 type State = Awaited<ReturnType<typeof getAutoTrade>>;
 
