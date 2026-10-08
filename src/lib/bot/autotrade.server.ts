@@ -210,7 +210,7 @@ export async function trade(
   if (existing?.length) return `${pair}: already traded this candle`;
 
   const log = async (row: Record<string, unknown>) =>
-    sb.from("trade_log").insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", ...row } as never);
+    sb.from("trade_log").insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
 
   const keyId = process.env["KALSHI_API_KEY_ID"];
   const pem = process.env["KALSHI_PRIVATE_KEY"];
@@ -440,7 +440,14 @@ export async function runAutoTrade() {
 /** Take-profit: sell a locked-call position once its bid reaches this. */
 export const TAKE_PROFIT_CENTS = 93;
 
-/** Watches open locked-call positions ~45s and sells any whose bid is >= 93¢. */
+/** A/B test: per-coin take-profit triggers (cents). Edit here when the test ends. */
+export const TP_TRIGGER_BY_PAIR: Record<string, number> = {
+  BTC: 93, XRP: 93, // control
+  ETH: 95, SOL: 95, DOGE: 95, // treatment
+};
+export const tpTriggerFor = (pair: string) => TP_TRIGGER_BY_PAIR[pair] ?? TAKE_PROFIT_CENTS;
+
+/** Watches open locked-call positions ~45s and sells any whose bid is >= its coin's trigger. */
 export async function runTakeProfit() {
   const { fetchMarket, placeLiveSell } = await import("../kalshi.server");
   const sb = await db();
@@ -465,11 +472,12 @@ export async function runTakeProfit() {
       const m = normalizeMarket(raw);
       const side: "yes" | "no" = (t.strike_type === "floor") === (t.dir === "UP") ? "yes" : "no";
       const bid = Math.round((side === "yes" ? m.yesBid : m.noBid) * 100);
-      if (bid < TAKE_PROFIT_CENTS) continue;
+      const trigger = tpTriggerFor(t.pair);
+      if (bid < trigger) continue;
       let exit = { price: bid, id: `paper-exit-${t.id}`, n: t.contracts };
       if (t.mode !== "paper") {
         if (!keyId || !pem) continue;
-        const r = await placeLiveSell({ keyId, pem }, { ticker: t.ticker, side, priceCents: TAKE_PROFIT_CENTS, count: t.contracts });
+        const r = await placeLiveSell({ keyId, pem }, { ticker: t.ticker, side, priceCents: trigger, count: t.contracts });
         if (!r.ok) { out.push(`${t.pair}: ${r.error}`); continue; }
         exit = { price: r.priceCents, id: r.orderId, n: r.filled };
       }

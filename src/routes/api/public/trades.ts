@@ -14,7 +14,7 @@ export const Route = createFileRoute("/api/public/trades")({
         const res = await supabaseAdmin
           .from("trade_log")
           .select(
-            "id,pair,dir,candle_id,contracts,entry_price,exit_price,exit_reason,stake,pnl,outcome,status,settled_at",
+            "id,pair,dir,candle_id,contracts,entry_price,exit_price,exit_reason,stake,pnl,outcome,status,settled_at,tp_trigger",
           )
           .eq("mode", "paper")
           .order("ts", { ascending: false })

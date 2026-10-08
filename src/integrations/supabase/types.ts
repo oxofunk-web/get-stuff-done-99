@@ -416,6 +416,7 @@ export type Database = {
           strike: number | null
           strike_type: string | null
           ticker: string | null
+          tp_trigger: number | null
           ts: string
           visible_depth: number | null
         }
@@ -451,6 +452,7 @@ export type Database = {
           strike?: number | null
           strike_type?: string | null
           ticker?: string | null
+          tp_trigger?: number | null
           ts?: string
           visible_depth?: number | null
         }
@@ -486,6 +488,7 @@ export type Database = {
           strike?: number | null
           strike_type?: string | null
           ticker?: string | null
+          tp_trigger?: number | null
           ts?: string
           visible_depth?: number | null
         }
