@@ -401,6 +401,7 @@ export type Database = {
           exit_price: number | null
           exit_reason: string | null
           id: string
+          lock_id: string | null
           mode: string
           msg: string | null
           order_id: string | null
@@ -437,6 +438,7 @@ export type Database = {
           exit_price?: number | null
           exit_reason?: string | null
           id?: string
+          lock_id?: string | null
           mode: string
           msg?: string | null
           order_id?: string | null
@@ -473,6 +475,7 @@ export type Database = {
           exit_price?: number | null
           exit_reason?: string | null
           id?: string
+          lock_id?: string | null
           mode?: string
           msg?: string | null
           order_id?: string | null
