@@ -269,7 +269,7 @@ export async function trade(
     if (paperBankroll != null && Number.isFinite(paperBankroll)) {
       const k = bankSize(pick.evCents, askCents, paperBankroll);
       if (!k.ok) {
-        await log({ ...base, mode: "paper", status: "skipped", msg: k.msg });
+        await log({ ...base, ...attempt, mode: "paper", status: "skipped", msg: k.msg });
         return `${pair}: ${k.msg}`;
       }
       count = k.contracts;
@@ -291,7 +291,7 @@ export async function trade(
   // Live path only: keys are guaranteed present by the guard at the top of
   // trade(). This second check is for the type-checker, not for logic.
   if (!keyId || !pem) {
-    await log({ ...base, status: "skipped", msg: "Kalshi key missing" });
+    await log({ ...base, ...attempt, status: "skipped", msg: "Kalshi key missing" });
     return `${pair}: Kalshi key missing`;
   }
   // Chase: limit up to CHASE_CENTS above the ask (capped at MAX_ENTRY_CENTS).
@@ -330,7 +330,7 @@ export async function trade(
     });
     return `${pair}: FILLED ${res.filled} @ ${res.priceCents}¢`;
   }
-  await log({ ...base, status: "skipped", msg: res.error, requested_contracts: count });
+  await log({ ...base, ...attempt, status: "skipped", msg: res.error, requested_contracts: count });
   return `${pair}: ${res.error}`;
 }
 
