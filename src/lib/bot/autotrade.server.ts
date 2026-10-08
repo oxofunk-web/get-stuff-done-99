@@ -415,8 +415,10 @@ export async function runAutoTrade() {
         locks[p] = next;
         if (next.dir && next.lockedAt && next.lockedAt !== prev.lockedAt && !prev.dir) {
           done.add(p);
-          await sb.from("direction_calls").upsert(
-            {
+          // Every lock is its own row; never overwrite an earlier lock.
+          const { data: lockRow, error: lockErr } = await sb
+            .from("direction_calls")
+            .insert({
               pair: p,
               candle_start: candleStart,
               lock_sec: Math.round(next.lockSec ?? 0),
@@ -425,10 +427,26 @@ export async function runAutoTrade() {
               open_price: next.open,
               lock_price: next.lockPrice ?? price,
               locked_at: new Date().toISOString(),
-            },
-            { onConflict: "pair,candle_start", ignoreDuplicates: true },
+            })
+            .select("id")
+            .single();
+          if (lockErr) console.error(`[autotrade] direction_calls insert failed for ${p}: ${lockErr.message}`);
+          // Re-read the coin's live probability right before the order.
+          const reconfirm = async () => {
+            const px = await spot(p);
+            if (!px) return null;
+            const st2 = spots[p]!;
+            const t2 = Date.now();
+            const s2 = { ...st2, price: px, ticks: [...st2.ticks, { ts: t2, price: px }].slice(-200) } as SpotState;
+            const c2 = directionCall(p, s2, opens[p]!, t2);
+            return { dir: c2.dir, prob: c2.prob };
+          };
+          results.push(
+            await trade(p, next.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined, {
+              lockId: lockRow?.id ?? null,
+              reconfirm,
+            }),
           );
-          results.push(await trade(p, next.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined));
         }
       }),
     );
