@@ -284,6 +284,13 @@ export async function trade(
   const count = flatCount;
   /** Attempted price/size, stamped on every skip so missed trades are measurable. */
   const attempt = { entry_price: askCents / 100, requested_contracts: count };
+  {
+    const why = await confirmLock();
+    if (why) {
+      await log({ ...base, ...attempt, ...(paper ? { mode: "paper" } : {}), status: "skipped", msg: why });
+      return `${pair}: ${why}`;
+    }
+  }
   // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
   // No keys needed. The settle pass still grades these rows, so paper P&L is
   // realistic — but they never count toward the live daily loss cap.
