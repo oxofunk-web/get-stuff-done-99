@@ -36,6 +36,13 @@
       "when": 1791420003204,
       "tag": "0004_add_tp_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791486208280,
+      "tag": "0005_add_paper_bank_reset_v2",
+      "breakpoints": true
     }
   ]
 }
