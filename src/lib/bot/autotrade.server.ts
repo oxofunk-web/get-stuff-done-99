@@ -212,8 +212,15 @@ export async function trade(
     .limit(1);
   if (existing?.length) return `${pair}: already traded this candle`;
 
-  const log = async (row: Record<string, unknown>) =>
-    sb.from("trade_log").insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
+  // Every decision — fill or skip — must persist. If the insert itself fails,
+  // surface that in the run message instead of vanishing silently.
+  const log = async (row: Record<string, unknown>) => {
+    const { error } = await sb
+      .from("trade_log")
+      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
+    if (error) console.error(`[autotrade] trade_log insert failed for ${pair}: ${error.message}`);
+    return error;
+  };
 
   const keyId = process.env["KALSHI_API_KEY_ID"];
   const pem = process.env["KALSHI_PRIVATE_KEY"];
