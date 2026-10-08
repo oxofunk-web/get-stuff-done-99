@@ -198,6 +198,11 @@ export async function trade(
   model: ProbModel | null,
   /** Paper bankroll for Kelly sizing; when omitted, paper falls back to flat sizing. */
   paperBankroll?: number,
+  /** Lock provenance + order-time re-confirmation (the server loop always passes this). */
+  lock?: {
+    lockId: string | null;
+    reconfirm: () => Promise<{ dir: "UP" | "DOWN"; prob: number } | null>;
+  },
 ) {
   const sb = await db();
   const { data: existing } = await sb
@@ -217,9 +222,29 @@ export async function trade(
   const log = async (row: Record<string, unknown>) => {
     const { error } = await sb
       .from("trade_log")
-      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), ...row } as never);
+      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), lock_id: lock?.lockId ?? null, ...row } as never);
     if (error) console.error(`[autotrade] trade_log insert failed for ${pair}: ${error.message}`);
     return error;
+  };
+
+  /** Order-time gate: a live lock row must exist for this coin/candle/direction and the signal must still hold ≥70%. */
+  const confirmLock = async (): Promise<string | null> => {
+    if (!lock) return null;
+    if (!lock.lockId) return "no live lock";
+    const { data: latest } = await sb
+      .from("direction_calls")
+      .select("id,dir")
+      .eq("pair", pair)
+      .eq("candle_start", candleStart)
+      .order("locked_at", { ascending: false })
+      .limit(1);
+    const row = latest?.[0];
+    if (!row || row.dir !== dir) return "no live lock";
+    const now = await lock.reconfirm();
+    if (!now || now.dir !== dir || now.prob < 70) {
+      return `lock decayed before fill${now ? ` (now ${now.dir} ${now.prob.toFixed(0)}%)` : " (no fresh price)"}`;
+    }
+    return null;
   };
 
   const keyId = process.env["KALSHI_API_KEY_ID"];
