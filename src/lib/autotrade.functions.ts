@@ -56,3 +56,10 @@ export const setAutoTrade = createServerFn({ method: "POST" })
     }
     return next;
   });
+
+/** Paper only: start the paper bank fresh from now. Old trades stay in history; nothing is deleted. */
+export const resetPaperBank = createServerFn({ method: "POST" }).handler(async () => {
+  const sb = await db();
+  await updateBotSettings(sb, { paper_bank_reset_at: new Date().toISOString() });
+  return state();
+});
