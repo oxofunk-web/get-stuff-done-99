@@ -206,6 +206,9 @@ export async function trade(
     .eq("pair", pair)
     .eq("candle_id", candleStart)
     .eq("source", "lock")
+    // Only a real fill blocks the candle. A skip row (no strike, key error,
+    // no fill) must not lock the pair out for the remaining minutes.
+    .eq("status", "placed")
     .limit(1);
   if (existing?.length) return `${pair}: already traded this candle`;
 
