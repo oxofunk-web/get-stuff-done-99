@@ -248,7 +248,7 @@ export async function trade(
   };
   const first = await getPick();
   if (!first.pick) {
-    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "55–75"}¢ — ${first.note}` });
+    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "55–75"}¢ — ${first.note}`, requested_contracts: 0 });
     return `${pair}: no edge (${first.note})`;
   }
   let pick = first.pick;
@@ -257,6 +257,8 @@ export async function trade(
   const edgeNote = `edge +${pick.evCents.toFixed(1)}¢`;
   const flatCount = Math.max(1, Math.floor(size / (askCents / 100)));
   const count = flatCount;
+  /** Attempted price/size, stamped on every skip so missed trades are measurable. */
+  const attempt = { entry_price: askCents / 100, requested_contracts: count };
   // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
   // No keys needed. The settle pass still grades these rows, so paper P&L is
   // realistic — but they never count toward the live daily loss cap.
