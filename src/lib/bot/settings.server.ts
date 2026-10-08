@@ -15,6 +15,7 @@ export interface BotSettings {
   daily_loss_cap?: number;
   auto_trade_last_msg?: string | null;
   paper_bankroll?: number;
+  paper_bank_reset_at?: string | null;
 }
 
 const ALL_COLS =

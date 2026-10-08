@@ -78,6 +78,7 @@ export type Database = {
           min_skew: number
           min_yes_mid: number
           mode: string
+          paper_bank_reset_at: string | null
           paper_bankroll: number
           run_lease_id: string | null
           run_lease_until: string | null
@@ -115,6 +116,7 @@ export type Database = {
           min_skew?: number
           min_yes_mid?: number
           mode?: string
+          paper_bank_reset_at?: string | null
           paper_bankroll?: number
           run_lease_id?: string | null
           run_lease_until?: string | null
@@ -152,6 +154,7 @@ export type Database = {
           min_skew?: number
           min_yes_mid?: number
           mode?: string
+          paper_bank_reset_at?: string | null
           paper_bankroll?: number
           run_lease_id?: string | null
           run_lease_until?: string | null
@@ -505,6 +508,14 @@ export type Database = {
       }
       apply_paper_bankroll: {
         Args: { p_fee_per_contract?: number }
+        Returns: {
+          applied: number
+          bankroll: number
+          delta: number
+        }[]
+      }
+      apply_paper_bankroll_v2: {
+        Args: { p_fee_per_contract: number }
         Returns: {
           applied: number
           bankroll: number

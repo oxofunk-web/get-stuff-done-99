@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { getAutoTrade, setAutoTrade } from "@/lib/autotrade.functions";
+import { getAutoTrade, resetPaperBank, setAutoTrade } from "@/lib/autotrade.functions";
 
 type State = Awaited<ReturnType<typeof getAutoTrade>>;
 
@@ -82,6 +82,22 @@ export function AutoTradePanel() {
         <span className="normal-case tracking-normal">{s?.paper ? "live size (paper uses bank sizing)" : "per locked call"}</span>
         <span className="ml-auto">
           PAPER BANK <b className="text-foreground">${(s?.paperBankroll ?? 100).toFixed(2)}</b>
+          <button
+            type="button"
+            disabled={busy || !s}
+            title="Start the paper bank fresh from now"
+            onClick={() => {
+              if (!window.confirm("Reset the paper bank P&L to start fresh from now? Old trades stay in history.")) return;
+              setBusy(true);
+              resetPaperBank()
+                .then(setS)
+                .catch(() => window.alert("Couldn't reset the paper bank"))
+                .finally(() => setBusy(false));
+            }}
+            className="ml-2 rounded border border-wire px-1.5 py-px text-[8px] font-bold tracking-widest text-dim hover:text-foreground"
+          >
+            RESET
+          </button>
         </span>
       </div>
       <div className="divide-y divide-wire border-t border-wire">
