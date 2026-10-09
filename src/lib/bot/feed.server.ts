@@ -57,7 +57,7 @@ export async function spotWithProvider(pair: string) {
       return pos(row?.c?.[0]);
     }],
     ["binanceus", async () => pos((await getJson<{ price?: string }>(`https://api.binance.us/api/v3/ticker/price?symbol=${BU[pair]}`))?.price)],
-  ], pair);
+  ]);
 }
 
 export async function resilientSpot(pair: string): Promise<number | null> {
@@ -92,7 +92,7 @@ async function candle15(pair: string, start: number) {
       const o = pos(r?.[1]), c = pos(r?.[4]);
       return o && c ? { o, c } : null;
     }],
-  ], pair);
+  ]);
 }
 
 /** Open of the 15-minute candle starting at `start` (ms), with provider. */
@@ -116,7 +116,7 @@ export async function recentTradesWithProvider(pair: string) {
       const rows = await getJson<{ time: number; price: string }[]>(`https://api.binance.us/api/v3/trades?symbol=${BU[pair]}&limit=100`);
       return Array.isArray(rows) && rows.length ? rows.map((t) => ({ ts: t.time, price: Number(t.price) })) : null;
     }],
-  ], pair).then((r) =>
+  ]).then((r) =>
     r ? { provider: r.provider, value: r.value.filter((t) => Number.isFinite(t.price) && t.price > 0).sort((a, b) => a.ts - b.ts) } : null,
   );
 }
