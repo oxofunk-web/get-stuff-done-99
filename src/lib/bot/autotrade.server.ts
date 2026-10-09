@@ -1,5 +1,5 @@
 import { directionCall, probCloseAbove, type ProbModel } from "./direction";
-import { CALL_WINDOW_SECS, FINAL_SECS, LOCK_FORM_END_SECS, emptyLock, stepLock, type LockState } from "./lock";
+import { CALL_WINDOW_SECS, FINAL_SECS, LOCK_FORM_END_SECS, LOCK_FORM_START_SECS, emptyLock, stepLock, type LockState } from "./lock";
 import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { dayRisk } from "./loss-cap.server";
@@ -300,10 +300,14 @@ export async function runAutoTrade() {
   const now0 = Date.now();
   const candleStart = Math.floor(now0 / CANDLE_MS) * CANDLE_MS;
   const elapsed = (now0 - candleStart) / 1000;
-  // Minutes 0–5: locks form. Minutes 5–14: trade the locked call. Last minute: nothing.
+  // Last 7 minutes only: locks form and alerts fire from 8:00 to the candle close.
   if (elapsed >= FINAL_SECS) {
-    await note("waiting for the next candle — locks form in minutes 0–5, entries in minutes 5–14");
+    await note("waiting for the next candle — locks and alerts only in the last 7 minutes");
     return { ok: true, msg: "outside call window" };
+  }
+  if (elapsed < LOCK_FORM_START_SECS) {
+    await note("watching — locks and alerts only in the last 7 minutes (from 8:00)");
+    return { ok: true, msg: "before lock window" };
   }
 
   const PAIRS: PairId[] = BASE_PAIRS;
