@@ -54,7 +54,7 @@ async function dogeReady(): Promise<{ ok: boolean; why: string }> {
 }
 /** Minimum expected value (model prob minus ask) before a strike is tradable. */
 const MIN_EDGE_CENTS = 5;
-const CHASE_CENTS = 3;
+const CHASE_CENTS = 2; // never chase more than 2¢ past the scored price
 const SAMPLE_MS = 2000;
 const SAMPLES = 24; // ~48s per run
 
