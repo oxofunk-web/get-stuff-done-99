@@ -43,7 +43,7 @@ export function Dashboard() {
         </div>
         <ExecutionBanner />
         <div className="border-t border-wire/70 bg-surface/70">
-          <div className="mx-auto grid max-w-[1180px] grid-cols-5">
+          <div className="mx-auto grid max-w-[1180px] grid-cols-3 sm:grid-cols-9">
             {PAIRS.map((p) => {
               const c = d.calls.find((x) => x.pair === p.id);
               const isUp = c?.dir === "UP";
@@ -52,7 +52,7 @@ export function Dashboard() {
                   key={p.id}
                   type="button"
                   onClick={() => setPair(p.id)}
-                  className={`border-r border-wire px-2 py-2.5 text-left last:border-r-0 ${pair === p.id ? "bg-surface-2" : ""}`}
+                  className={`border-b border-r border-wire px-2 py-2.5 text-left last:border-r-0 ${pair === p.id ? "bg-surface-2" : ""}`}
                 >
                   <div className={`font-sans text-[11px] font-extrabold ${p.colorClass}`}>{p.id}</div>
                   <div className="text-[11px] tabular-nums text-hi">{fmtPrice(c?.now ?? 0)}</div>

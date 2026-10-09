@@ -1,6 +1,6 @@
 import { directionCall, probCloseAbove, type ProbModel } from "./direction";
 import { CALL_WINDOW_SECS, FINAL_SECS, LOCK_FORM_END_SECS, emptyLock, stepLock, type LockState } from "./lock";
-import { DAILY_LOSS_CAP_DEFAULT, type PairId } from "./constants";
+import { DAILY_LOSS_CAP_DEFAULT, FX_PAIRS, isFx, type PairId } from "./constants";
 import type { SpotState } from "./types";
 import { dayRisk } from "./loss-cap.server";
 import { getBotSettings } from "./settings.server";
@@ -12,7 +12,9 @@ import {
 } from "../kalshi.server";
 
 const CANDLE_MS = 900_000;
-const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP"];
+const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP", ...FX_PAIRS];
+/** Forex alerts size at a flat $10 per trade. */
+const FX_SIZE = 10;
 /** DOGE is paper-only and joins only after its feeds verify (see dogeReady). */
 const EXTRA_PAIRS: PairId[] = ["DOGE"];
 /**
@@ -415,7 +417,7 @@ export async function runAutoTrade() {
           return { dir: c2.dir, prob: c2.prob };
         };
         results.push(
-          await trade(p, lr.dir, candleStart, size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined, {
+          await trade(p, lr.dir, candleStart, isFx(p) ? FX_SIZE : size, price, paper, call.model, paper ? Number(s.paper_bankroll ?? 100) : undefined, {
             lockId: lr.id,
             reconfirm,
           }),

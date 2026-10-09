@@ -35,6 +35,7 @@ export function mmss(s: number) {
 
 export function fmtPrice(n: number | undefined | null) {
   if (!n) return "—";
+  if (n > 20 && n < 500 && !Number.isInteger(n * 100)) return n.toFixed(3);
   if (n < 1) return `$${n.toFixed(5)}`;
   if (n < 10) return `$${n.toFixed(4)}`;
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
