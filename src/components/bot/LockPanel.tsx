@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { mmss } from "@/lib/bot/candle";
 import type { DirectionCall } from "@/lib/bot/direction";
-import { CALL_WINDOW_SECS, LOCK_PROB, phaseOf } from "@/lib/bot/lock";
+import { CALL_WINDOW_SECS, LOCK_FORM_END_SECS, LOCK_PROB, phaseOf } from "@/lib/bot/lock";
 import { useLockedCalls } from "@/hooks/useLockedCalls";
 
 const rate = (t?: { wins: number; losses: number }) => {
@@ -41,12 +41,12 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
           let label: string;
           if (l.dir)
             label = `${phase === "FINAL" ? "FINAL" : "CALL"}: ${l.dir} ${l.prob.toFixed(0)}% · locked ${mmss(l.lockSec ?? 0)}`;
-          else if (phase !== "WATCHING") label = "no lock by 8:00 — sitting out this candle";
+          else if (c.elapsed > LOCK_FORM_END_SECS) label = "no lock by 8:00 — sitting out this candle";
           else if (l.candidateDir) label = `confirming ${l.candidateDir}…`;
           else label = c.ready ? `WATCHING · leaning ${c.dir} ${c.prob.toFixed(0)}%` : "WATCHING";
           return (
             <div key={c.pair} className="flex items-center gap-2 px-3 py-2 text-[10px]">
-              <b className="w-9 font-sans text-foreground">{c.pair}</b>
+              <b className="w-12 font-sans text-foreground">{c.pair}</b>
               <span className="font-bold tracking-widest" style={{ color }}>
                 {label}
               </span>
