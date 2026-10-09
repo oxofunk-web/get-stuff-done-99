@@ -50,6 +50,13 @@
       "when": 1791495021540,
       "tag": "0006_direction_calls_multi_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791513154560,
+      "tag": "0007_council",
+      "breakpoints": true
     }
   ]
 }
