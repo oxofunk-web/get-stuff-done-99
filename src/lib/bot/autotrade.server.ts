@@ -417,6 +417,27 @@ export async function runAutoTrade() {
         .from("bot_settings")
         .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}`, last_tick_at: new Date().toISOString() } as never)
         .eq("id", true);
+      // Ledger: a locked coin in the entry window that the cap blocks gets a skip row.
+      if (elapsed >= CALL_WINDOW_SECS) {
+        for (const p of BASE_PAIRS) {
+          const lr = await firstLock(sb, p, candleStart);
+          if (!lr) continue;
+          const { data: filled } = await sb
+            .from("trade_log")
+            .select("id")
+            .eq("pair", p)
+            .eq("candle_id", candleStart)
+            .eq("source", "lock")
+            .eq("status", "placed")
+            .limit(1);
+          if (filled?.length) continue;
+          const { error } = await sb.from("trade_log").insert({
+            candle_id: candleStart, pair: p, dir: lr.dir, mode: paper ? "paper" : "live", source: "lock",
+            tp_trigger: tpTriggerFor(p), lock_id: lr.id, status: "skipped", msg, requested_contracts: 0,
+          } as never);
+          if (error) console.error(`[autotrade] trade_log insert failed for ${p}: ${error.message}`);
+        }
+      }
       return { ok: true, msg };
     }
   }

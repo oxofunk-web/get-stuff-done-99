@@ -10,15 +10,16 @@ export const Route = createFileRoute("/api/public/trades")({
         const limit = Number.isFinite(rawLimit) && rawLimit > 0
           ? Math.min(Math.floor(rawLimit), 500)
           : 200;
+        // ?mode=paper (default) | live | all
+        const mode = url.searchParams.get("mode") ?? "paper";
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const res = await supabaseAdmin
+        let q = supabaseAdmin
           .from("trade_log")
           .select(
-            "id,pair,dir,candle_id,contracts,entry_price,exit_price,exit_reason,stake,pnl,outcome,status,settled_at,tp_trigger",
-          )
-          .eq("mode", "paper")
-          .order("ts", { ascending: false })
-          .limit(limit);
+            "id,ts,mode,pair,dir,candle_id,contracts,entry_price,exit_price,exit_reason,stake,pnl,outcome,status,msg,settled_at,tp_trigger,lock_id",
+          );
+        if (mode === "live" || mode === "paper") q = q.eq("mode", mode);
+        const res = await q.order("ts", { ascending: false }).limit(limit);
         if (res.error) return Response.json({ error: res.error.message }, { status: 500 });
         return Response.json({ trades: res.data ?? [] });
       },
