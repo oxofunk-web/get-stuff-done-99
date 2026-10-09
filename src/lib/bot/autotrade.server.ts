@@ -373,7 +373,18 @@ export async function trade(
         res = { ok: false as const, error: `Edge gone at ${freshAsk}¢ — ${evAtWorse.toFixed(1)}¢ left vs the ${MIN_EDGE_CENTS}¢ minimum. Skipped.` };
       } else {
         pick = { ...pick, market: fresh, askCents: freshAsk, evCents: evAtWorse };
-        res = await send(pick, freshAsk);
+        res = await placeLiveOrder(
+          { keyId, pem },
+          {
+            ticker: pick.market.ticker,
+            side: pick.side,
+            priceCents: freshAsk,
+            // Hard ceiling: never more than 2¢ above the original target.
+            maxPriceCents: Math.min(MAX_ENTRY_CENTS, askCents + CHASE_CENTS),
+            count,
+            quote: pick.market,
+          },
+        );
       }
     }
   }
