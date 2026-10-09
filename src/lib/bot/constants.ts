@@ -150,11 +150,7 @@ export const GATE_PRESETS: Record<"strict" | "balanced" | "aggressive", GatePres
 
 export type GatePresetName = keyof typeof GATE_PRESETS;
 
-export type PairId = "BTC" | "ETH" | "SOL" | "XRP" | "EURUSD" | "GBPUSD" | "USDJPY" | "AUDUSD";
-
-/** Forex pairs: priced from Kraken spot FX, traded on Kalshi KX{PAIR}15M. */
-export const FX_PAIRS: PairId[] = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"];
-export const isFx = (p: string) => (FX_PAIRS as string[]).includes(p);
+export type PairId = "BTC" | "ETH" | "SOL" | "XRP";
 
 export interface Pair {
   id: PairId;
@@ -197,38 +193,6 @@ export const PAIRS: Pair[] = [
     wsKey: "xrpusdt",
     colorClass: "text-xrp",
     colorVar: "var(--color-xrp)",
-  },
-  {
-    id: "EURUSD",
-    name: "EUR/USD",
-    series: "KXEURUSD15M",
-    wsKey: "eurusd",
-    colorClass: "text-fx",
-    colorVar: "var(--color-fx)",
-  },
-  {
-    id: "GBPUSD",
-    name: "GBP/USD",
-    series: "KXGBPUSD15M",
-    wsKey: "gbpusd",
-    colorClass: "text-fx",
-    colorVar: "var(--color-fx)",
-  },
-  {
-    id: "USDJPY",
-    name: "USD/JPY",
-    series: "KXUSDJPY15M",
-    wsKey: "usdjpy",
-    colorClass: "text-fx",
-    colorVar: "var(--color-fx)",
-  },
-  {
-    id: "AUDUSD",
-    name: "AUD/USD",
-    series: "KXAUDUSD15M",
-    wsKey: "audusd",
-    colorClass: "text-fx",
-    colorVar: "var(--color-fx)",
   },
 ];
 

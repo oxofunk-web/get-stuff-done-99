@@ -6,7 +6,7 @@
  */
 export type Provider = "coinbase" | "kraken" | "binanceus";
 const CB: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
-const KR: Record<string, string> = { BTC: "XBTUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD", EURUSD: "EURUSD", GBPUSD: "GBPUSD", USDJPY: "USDJPY", AUDUSD: "AUDUSD" };
+const KR: Record<string, string> = { BTC: "XBTUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD" };
 const BU: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD" };
 const HEADERS = { "User-Agent": "coin-direction-reader" };
 const ATTEMPT_MS = 5000;
@@ -31,10 +31,8 @@ const pos = (n: unknown) => {
 };
 
 /** Run providers in order; first non-null value wins. */
-async function chain<T>(steps: [Provider, () => Promise<T | null>][], pair?: string): Promise<{ value: T; provider: Provider } | null> {
+async function chain<T>(steps: [Provider, () => Promise<T | null>][]): Promise<{ value: T; provider: Provider } | null> {
   for (const [provider, fn] of steps) {
-    // Forex pairs only trade on Kraken; skip providers with no symbol for the pair.
-    if (pair && provider !== "kraken" && !CB[pair]) continue;
     try {
       const value = await fn();
       if (value != null) return { value, provider };
@@ -59,7 +57,7 @@ export async function spotWithProvider(pair: string) {
       return pos(row?.c?.[0]);
     }],
     ["binanceus", async () => pos((await getJson<{ price?: string }>(`https://api.binance.us/api/v3/ticker/price?symbol=${BU[pair]}`))?.price)],
-  ], pair);
+  ]);
 }
 
 export async function resilientSpot(pair: string): Promise<number | null> {
@@ -94,7 +92,7 @@ async function candle15(pair: string, start: number) {
       const o = pos(r?.[1]), c = pos(r?.[4]);
       return o && c ? { o, c } : null;
     }],
-  ], pair);
+  ]);
 }
 
 /** Open of the 15-minute candle starting at `start` (ms), with provider. */
@@ -118,7 +116,7 @@ export async function recentTradesWithProvider(pair: string) {
       const rows = await getJson<{ time: number; price: string }[]>(`https://api.binance.us/api/v3/trades?symbol=${BU[pair]}&limit=100`);
       return Array.isArray(rows) && rows.length ? rows.map((t) => ({ ts: t.time, price: Number(t.price) })) : null;
     }],
-  ], pair).then((r) =>
+  ]).then((r) =>
     r ? { provider: r.provider, value: r.value.filter((t) => Number.isFinite(t.price) && t.price > 0).sort((a, b) => a.ts - b.ts) } : null,
   );
 }

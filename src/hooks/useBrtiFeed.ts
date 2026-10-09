@@ -11,7 +11,7 @@ import {
   type PairId,
 } from "@/lib/bot/constants";
 import type { SpotState } from "@/lib/bot/types";
-import { getForexPrices, getSpotPrices } from "@/lib/prices.functions";
+import { getSpotPrices } from "@/lib/prices.functions";
 
 export type FeedStatus = "connecting" | "live" | "down";
 export type FeedSource = "coinbase" | "binance" | "server";
@@ -72,19 +72,6 @@ export function useBrtiFeed() {
       // Memory guard.
       while (cur.ticks.length > 120) cur.ticks.shift();
     };
-
-    // Forex has no exchange socket: poll our server's Kraken FX relay every 2s.
-    const fxRun = async () => {
-      try {
-        const res = await getForexPrices();
-        if (disposed) return;
-        for (const [sym, v] of Object.entries(res.prices)) if (v) push(sym as PairId, v.price, v.change24h);
-      } catch {
-        /* next poll */
-      }
-    };
-    void fxRun();
-    const fxPoll = setInterval(() => void fxRun(), 2000);
 
     const cleanupSocket = () => {
       if (watchdog) clearTimeout(watchdog);
@@ -265,7 +252,6 @@ export function useBrtiFeed() {
 
     return () => {
       disposed = true;
-      clearInterval(fxPoll);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", wake);
       window.removeEventListener("online", wake);

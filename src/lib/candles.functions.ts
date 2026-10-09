@@ -16,26 +16,13 @@ const CB_PRODUCT: Record<PairId, string> = {
   ETH: "ETH-USD",
   SOL: "SOL-USD",
   XRP: "XRP-USD",
-  EURUSD: "", GBPUSD: "", USDJPY: "", AUDUSD: "",
 };
-
-async function fromKraken(pair: PairId): Promise<Candle[]> {
-  const res = await fetch(`https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=15`);
-  if (!res.ok) throw new Error(`kraken ${res.status}`);
-  const j = (await res.json()) as { result?: Record<string, unknown> };
-  const rows = (Object.entries(j.result ?? {}).find(([key]) => key !== "last")?.[1] ?? []) as (string | number)[][];
-  return rows
-    .map((r) => ({ t: Number(r[0]) * 1000, o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]) }))
-    .filter((x) => x.t && x.o && x.c)
-    .sort((a, b) => a.t - b.t);
-}
 
 const BINANCE_SYMBOL: Record<PairId, string> = {
   BTC: "BTCUSDT",
   ETH: "ETHUSDT",
   SOL: "SOLUSDT",
   XRP: "XRPUSDT",
-  EURUSD: "", GBPUSD: "", USDJPY: "", AUDUSD: "",
 };
 
 async function fromCoinbase(pair: PairId): Promise<Candle[]> {
@@ -75,13 +62,6 @@ async function fromBinance(pair: PairId): Promise<Candle[]> {
 export const getCoinCandles = createServerFn({ method: "GET" }).handler(async () => {
   const entries = await Promise.all(
     PAIRS.map(async (p) => {
-      if (!CB_PRODUCT[p.id]) {
-        try {
-          return [p.id, await fromKraken(p.id)] as const;
-        } catch {
-          return null;
-        }
-      }
       try {
         return [p.id, await fromCoinbase(p.id)] as const;
       } catch {
