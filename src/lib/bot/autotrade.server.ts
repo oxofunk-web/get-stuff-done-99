@@ -352,11 +352,29 @@ export async function trade(
     );
   let res = await send(pick, askCents);
   if (!res.ok) {
-    // One immediate retry: re-scan the fresh book for the best edge.
-    const again = await getPick();
-    if (again.pick) {
-      pick = again.pick;
-      res = await send(pick, pick.askCents);
+    // One retry on the SAME strike when the resting size vanished: re-quote it,
+    // allow at most 2¢ of slippage, and recheck the edge at the worse price.
+    // Never chase past 2¢, never fill below the 5¢ edge minimum.
+    const { markets: freshMarkets } = await fetchCandleMarketsWithReason(`KX${pair}15M`);
+    const freshRaw = freshMarkets.find((m) => {
+      const n = normalizeMarket(m);
+      return n.ticker === pick.market.ticker;
+    });
+    const fresh = freshRaw ? normalizeMarket(freshRaw) : null;
+    if (fresh) {
+      const freshAsk = Math.round((pick.side === "yes" ? fresh.yesAsk : fresh.noAsk) * 100);
+      const slippage = freshAsk - askCents;
+      const evAtWorse = pick.evCents - Math.max(0, slippage);
+      if (slippage > CHASE_CENTS) {
+        res = { ok: false as const, error: `Quote moved ${slippage}¢ past the ${askCents}¢ target — more than the 2¢ chase limit. Skipped.` };
+      } else if (freshAsk < MIN_ENTRY_CENTS || freshAsk > MAX_ENTRY_CENTS) {
+        res = { ok: false as const, error: `Quote moved to ${freshAsk}¢, outside the ${MIN_ENTRY_CENTS}–${MAX_ENTRY_CENTS}¢ band. Skipped.` };
+      } else if (evAtWorse < MIN_EDGE_CENTS) {
+        res = { ok: false as const, error: `Edge gone at ${freshAsk}¢ — ${evAtWorse.toFixed(1)}¢ left vs the ${MIN_EDGE_CENTS}¢ minimum. Skipped.` };
+      } else {
+        pick = { ...pick, market: fresh, askCents: freshAsk, evCents: evAtWorse };
+        res = await send(pick, freshAsk);
+      }
     }
   }
   if (res.ok) {
