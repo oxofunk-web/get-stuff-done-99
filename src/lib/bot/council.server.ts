@@ -5,7 +5,8 @@
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 
-import { PAPER_FEE } from "./autotrade.server";
+/** Kalshi round-trip fees per contract, dollars (same 14¢ the Bank uses for paper). */
+const PAPER_FEE = 0.14;
 
 export const COUNCIL_DAILY_BUDGET = 10;
 export const COUNCIL_DAILY_LOSS_HALT = 10;
