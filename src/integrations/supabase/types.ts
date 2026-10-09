@@ -167,6 +167,114 @@ export type Database = {
         }
         Relationships: []
       }
+      council_proposals: {
+        Row: {
+          bank_decision: Json | null
+          candle_id: number | null
+          confidence: number
+          contracts: number | null
+          created_at: string
+          entry_target: number
+          expires_at: string
+          fill_price: number | null
+          filled_at: string | null
+          graded_at: string | null
+          id: string
+          market: string
+          order_error: string | null
+          order_id: string | null
+          outcome: string | null
+          pnl: number | null
+          proposing_agent: string
+          side: string
+          size: number
+          stake: number | null
+          status: string
+          thesis: string
+          trade_id: string | null
+          updated_at: string
+          votes: Json
+        }
+        Insert: {
+          bank_decision?: Json | null
+          candle_id?: number | null
+          confidence: number
+          contracts?: number | null
+          created_at?: string
+          entry_target: number
+          expires_at: string
+          fill_price?: number | null
+          filled_at?: string | null
+          graded_at?: string | null
+          id?: string
+          market: string
+          order_error?: string | null
+          order_id?: string | null
+          outcome?: string | null
+          pnl?: number | null
+          proposing_agent: string
+          side: string
+          size: number
+          stake?: number | null
+          status?: string
+          thesis: string
+          trade_id?: string | null
+          updated_at?: string
+          votes?: Json
+        }
+        Update: {
+          bank_decision?: Json | null
+          candle_id?: number | null
+          confidence?: number
+          contracts?: number | null
+          created_at?: string
+          entry_target?: number
+          expires_at?: string
+          fill_price?: number | null
+          filled_at?: string | null
+          graded_at?: string | null
+          id?: string
+          market?: string
+          order_error?: string | null
+          order_id?: string | null
+          outcome?: string | null
+          pnl?: number | null
+          proposing_agent?: string
+          side?: string
+          size?: number
+          stake?: number | null
+          status?: string
+          thesis?: string
+          trade_id?: string | null
+          updated_at?: string
+          votes?: Json
+        }
+        Relationships: []
+      }
+      council_settings: {
+        Row: {
+          api_token: string
+          halted: boolean
+          halted_at: string | null
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          api_token?: string
+          halted?: boolean
+          halted_at?: string | null
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          api_token?: string
+          halted?: boolean
+          halted_at?: string | null
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cron_token: {
         Row: {
           created_at: string
@@ -388,11 +496,13 @@ export type Database = {
       }
       trade_log: {
         Row: {
+          agent: string | null
           bankroll_applied_at: string | null
           calibrated: number | null
           candle_id: number
           conf: number | null
           contracts: number | null
+          council: boolean
           dir: string
           entry_price: number | null
           exit_at: string | null
@@ -408,6 +518,7 @@ export type Database = {
           outcome: string | null
           pair: string
           pnl: number | null
+          proposal_id: string | null
           quote_age_ms: number | null
           requested_contracts: number | null
           settle_attempts: number
@@ -425,11 +536,13 @@ export type Database = {
           visible_depth: number | null
         }
         Insert: {
+          agent?: string | null
           bankroll_applied_at?: string | null
           calibrated?: number | null
           candle_id: number
           conf?: number | null
           contracts?: number | null
+          council?: boolean
           dir: string
           entry_price?: number | null
           exit_at?: string | null
@@ -445,6 +558,7 @@ export type Database = {
           outcome?: string | null
           pair: string
           pnl?: number | null
+          proposal_id?: string | null
           quote_age_ms?: number | null
           requested_contracts?: number | null
           settle_attempts?: number
@@ -462,11 +576,13 @@ export type Database = {
           visible_depth?: number | null
         }
         Update: {
+          agent?: string | null
           bankroll_applied_at?: string | null
           calibrated?: number | null
           candle_id?: number
           conf?: number | null
           contracts?: number | null
+          council?: boolean
           dir?: string
           entry_price?: number | null
           exit_at?: string | null
@@ -482,6 +598,7 @@ export type Database = {
           outcome?: string | null
           pair?: string
           pnl?: number | null
+          proposal_id?: string | null
           quote_age_ms?: number | null
           requested_contracts?: number | null
           settle_attempts?: number
