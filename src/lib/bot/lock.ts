@@ -2,7 +2,7 @@ import type { DirectionCall } from "./direction";
 
 export type Phase = "WATCHING" | "CALL" | "FINAL";
 
-export const CALL_WINDOW_SECS = 300; // entries from 5:00 — wider window, more shots
+export const CALL_WINDOW_SECS = 480; // entries from 8:00 — last 7 minutes only
 export const FINAL_SECS = 840; // last minute frozen
 export const LOCK_PROB = 70;
 export const LOCK_HOLD_MS = 10_000;
@@ -10,8 +10,9 @@ export const FLIP_PROB = 70; // opposite side must be this strong...
 export const FLIP_HOLD_MS = 20_000; // ...for this long
 /** Price must sit at least this % beyond the open before a call can lock. */
 export const LOCK_CUSHION_PCT = 0.03;
-/** Locks may only form up to this mark (the 10s hold must complete by 8:00). */
-export const LOCK_FORM_END_SECS = 480;
+/** Locks may only form in the last 7 minutes (from 8:00 to the candle close). */
+export const LOCK_FORM_START_SECS = 480;
+export const LOCK_FORM_END_SECS = 900;
 
 export interface LockState {
   candleStart: number;
@@ -58,8 +59,9 @@ export function stepLock(
   let s = prev.candleStart === candleStart ? prev : emptyLock(candleStart);
   // First lock wins the candle: once locked, never flip; only track its prob.
   if (s.dir) return call.dir === s.dir ? { ...s, prob: call.prob } : s;
-  // Locks may only form in minutes 0–5; after that an unlocked coin sits out.
-  if (!call.ready || call.elapsed > LOCK_FORM_END_SECS) return { ...s, candidateDir: null, candidateSince: null };
+  // Locks may only form in the last 7 minutes (8:00–15:00); before that, watch only.
+  if (!call.ready || call.elapsed < LOCK_FORM_START_SECS || call.elapsed > LOCK_FORM_END_SECS)
+    return { ...s, candidateDir: null, candidateSince: null };
 
   const wants = call.prob >= LOCK_PROB ? call.dir : null;
   if (!wants) return { ...s, candidateDir: null, candidateSince: null };
