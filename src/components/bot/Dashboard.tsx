@@ -3,9 +3,8 @@ import { useState } from "react";
 import { CandleChart } from "./CandleChart";
 import { CallPanel } from "./CallPanel";
 import { LockPanel } from "./LockPanel";
-import { AutoTradePanel } from "./AutoTradePanel";
 import { ExecutionBanner } from "./ExecutionBanner";
-import { CouncilPanel } from "./CouncilPanel";
+import { TradeAlertsPanel } from "./TradeAlertsPanel";
 import { useDirection } from "@/hooks/useDirection";
 import { fmtPrice, mmss } from "@/lib/bot/candle";
 import { PAIRS, type PairId } from "@/lib/bot/constants";
@@ -127,10 +126,9 @@ export function Dashboard() {
           </section>
 
           <div className="lg:col-span-5">
+            <TradeAlertsPanel />
             <CallPanel calls={d.calls} selected={pair} onSelect={(p) => setPair(p as PairId)} />
             <LockPanel calls={d.calls} />
-            <AutoTradePanel />
-            <CouncilPanel />
           </div>
         </div>
 
@@ -140,8 +138,8 @@ export function Dashboard() {
             with a Binance fallback and a server relay when your network blocks both. For each
             15-minute candle the reader compares the current price with the candle's open and how
             far the coin can still travel in the time left, then states whether the candle is
-            finishing up or down and the chance of it. When auto-trade is enabled and Kalshi
-            API keys are configured, this bot places real orders with real money on Kalshi.
+            finishing up or down and the chance of it. The bot runs in MANUAL mode: it raises trade
+            alerts only and never places orders. Any trade you place yourself is your own decision.
             Trading involves risk of loss. Not financial advice.
           </p>
         </footer>
