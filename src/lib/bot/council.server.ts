@@ -78,7 +78,7 @@ interface Proposal {
 
 /** The Bank: final veto. Returns approve + exact reason + numbers used. */
 export async function bankGate(sb: Sb, p: Proposal) {
-  const checks: Record<string, unknown> = {};
+  const checks: { day?: unknown; askCents?: number; netEdgeCents?: number; contracts?: number } = {};
   const reject = (reason: string) => ({ approve: false as const, reason, checks, at: new Date().toISOString() });
   if (await councilHalt(sb)) return reject("council halted (HALT COUNCIL is on)");
   if (new Date(p.expires_at).getTime() <= Date.now()) return reject("proposal expired");
