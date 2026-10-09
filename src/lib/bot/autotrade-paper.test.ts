@@ -80,11 +80,11 @@ describe("dynamic strike selection", () => {
     expect(pick?.evCents).toBeCloseTo(15.8, 0);
   });
 
-  it("skips when the best edge is below the 10¢ minimum", () => {
-    const weak = { driftedPrice: 103.85, priceHorizon: 10 }; // P(close>100) ≈ 0.65 → EV ≈ 5¢
+  it("skips when the best edge is below the 5¢ minimum", () => {
+    const weak = { driftedPrice: 103.5, priceHorizon: 10 }; // P(close>100) ≈ 0.637 → EV ≈ 3.7¢
     const { pick, note } = selectStrike(markets([{ strike: 100, yesAsk: 60 }]).markets as never[], weak, "UP");
     expect(pick).toBeNull();
-    expect(note).toContain("below the 10¢ minimum");
+    expect(note).toContain("below the 5¢ minimum");
   });
 
   it("skips when no strike is priced in the 50–85¢ band", () => {
