@@ -6,7 +6,7 @@
  */
 export type Provider = "coinbase" | "kraken" | "binanceus";
 const CB: Record<string, string> = { BTC: "BTC-USD", ETH: "ETH-USD", SOL: "SOL-USD", XRP: "XRP-USD" };
-const KR: Record<string, string> = { BTC: "XBTUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD", EURUSD: "EURUSD", GBPUSD: "GBPUSD", USDJPY: "USDJPY", AUDUSD: "AUDUSD" };
+const KR: Record<string, string> = { BTC: "XBTUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD" };
 const BU: Record<string, string> = { BTC: "BTCUSD", ETH: "ETHUSD", SOL: "SOLUSD", XRP: "XRPUSD" };
 const HEADERS = { "User-Agent": "coin-direction-reader" };
 const ATTEMPT_MS = 5000;
@@ -31,10 +31,8 @@ const pos = (n: unknown) => {
 };
 
 /** Run providers in order; first non-null value wins. */
-async function chain<T>(steps: [Provider, () => Promise<T | null>][], pair?: string): Promise<{ value: T; provider: Provider } | null> {
+async function chain<T>(steps: [Provider, () => Promise<T | null>][]): Promise<{ value: T; provider: Provider } | null> {
   for (const [provider, fn] of steps) {
-    // Forex pairs only trade on Kraken; skip providers with no symbol for the pair.
-    if (pair && provider !== "kraken" && !CB[pair]) continue;
     try {
       const value = await fn();
       if (value != null) return { value, provider };
