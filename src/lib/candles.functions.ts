@@ -16,7 +16,6 @@ const CB_PRODUCT: Record<PairId, string> = {
   ETH: "ETH-USD",
   SOL: "SOL-USD",
   XRP: "XRP-USD",
-  DOGE: "DOGE-USD",
   EURUSD: "", GBPUSD: "", USDJPY: "", AUDUSD: "",
 };
 
@@ -36,7 +35,6 @@ const BINANCE_SYMBOL: Record<PairId, string> = {
   ETH: "ETHUSDT",
   SOL: "SOLUSDT",
   XRP: "XRPUSDT",
-  DOGE: "DOGEUSDT",
   EURUSD: "", GBPUSD: "", USDJPY: "", AUDUSD: "",
 };
 
