@@ -41,7 +41,7 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
           let label: string;
           if (l.dir)
             label = `${phase === "FINAL" ? "FINAL" : "CALL"}: ${l.dir} ${l.prob.toFixed(0)}% · locked ${mmss(l.lockSec ?? 0)}`;
-          else if (phase !== "WATCHING") label = "no lock by 5:00 — sitting out this candle";
+          else if (phase !== "WATCHING") label = "no lock by 8:00 — sitting out this candle";
           else if (l.candidateDir) label = `confirming ${l.candidateDir}…`;
           else label = c.ready ? `WATCHING · leaning ${c.dir} ${c.prob.toFixed(0)}%` : "WATCHING";
           return (
