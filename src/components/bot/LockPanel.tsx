@@ -74,7 +74,7 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
           </button>
         </div>
         <div className="flex flex-wrap gap-x-3">
-          {["BTC", "ETH", "SOL", "XRP", "DOGE"].map((p) => (
+          {["BTC", "ETH", "SOL", "XRP"].map((p) => (
             <span key={p}>
               {p} <b className="text-foreground">{rate(score?.byPair[p])}</b>
             </span>
@@ -87,7 +87,7 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
             </span>
           ))}
         </div>
-        <div className="mt-1 text-dim">Calls lock from {mmss(CALL_WINDOW_SECS)} after 20s above {LOCK_PROB}%.</div>
+        <div className="mt-1 text-dim">Calls lock from {mmss(CALL_WINDOW_SECS)} after 10s above {LOCK_PROB}%.</div>
       </div>
     </section>
   );

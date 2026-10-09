@@ -6,7 +6,6 @@ const PRODUCT: Record<string, string> = {
   ETH: "ETH-USD",
   SOL: "SOL-USD",
   XRP: "XRP-USD",
-  DOGE: "DOGE-USD",
 };
 
 async function db() {
@@ -19,7 +18,7 @@ export const recordLock = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
       .object({
-        pair: z.enum(["BTC", "ETH", "SOL", "XRP", "DOGE"]),
+        pair: z.enum(["BTC", "ETH", "SOL", "XRP"]),
         candle_start: z.number().int(),
         lock_sec: z.number().int().min(0).max(900),
         dir: z.enum(["UP", "DOWN"]),

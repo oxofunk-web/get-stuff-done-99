@@ -15,8 +15,6 @@ const CANDLE_MS = 900_000;
 const BASE_PAIRS: PairId[] = ["BTC", "ETH", "SOL", "XRP", ...FX_PAIRS];
 /** Forex alerts size at a flat $10 per trade. */
 const FX_SIZE = 10;
-/** DOGE is paper-only and joins only after its feeds verify (see dogeReady). */
-const EXTRA_PAIRS: PairId[] = ["DOGE"];
 /**
  * Entry band for dynamic strike selection: only buy contracts priced
  * 50¢–85¢. Below 50¢ the market says we're likely wrong; above 85¢ the
@@ -28,32 +26,6 @@ const MAX_ENTRY_CENTS = 85;
 export const PAPER_BAND = { min: 50, max: 80 } as const;
 const LIVE_BAND = { min: MIN_ENTRY_CENTS, max: MAX_ENTRY_CENTS } as const;
 
-let dogeCheck: { at: number; ok: boolean; why: string } | null = null;
-/** Verify Coinbase DOGE-USD ticks and KXDOGE15M lists markets with strikes. Cached 10 min per worker. */
-async function dogeReady(): Promise<{ ok: boolean; why: string }> {
-  if (dogeCheck && Date.now() - dogeCheck.at < 600_000) return dogeCheck;
-  let ok = false;
-  let why = "";
-  try {
-    const t = await fetch("https://api.exchange.coinbase.com/products/DOGE-USD/ticker", {
-      headers: { "User-Agent": "coin-direction-reader" },
-      signal: AbortSignal.timeout(5000),
-    });
-    const j = t.ok ? ((await t.json()) as { price?: string }) : {};
-    if (!(Number(j.price) > 0)) why = `Coinbase DOGE-USD ticker failed (${t.status})`;
-    else {
-      const { markets, error } = await fetchCandleMarketsWithReason("KXDOGE15M");
-      const withStrike = markets.filter((m) => normalizeMarket(m).strike != null);
-      if (!withStrike.length) why = `KXDOGE15M has no markets with strikes${error ? ` (${error})` : ""}`;
-      else ok = true;
-    }
-  } catch (e) {
-    why = `DOGE check error: ${e instanceof Error ? e.message : String(e)}`;
-  }
-  if (!ok) console.warn(`[autotrade] DOGE disabled, running original four: ${why}`);
-  dogeCheck = { at: Date.now(), ok, why };
-  return dogeCheck;
-}
 /** Minimum expected value (model prob minus ask) before a strike is tradable. */
 const MIN_EDGE_CENTS = 5;
 const CHASE_CENTS = 2; // never chase more than 2¢ past the scored price
@@ -336,10 +308,7 @@ export async function runAutoTrade() {
     return { ok: true, msg: "outside call window" };
   }
 
-  // DOGE: paper only, and only after its Coinbase + Kalshi feeds verify; otherwise the original four run unchanged.
-  const doge = paper ? await dogeReady() : { ok: false, why: "live mode" };
-  const PAIRS: PairId[] = doge.ok ? [...BASE_PAIRS, ...EXTRA_PAIRS] : BASE_PAIRS;
-  const dogeNote = paper && !doge.ok ? ` · DOGE off: ${doge.why}` : "";
+  const PAIRS: PairId[] = BASE_PAIRS;
   feedUsed.clear();
   const opens: Record<string, number | null> = {};
   const spots: Record<string, SpotState> = {};
@@ -433,7 +402,7 @@ export async function runAutoTrade() {
       : noFeed.length
         ? `watching, no new lock (no price data for ${noFeed.join(",")})`
         : "watching, no new lock";
-  const fullMsg = msg + feedSummary() + dogeNote;
+  const fullMsg = msg + feedSummary();
   await sb
     .from("bot_settings")
     .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${fullMsg}`, last_tick_at: new Date().toISOString() } as never)
@@ -447,7 +416,7 @@ export const TAKE_PROFIT_CENTS = 93;
 /** A/B test: per-coin take-profit triggers (cents). Edit here when the test ends. */
 export const TP_TRIGGER_BY_PAIR: Record<string, number> = {
   BTC: 93, XRP: 93, // control
-  ETH: 95, SOL: 95, DOGE: 95, // treatment
+  ETH: 95, SOL: 95, // treatment
 };
 export const tpTriggerFor = (pair: string) => TP_TRIGGER_BY_PAIR[pair] ?? TAKE_PROFIT_CENTS;
 

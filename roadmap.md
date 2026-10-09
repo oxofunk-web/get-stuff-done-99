@@ -33,3 +33,7 @@
 - [x] Back on the strict profile: $5 stake, one trade per candle, live trading OFF.
 - [ ] Run shadow validation windows before considering live trading again.
 - [x] Auto-sell locked-call trades when bid >= 93c
+
+## Lock hold + DOGE removal
+- [x] Shorten the lock hold requirement from 20s to 10s (70% threshold, 0–8 window, one lock per coin unchanged)
+- [x] Remove the DOGE pair from the engine, feeds, and dashboard
