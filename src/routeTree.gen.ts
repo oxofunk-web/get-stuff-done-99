@@ -14,10 +14,6 @@ import { Route as ApiPublicAutotradeRouteImport } from './routes/api/public/auto
 import { Route as ApiPublicScorecardRouteImport } from './routes/api/public/scorecard'
 import { Route as ApiPublicSettleRouteImport } from './routes/api/public/settle'
 import { Route as ApiPublicTradesRouteImport } from './routes/api/public/trades'
-import { Route as ApiPublicCouncilBankRouteImport } from './routes/api/public/council/bank'
-import { Route as ApiPublicCouncilExecuteRouteImport } from './routes/api/public/council/execute'
-import { Route as ApiPublicCouncilProposeRouteImport } from './routes/api/public/council/propose'
-import { Route as ApiPublicCouncilVoteRouteImport } from './routes/api/public/council/vote'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -44,26 +40,6 @@ const ApiPublicTradesRoute = ApiPublicTradesRouteImport.update({
   path: '/api/public/trades',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicCouncilBankRoute = ApiPublicCouncilBankRouteImport.update({
-  id: '/api/public/council/bank',
-  path: '/api/public/council/bank',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicCouncilExecuteRoute = ApiPublicCouncilExecuteRouteImport.update({
-  id: '/api/public/council/execute',
-  path: '/api/public/council/execute',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicCouncilProposeRoute = ApiPublicCouncilProposeRouteImport.update({
-  id: '/api/public/council/propose',
-  path: '/api/public/council/propose',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicCouncilVoteRoute = ApiPublicCouncilVoteRouteImport.update({
-  id: '/api/public/council/vote',
-  path: '/api/public/council/vote',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -71,10 +47,6 @@ export interface FileRoutesByFullPath {
   '/api/public/scorecard': typeof ApiPublicScorecardRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
   '/api/public/trades': typeof ApiPublicTradesRoute
-  '/api/public/council/bank': typeof ApiPublicCouncilBankRoute
-  '/api/public/council/execute': typeof ApiPublicCouncilExecuteRoute
-  '/api/public/council/propose': typeof ApiPublicCouncilProposeRoute
-  '/api/public/council/vote': typeof ApiPublicCouncilVoteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,10 +54,6 @@ export interface FileRoutesByTo {
   '/api/public/scorecard': typeof ApiPublicScorecardRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
   '/api/public/trades': typeof ApiPublicTradesRoute
-  '/api/public/council/bank': typeof ApiPublicCouncilBankRoute
-  '/api/public/council/execute': typeof ApiPublicCouncilExecuteRoute
-  '/api/public/council/propose': typeof ApiPublicCouncilProposeRoute
-  '/api/public/council/vote': typeof ApiPublicCouncilVoteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,10 +62,6 @@ export interface FileRoutesById {
   '/api/public/scorecard': typeof ApiPublicScorecardRoute
   '/api/public/settle': typeof ApiPublicSettleRoute
   '/api/public/trades': typeof ApiPublicTradesRoute
-  '/api/public/council/bank': typeof ApiPublicCouncilBankRoute
-  '/api/public/council/execute': typeof ApiPublicCouncilExecuteRoute
-  '/api/public/council/propose': typeof ApiPublicCouncilProposeRoute
-  '/api/public/council/vote': typeof ApiPublicCouncilVoteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,10 +71,6 @@ export interface FileRouteTypes {
     | '/api/public/scorecard'
     | '/api/public/settle'
     | '/api/public/trades'
-    | '/api/public/council/bank'
-    | '/api/public/council/execute'
-    | '/api/public/council/propose'
-    | '/api/public/council/vote'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -118,10 +78,6 @@ export interface FileRouteTypes {
     | '/api/public/scorecard'
     | '/api/public/settle'
     | '/api/public/trades'
-    | '/api/public/council/bank'
-    | '/api/public/council/execute'
-    | '/api/public/council/propose'
-    | '/api/public/council/vote'
   id:
     | '__root__'
     | '/'
@@ -129,10 +85,6 @@ export interface FileRouteTypes {
     | '/api/public/scorecard'
     | '/api/public/settle'
     | '/api/public/trades'
-    | '/api/public/council/bank'
-    | '/api/public/council/execute'
-    | '/api/public/council/propose'
-    | '/api/public/council/vote'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -141,10 +93,6 @@ export interface RootRouteChildren {
   ApiPublicScorecardRoute: typeof ApiPublicScorecardRoute
   ApiPublicSettleRoute: typeof ApiPublicSettleRoute
   ApiPublicTradesRoute: typeof ApiPublicTradesRoute
-  ApiPublicCouncilBankRoute: typeof ApiPublicCouncilBankRoute
-  ApiPublicCouncilExecuteRoute: typeof ApiPublicCouncilExecuteRoute
-  ApiPublicCouncilProposeRoute: typeof ApiPublicCouncilProposeRoute
-  ApiPublicCouncilVoteRoute: typeof ApiPublicCouncilVoteRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -184,34 +132,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTradesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/council/bank': {
-      id: '/api/public/council/bank'
-      path: '/api/public/council/bank'
-      fullPath: '/api/public/council/bank'
-      preLoaderRoute: typeof ApiPublicCouncilBankRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/council/execute': {
-      id: '/api/public/council/execute'
-      path: '/api/public/council/execute'
-      fullPath: '/api/public/council/execute'
-      preLoaderRoute: typeof ApiPublicCouncilExecuteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/council/propose': {
-      id: '/api/public/council/propose'
-      path: '/api/public/council/propose'
-      fullPath: '/api/public/council/propose'
-      preLoaderRoute: typeof ApiPublicCouncilProposeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/council/vote': {
-      id: '/api/public/council/vote'
-      path: '/api/public/council/vote'
-      fullPath: '/api/public/council/vote'
-      preLoaderRoute: typeof ApiPublicCouncilVoteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -221,10 +141,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicScorecardRoute: ApiPublicScorecardRoute,
   ApiPublicSettleRoute: ApiPublicSettleRoute,
   ApiPublicTradesRoute: ApiPublicTradesRoute,
-  ApiPublicCouncilBankRoute: ApiPublicCouncilBankRoute,
-  ApiPublicCouncilExecuteRoute: ApiPublicCouncilExecuteRoute,
-  ApiPublicCouncilProposeRoute: ApiPublicCouncilProposeRoute,
-  ApiPublicCouncilVoteRoute: ApiPublicCouncilVoteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
