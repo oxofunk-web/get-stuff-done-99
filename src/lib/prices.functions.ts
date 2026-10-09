@@ -37,24 +37,3 @@ export const getSpotPrices = createServerFn({ method: "GET" }).handler(async () 
   for (const e of entries) if (e) prices[e[0]] = e[1];
   return { prices, ok: Object.keys(prices).length > 0, ts: Date.now() };
 });
-
-/** Live forex spot (Kraken spot FX, free, no key) for the four forex pairs. */
-export const getForexPrices = createServerFn({ method: "GET" }).handler(async () => {
-  const prices: Partial<Record<PairId, { price: number; change24h: number }>> = {};
-  try {
-    const res = await fetch("https://api.kraken.com/0/public/Ticker?pair=EURUSD,GBPUSD,USDJPY,AUDUSD", {
-      signal: AbortSignal.timeout(5000),
-    });
-    const j = (await res.json()) as { result?: Record<string, { c?: string[]; o?: string }> };
-    const keyOf: Record<string, PairId> = { ZEURZUSD: "EURUSD", EURUSD: "EURUSD", ZGBPZUSD: "GBPUSD", GBPUSD: "GBPUSD", ZUSDZJPY: "USDJPY", USDJPY: "USDJPY", AUDUSD: "AUDUSD", ZAUDZUSD: "AUDUSD" };
-    for (const [k, v] of Object.entries(j.result ?? {})) {
-      const id = keyOf[k];
-      const price = Number(v.c?.[0]);
-      const open = Number(v.o);
-      if (id && price > 0) prices[id] = { price, change24h: open > 0 ? ((price - open) / open) * 100 : 0 };
-    }
-  } catch {
-    /* forex feed down */
-  }
-  return { prices, ok: Object.keys(prices).length > 0, ts: Date.now() };
-});
