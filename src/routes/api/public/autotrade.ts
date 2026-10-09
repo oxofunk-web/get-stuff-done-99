@@ -20,7 +20,9 @@ export const Route = createFileRoute("/api/public/autotrade")({
         // Settle pass for paper bankroll (paper rows settled by exits or grading).
         const { applyPaperBankroll } = await import("@/lib/bot/settle.server");
         const bank = await applyPaperBankroll(supabaseAdmin).catch((e) => ({ error: String(e) }));
-        return Response.json({ auto, exits, grading, bank });
+        const { gradeCouncil } = await import("@/lib/bot/council.server");
+        const council = await gradeCouncil().catch((e) => ({ error: String(e) }));
+        return Response.json({ auto, exits, grading, bank, council });
       },
     },
   },
