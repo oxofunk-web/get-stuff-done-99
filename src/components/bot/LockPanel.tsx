@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { mmss } from "@/lib/bot/candle";
 import type { DirectionCall } from "@/lib/bot/direction";
-import { CALL_WINDOW_SECS, LOCK_FORM_END_SECS, LOCK_PROB, phaseOf } from "@/lib/bot/lock";
+import { CALL_WINDOW_SECS, FINAL_SECS, LOCK_FORM_START_SECS, LOCK_PROB, phaseOf } from "@/lib/bot/lock";
 import { useLockedCalls } from "@/hooks/useLockedCalls";
 
 const rate = (t?: { wins: number; losses: number }) => {
@@ -19,7 +19,7 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
   return (
     <section className="panel mt-3">
       <div className="panel-head">
-        <span>Locked call — last 5 minutes</span>
+        <span>Locked call — last 7 minutes</span>
         <button
           type="button"
           onClick={() => setAlert((a) => !a)}
@@ -41,7 +41,8 @@ export function LockPanel({ calls }: { calls: DirectionCall[] }) {
           let label: string;
           if (l.dir)
             label = `${phase === "FINAL" ? "FINAL" : "CALL"}: ${l.dir} ${l.prob.toFixed(0)}% · locked ${mmss(l.lockSec ?? 0)}`;
-          else if (c.elapsed > LOCK_FORM_END_SECS) label = "no lock by 8:00 — sitting out this candle";
+          else if (c.elapsed >= FINAL_SECS) label = "no lock this candle — sitting out";
+          else if (c.elapsed < LOCK_FORM_START_SECS) label = "WATCHING · locks from 8:00";
           else if (l.candidateDir) label = `confirming ${l.candidateDir}…`;
           else label = c.ready ? `WATCHING · leaning ${c.dir} ${c.prob.toFixed(0)}%` : "WATCHING";
           return (
