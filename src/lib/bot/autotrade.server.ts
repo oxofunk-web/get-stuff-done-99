@@ -308,6 +308,7 @@ export async function runAutoTrade() {
     return { ok: true, msg: "outside call window" };
   }
 
+  const PAIRS: PairId[] = BASE_PAIRS;
   feedUsed.clear();
   const opens: Record<string, number | null> = {};
   const spots: Record<string, SpotState> = {};
