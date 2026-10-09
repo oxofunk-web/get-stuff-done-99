@@ -4,6 +4,7 @@ import { CandleChart } from "./CandleChart";
 import { CallPanel } from "./CallPanel";
 import { LockPanel } from "./LockPanel";
 import { AutoTradePanel } from "./AutoTradePanel";
+import { ExecutionBanner } from "./ExecutionBanner";
 import { CouncilPanel } from "./CouncilPanel";
 import { useDirection } from "@/hooks/useDirection";
 import { fmtPrice, mmss } from "@/lib/bot/candle";
@@ -41,6 +42,7 @@ export function Dashboard() {
             <div className="text-[7px] tracking-[0.2em] text-dim">CANDLE CLOSES</div>
           </div>
         </div>
+        <ExecutionBanner />
         <div className="border-t border-wire/70 bg-surface/70">
           <div className="mx-auto grid max-w-[1180px] grid-cols-5">
             {PAIRS.map((p) => {
