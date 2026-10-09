@@ -231,9 +231,9 @@ export async function trade(
     .eq("source", "lock")
     // Only a real fill blocks the candle. A skip row (no strike, key error,
     // no fill) must not lock the pair out for the remaining minutes.
-    .eq("status", "placed")
+    .eq("status", "alert")
     .limit(1);
-  if (existing?.length) return `${pair}: already traded this candle`;
+  if (existing?.length) return `${pair}: alert already raised this candle`;
 
   // Every decision — fill or skip — must persist. If the insert itself fails,
   // surface that in the run message instead of vanishing silently.
@@ -258,15 +258,7 @@ export async function trade(
     return null;
   };
 
-  const keyId = process.env["KALSHI_API_KEY_ID"];
-  const pem = process.env["KALSHI_PRIVATE_KEY"];
-  // Paper mode needs no keys; live mode stops here without them.
-  if (!paper) {
-    if (!keyId || !pem) {
-      await log({ status: "skipped", msg: "Kalshi key missing — add API keys or turn paper mode back on" });
-      return `${pair}: Kalshi key missing`;
-    }
-  }
+
 
 
 
@@ -302,108 +294,19 @@ export async function trade(
       return `${pair}: ${why}`;
     }
   }
-  // Paper mode: simulate the fill at the live ask instead of touching Kalshi.
-  // No keys needed. The settle pass still grades these rows, so paper P&L is
-  // realistic — but they never count toward the live daily loss cap.
-  if (paper) {
-    const entry = askCents / 100;
-    let count = flatCount;
-    let bankNote = "";
-    if (paperBankroll != null && Number.isFinite(paperBankroll)) {
-      const k = bankSize(pick.evCents, askCents, paperBankroll);
-      if (!k.ok) {
-        await log({ ...base, ...attempt, mode: "paper", status: "skipped", msg: k.msg });
-        return `${pair}: ${k.msg}`;
-      }
-      count = k.contracts;
-      bankNote = `, net ${k.netEdgeCents.toFixed(1)}¢, bank $${paperBankroll.toFixed(2)}`;
-    }
-    await log({
-      ...base,
-      mode: "paper",
-      status: "placed",
-      msg: `PAPER fill ${count} @ ${askCents}¢ ${pick.side.toUpperCase()} (${edgeNote}${bankNote}, tgt ~$${model.driftedPrice.toFixed(2)}) — no real order sent`,
-      order_id: `paper-${candleStart}-${pair}`,
-      contracts: count,
-      requested_contracts: count,
-      entry_price: entry,
-      stake: count * entry,
-    });
-    return `${pair}: PAPER FILLED ${count} @ ${askCents}¢ (+${pick.evCents.toFixed(1)}¢ edge)`;
-  }
-  // Live path only: keys are guaranteed present by the guard at the top of
-  // trade(). This second check is for the type-checker, not for logic.
-  if (!keyId || !pem) {
-    await log({ ...base, ...attempt, status: "skipped", msg: "Kalshi key missing" });
-    return `${pair}: Kalshi key missing`;
-  }
-  // Chase: limit up to CHASE_CENTS above the ask (capped at MAX_ENTRY_CENTS).
-  const send = (pk: StrikePick, ask: number) =>
-    placeLiveOrder(
-      { keyId, pem },
-      {
-        ticker: pk.market.ticker,
-        side: pk.side,
-        priceCents: Math.min(MAX_ENTRY_CENTS, ask + CHASE_CENTS),
-        maxPriceCents: MAX_ENTRY_CENTS,
-        count,
-        quote: pk.market,
-      },
-    );
-  let res = await send(pick, askCents);
-  if (!res.ok) {
-    // One retry on the SAME strike when the resting size vanished: re-quote it,
-    // allow at most 2¢ of slippage, and recheck the edge at the worse price.
-    // Never chase past 2¢, never fill below the 5¢ edge minimum.
-    const { markets: freshMarkets } = await fetchCandleMarketsWithReason(`KX${pair}15M`);
-    const freshRaw = freshMarkets.find((m) => {
-      const n = normalizeMarket(m);
-      return n.ticker === pick.market.ticker;
-    });
-    const fresh = freshRaw ? normalizeMarket(freshRaw) : null;
-    if (fresh) {
-      const freshAsk = Math.round((pick.side === "yes" ? fresh.yesAsk : fresh.noAsk) * 100);
-      const slippage = freshAsk - askCents;
-      const evAtWorse = pick.evCents - Math.max(0, slippage);
-      if (slippage > CHASE_CENTS) {
-        res = { ok: false as const, error: `Quote moved ${slippage}¢ past the ${askCents}¢ target — more than the 2¢ chase limit. Skipped.` };
-      } else if (freshAsk < MIN_ENTRY_CENTS || freshAsk > MAX_ENTRY_CENTS) {
-        res = { ok: false as const, error: `Quote moved to ${freshAsk}¢, outside the ${MIN_ENTRY_CENTS}–${MAX_ENTRY_CENTS}¢ band. Skipped.` };
-      } else if (evAtWorse < MIN_EDGE_CENTS) {
-        res = { ok: false as const, error: `Edge gone at ${freshAsk}¢ — ${evAtWorse.toFixed(1)}¢ left vs the ${MIN_EDGE_CENTS}¢ minimum. Skipped.` };
-      } else {
-        pick = { ...pick, market: fresh, askCents: freshAsk, evCents: evAtWorse };
-        res = await placeLiveOrder(
-          { keyId, pem },
-          {
-            ticker: pick.market.ticker,
-            side: pick.side,
-            priceCents: freshAsk,
-            // Hard ceiling: never more than 2¢ above the original target.
-            maxPriceCents: Math.min(MAX_ENTRY_CENTS, askCents + CHASE_CENTS),
-            count,
-            quote: pick.market,
-          },
-        );
-      }
-    }
-  }
-  if (res.ok) {
-    const entry = res.priceCents / 100;
-    await log({
-      ...base,
-      status: "placed",
-      msg: res.status,
-      order_id: res.orderId,
-      contracts: res.filled,
-      requested_contracts: count,
-      entry_price: entry,
-      stake: res.filled * entry,
-    });
-    return `${pair}: FILLED ${res.filled} @ ${res.priceCents}¢`;
-  }
-  await log({ ...base, ...attempt, status: "skipped", msg: res.error, requested_contracts: count });
-  return `${pair}: ${res.error}`;
+  // MANUAL mode: no order is ever sent. The qualified setup is written as an
+  // alert row for the TRADE ALERTS panel and the bot stops there.
+  const minsLeft = Math.max(0, (candleStart + FINAL_SECS * 1000 - Date.now()) / 60_000);
+  await log({
+    ...base,
+    mode: "manual",
+    status: "alert",
+    msg: `ALERT ${dir} · ${pick.side.toUpperCase()} @ ${askCents}¢ · ${edgeNote} · ~${count} contracts ($${(count * askCents / 100).toFixed(2)}) · ${minsLeft.toFixed(1)} min left — no order sent`,
+    entry_price: askCents / 100,
+    requested_contracts: count,
+    stake: (count * askCents) / 100,
+  });
+  return `${pair}: ALERT ${dir} @ ${askCents}¢ (+${pick.evCents.toFixed(1)}¢ edge)`;
 }
 
 /** One scheduled pass: watch prices ~48s, lock with the same rules, trade on lock. */
@@ -418,10 +321,6 @@ export async function runAutoTrade() {
       .update({ auto_trade_last_msg: `${stamp()} ${msg}`, last_tick_at: new Date().toISOString() } as never)
       .eq("id", true);
   };
-  if (!s?.auto_trade_enabled) {
-    await note("auto-trade is OFF — flip AUTO-TRADE on in the dashboard");
-    return { ok: true, msg: "auto-trade off" };
-  }
   const size = Number(s.auto_trade_size ?? 10);
   /** Paper mode defaults to true: no real order until the dashboard toggle is flipped. */
   const paper = s?.auto_trade_paper ?? true;
@@ -433,42 +332,6 @@ export async function runAutoTrade() {
   if (elapsed >= FINAL_SECS) {
     await note("waiting for the next candle — locks form in minutes 0–5, entries in minutes 5–14");
     return { ok: true, msg: "outside call window" };
-  }
-
-  // Daily loss cap: once today's settled live P&L plus open risk reaches the
-  // cap, stop trading for the rest of the day.
-  const cap = Number(s.daily_loss_cap ?? DAILY_LOSS_CAP_DEFAULT);
-  {
-    const { dayPnl, openRisk, breached } = await dayRisk(sb, cap, ["lock"]);
-    if (breached) {
-      const msg = `day stopped — $${openRisk.toFixed(2)} open risk + $${dayPnl.toFixed(2)} settled P&L reaches the $${cap.toFixed(0)} daily cap`;
-      await sb
-        .from("bot_settings")
-        .update({ auto_trade_last_msg: `${new Date().toISOString().slice(11, 19)}Z ${msg}`, last_tick_at: new Date().toISOString() } as never)
-        .eq("id", true);
-      // Ledger: a locked coin in the entry window that the cap blocks gets a skip row.
-      if (elapsed >= CALL_WINDOW_SECS) {
-        for (const p of BASE_PAIRS) {
-          const lr = await firstLock(sb, p, candleStart);
-          if (!lr) continue;
-          const { data: filled } = await sb
-            .from("trade_log")
-            .select("id")
-            .eq("pair", p)
-            .eq("candle_id", candleStart)
-            .eq("source", "lock")
-            .eq("status", "placed")
-            .limit(1);
-          if (filled?.length) continue;
-          const { error } = await sb.from("trade_log").insert({
-            candle_id: candleStart, pair: p, dir: lr.dir, mode: paper ? "paper" : "live", source: "lock",
-            tp_trigger: tpTriggerFor(p), lock_id: lr.id, status: "skipped", msg, requested_contracts: 0,
-          } as never);
-          if (error) console.error(`[autotrade] trade_log insert failed for ${p}: ${error.message}`);
-        }
-      }
-      return { ok: true, msg };
-    }
   }
 
   // DOGE: paper only, and only after its Coinbase + Kalshi feeds verify; otherwise the original four run unchanged.
@@ -587,48 +450,3 @@ export const TP_TRIGGER_BY_PAIR: Record<string, number> = {
 export const tpTriggerFor = (pair: string) => TP_TRIGGER_BY_PAIR[pair] ?? TAKE_PROFIT_CENTS;
 
 /** Watches open locked-call positions ~45s and sells any whose bid is >= its coin's trigger. */
-export async function runTakeProfit() {
-  const { fetchMarket, placeLiveSell } = await import("../kalshi.server");
-  const sb = await db();
-  const keyId = process.env["KALSHI_API_KEY_ID"];
-  const pem = process.env["KALSHI_PRIVATE_KEY"];
-  const candleStart = Math.floor(Date.now() / CANDLE_MS) * CANDLE_MS;
-  const out: string[] = [];
-  const end = Date.now() + 45_000;
-  while (Date.now() < end) {
-    const { data: open } = await sb
-      .from("trade_log")
-      .select("id,pair,dir,mode,ticker,strike_type,contracts,entry_price")
-      .eq("source", "lock")
-      .eq("status", "placed")
-      .eq("candle_id", candleStart)
-      .is("exit_at", null);
-    if (!open?.length) break;
-    for (const t of open) {
-      if (!t.ticker || !t.contracts) continue;
-      const raw = await fetchMarket(t.ticker);
-      if (!raw) continue;
-      const m = normalizeMarket(raw);
-      const side: "yes" | "no" = (t.strike_type === "floor") === (t.dir === "UP") ? "yes" : "no";
-      const bid = Math.round((side === "yes" ? m.yesBid : m.noBid) * 100);
-      const trigger = tpTriggerFor(t.pair);
-      if (bid < trigger) continue;
-      let exit = { price: bid, id: `paper-exit-${t.id}`, n: t.contracts };
-      if (t.mode !== "paper") {
-        if (!keyId || !pem) continue;
-        const r = await placeLiveSell({ keyId, pem }, { ticker: t.ticker, side, priceCents: trigger, count: t.contracts });
-        if (!r.ok) { out.push(`${t.pair}: ${r.error}`); continue; }
-        exit = { price: r.priceCents, id: r.orderId, n: r.filled };
-      }
-      const pnl = exit.n * (exit.price / 100 - Number(t.entry_price ?? 0));
-      await sb.from("trade_log").update({
-        exit_price: exit.price / 100, exit_reason: "take_profit", exit_at: new Date().toISOString(),
-        exit_order_id: exit.id, exit_contracts: exit.n,
-        ...(exit.n >= t.contracts ? { outcome: "win", pnl, settled_at: new Date().toISOString() } : {}),
-      } as never).eq("id", t.id);
-      out.push(`${t.pair}: SOLD ${exit.n} @ ${exit.price}¢ (+$${pnl.toFixed(2)})`);
-    }
-    await new Promise((r) => setTimeout(r, SAMPLE_MS));
-  }
-  return out;
-}
