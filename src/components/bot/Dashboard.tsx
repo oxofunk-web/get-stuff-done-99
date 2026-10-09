@@ -43,7 +43,7 @@ export function Dashboard() {
         </div>
         <ExecutionBanner />
         <div className="border-t border-wire/70 bg-surface/70">
-          <div className="mx-auto grid max-w-[1180px] grid-cols-3 sm:grid-cols-9">
+          <div className="mx-auto grid max-w-[1180px] grid-cols-4 sm:grid-cols-8">
             {PAIRS.map((p) => {
               const c = d.calls.find((x) => x.pair === p.id);
               const isUp = c?.dir === "UP";
