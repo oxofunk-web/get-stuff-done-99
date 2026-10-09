@@ -13,7 +13,7 @@ export const MAX_CHASE_CENTS = 8;
 export const MAX_ORDER_ATTEMPTS = 1;
 /** Separates evidence gathered under materially different decision rules. */
 export const STRATEGY_VERSION = "stable-v2";
-export const DAILY_LOSS_CAP_DEFAULT = 20; // stop trading after this much loss in a day
+export const DAILY_LOSS_CAP_DEFAULT = 40; // stop trading after this much loss in a day
 /**
  * Minimum contracts resting at the touch before an order is worth sending.
  * Thin books ate 119 of 147 live attempts; below this we skip the pair for the
