@@ -4,7 +4,6 @@ import { CandleChart } from "./CandleChart";
 import { CallPanel } from "./CallPanel";
 import { LockPanel } from "./LockPanel";
 import { ExecutionBanner } from "./ExecutionBanner";
-import { TradeAlertsPanel } from "./TradeAlertsPanel";
 import { useDirection } from "@/hooks/useDirection";
 import { fmtPrice, mmss } from "@/lib/bot/candle";
 import { PAIRS, type PairId } from "@/lib/bot/constants";
@@ -125,10 +124,12 @@ export function Dashboard() {
             </div>
           </section>
 
-          <div className="lg:col-span-5">
-            <TradeAlertsPanel />
-            <CallPanel calls={d.calls} selected={pair} onSelect={(p) => setPair(p as PairId)} />
+          <div className="lg:col-span-7 lg:col-start-1 -mt-3 lg:row-start-2">
             <LockPanel calls={d.calls} />
+          </div>
+
+          <div className="lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:row-span-2">
+            <CallPanel calls={d.calls} selected={pair} onSelect={(p) => setPair(p as PairId)} />
           </div>
         </div>
 
