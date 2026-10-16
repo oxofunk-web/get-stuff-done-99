@@ -211,7 +211,7 @@ export async function settlePending(maxCandles = 12) {
     .select("candle_id")
     .eq("status", "placed")
     .is("outcome", null)
-    .lt("candle_id", current)
+    .or(`and(source.eq.lock,candle_id.lt.${current * 900_000}),and(source.neq.lock,candle_id.lt.${current}))`)
     .limit(5000);
 
   const ids = [...new Set([...(data ?? []), ...(pendingTrades ?? [])].map((r) => Number((r as { candle_id: number }).candle_id)))]
