@@ -1,6 +1,7 @@
 # Roadmap
 
-- [ ] Switch the current reader to paper fills on real quotes, show its ledger, and verify no real orders are sent.
+- [x] Switch the current reader to paper fills on real quotes, show its ledger, and verify no real orders are sent in regression tests.
+- [ ] Publish paper-only execution and observe a fresh qualifying simulated fill (awaits publishing and a qualifying market).
 
 - [x] Reset all trade/signal/snapshot data and settings to a clean slate
 - [x] Remove paper mode — single LIVE TRADING on/off switch, live immediately

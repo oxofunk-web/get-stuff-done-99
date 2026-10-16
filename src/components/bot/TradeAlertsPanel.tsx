@@ -32,7 +32,7 @@ export function TradeAlertsPanel() {
       {live.length === 0 ? (
         <div className="px-3 py-3 text-[10px] text-muted-foreground">Waiting for a qualified paper trade.</div>
       ) : (
-        <div className="divide-y divide-wire">
+        <div className="max-h-80 overflow-y-auto divide-y divide-wire">
           {live.map((a) => {
             const up = a.dir === "UP";
             return (
