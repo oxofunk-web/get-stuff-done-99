@@ -20,13 +20,13 @@ describe("paper execution on real quotes", () => {
   beforeEach(() => { mocks.rows.length = 0; mocks.order.mockClear(); });
   it("records a simulated fill at the quoted 60 cents without calling the real order path", async () => {
     mocks.markets.mockResolvedValue({ markets: [{ ticker: "KXBTC15M-TEST", floor_strike: 100, yes_ask: 60, yes_bid: 59, yes_ask_size_fp: "8" }], error: null });
-    await trade("BTC", "UP", 1800000, 10, 110, false, { spot: 110, timeFrac: 0.1, drift: 0, sigma: 0.001 } as never);
+    await trade("BTC", "UP", 1800000, 10, 110, false, { driftedPrice: 110, priceHorizon: 1 });
     expect(mocks.rows[0]).toMatchObject({ mode: "paper", status: "placed", entry_price: 0.6, contracts: 8, stake: 4.8, ticker: "KXBTC15M-TEST" });
     expect(mocks.order).not.toHaveBeenCalled();
   });
   it("never invents a fill when visible market depth is missing", async () => {
     mocks.markets.mockResolvedValue({ markets: [{ ticker: "KXBTC15M-TEST", floor_strike: 100, yes_ask: 60, yes_bid: 59 }], error: null });
-    await trade("BTC", "UP", 1800000, 10, 110, true, { spot: 110, timeFrac: 0.1, drift: 0, sigma: 0.001 } as never);
+    await trade("BTC", "UP", 1800000, 10, 110, true, { driftedPrice: 110, priceHorizon: 1 });
     expect(mocks.rows[0]).toMatchObject({ mode: "paper", status: "skipped", visible_depth: 0 });
     expect(mocks.order).not.toHaveBeenCalled();
   });
