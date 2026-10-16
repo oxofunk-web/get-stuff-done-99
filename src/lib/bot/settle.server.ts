@@ -105,7 +105,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
 
   const { data: trades } = await db
     .from("trade_log")
-    .select("id, pair, dir, contracts, entry_price, ticker, strike, strike_type, settle_attempts")
+    .select("id, pair, dir, source, contracts, entry_price, ticker, strike, strike_type, settle_attempts")
     .eq("candle_id", candleId)
     .is("outcome", null)
     .eq("status", "placed")
@@ -118,6 +118,7 @@ export async function settleOne(candleId: number, override?: Final[]) {
     id: string;
     pair: string;
     dir: string;
+    source: string;
     contracts: number | null;
     entry_price: number | null;
     ticker: string | null;
@@ -131,7 +132,8 @@ export async function settleOne(candleId: number, override?: Final[]) {
       // The exchange hasn't published a result yet. Record the attempt so the
       // next pass backs off, and stop chasing a contract that never resolves
       // instead of leaving it ungraded — and unlearnable — forever.
-      const stale = Date.now() > candleCloseMs(candleId) + VOID_AFTER_MS;
+      const closeMs = t.source === "lock" ? candleId + 900_000 : candleCloseMs(candleId);
+      const stale = Date.now() > closeMs + VOID_AFTER_MS;
       if (attempts >= MAX_SETTLE_ATTEMPTS && stale) {
         const { error: voidErr } = await db
           .from("trade_log")
@@ -155,7 +157,8 @@ export async function settleOne(candleId: number, override?: Final[]) {
       }
       continue;
     }
-    const won = t.dir === "YES" ? final.result === "yes" : final.result === "no";
+    const side = settlementSide(t.dir, t.strike_type ?? final.strikeType);
+    const won = side === final.result;
     const count = t.contracts ?? 0;
     const entry = t.entry_price ?? 0;
     const pnl = won ? count * (1 - entry) : -count * entry;
@@ -175,6 +178,13 @@ export async function settleOne(candleId: number, override?: Final[]) {
   }
 
   return { ok: true, settled, trades: graded, voided };
+}
+
+/** Locked calls store UP/DOWN, while older engines store YES/NO. */
+export function settlementSide(dir: string, strikeType: "floor" | "cap" | null) {
+  if (dir === "YES") return "yes";
+  if (dir === "NO") return "no";
+  return (dir === "UP") === (strikeType === "floor") ? "yes" : "no";
 }
 
 /**
@@ -201,7 +211,7 @@ export async function settlePending(maxCandles = 12) {
     .select("candle_id")
     .eq("status", "placed")
     .is("outcome", null)
-    .lt("candle_id", current)
+    .or(`and(source.eq.lock,candle_id.lt.${current * 900_000}),and(source.neq.lock,candle_id.lt.${current}))`)
     .limit(5000);
 
   const ids = [...new Set([...(data ?? []), ...(pendingTrades ?? [])].map((r) => Number((r as { candle_id: number }).candle_id)))]
