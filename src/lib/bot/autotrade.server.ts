@@ -7,7 +7,6 @@ import { getBotSettings } from "./settings.server";
 import {
   fetchCandleMarketsWithReason,
   normalizeMarket,
-  placeLiveOrder,
   type RawMarket,
 } from "../kalshi.server";
 
@@ -203,16 +202,17 @@ export async function trade(
     .eq("source", "lock")
     // Only a real fill blocks the candle. A skip row (no strike, key error,
     // no fill) must not lock the pair out for the remaining minutes.
-    .eq("status", "alert")
+    .eq("mode", "paper")
+    .eq("status", "placed")
     .limit(1);
-  if (existing?.length) return `${pair}: alert already raised this candle`;
+  if (existing?.length) return `${pair}: paper trade already filled this candle`;
 
   // Every decision — fill or skip — must persist. If the insert itself fails,
   // surface that in the run message instead of vanishing silently.
   const log = async (row: Record<string, unknown>) => {
     const { error } = await sb
       .from("trade_log")
-      .insert({ candle_id: candleStart, pair, dir, mode: "live", source: "lock", tp_trigger: tpTriggerFor(pair), lock_id: lock?.lockId ?? null, ...row } as never);
+      .insert({ candle_id: candleStart, pair, dir, source: "lock", tp_trigger: tpTriggerFor(pair), lock_id: lock?.lockId ?? null, ...row, mode: "paper" } as never);
     if (error) console.error(`[autotrade] trade_log insert failed for ${pair}: ${error.message}`);
     return error;
   };
@@ -244,11 +244,11 @@ export async function trade(
   const getPick = async () => {
     const { markets, error } = await fetchCandleMarketsWithReason(`KX${pair}15M`);
     if (!markets.length) return { pick: null as StrikePick | null, note: error ?? "no contracts" };
-    return selectStrike(markets, model, dir, paper ? PAPER_BAND : LIVE_BAND);
+    return selectStrike(markets, model, dir, LIVE_BAND);
   };
   const first = await getPick();
   if (!first.pick) {
-    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in ${paper ? "50–80" : "50–85"}¢ — ${first.note}`, requested_contracts: 0 });
+    await log({ status: "skipped", msg: `No strike with ≥${MIN_EDGE_CENTS}¢ edge in 50–85¢ — ${first.note}`, requested_contracts: 0 });
     return `${pair}: no edge (${first.note})`;
   }
   let pick = first.pick;
@@ -266,19 +266,25 @@ export async function trade(
       return `${pair}: ${why}`;
     }
   }
-  // MANUAL mode: no order is ever sent. The qualified setup is written as an
-  // alert row for the TRADE ALERTS panel and the bot stops there.
-  const minsLeft = Math.max(0, (candleStart + FINAL_SECS * 1000 - Date.now()) / 60_000);
-  await log({
+  // Simulate only against visible real-market liquidity. Never call the order API.
+  const depth = pick.side === "yes" ? pick.market.yesAskSize : pick.market.yesBidSize;
+  const filled = Math.min(count, depth);
+  if (filled < 1) {
+    await log({ ...base, ...attempt, status: "skipped", visible_depth: depth, msg: "Paper: no visible resting size — no simulated fill" });
+    return `${pair}: paper skipped — no visible resting size`;
+  }
+  const error = await log({
     ...base,
-    mode: "manual",
-    status: "alert",
-    msg: `ALERT ${dir} · ${pick.side.toUpperCase()} @ ${askCents}¢ · ${edgeNote} · ~${count} contracts ($${(count * askCents / 100).toFixed(2)}) · ${minsLeft.toFixed(1)} min left — no order sent`,
+    status: "placed",
+    msg: `PAPER ${dir} · ${pick.side.toUpperCase()} @ ${askCents}¢ · ${edgeNote} · simulated fill, no real order sent`,
+    contracts: filled,
+    visible_depth: depth,
     entry_price: askCents / 100,
     requested_contracts: count,
-    stake: (count * askCents) / 100,
+    stake: (filled * askCents) / 100,
   });
-  return `${pair}: ALERT ${dir} @ ${askCents}¢ (+${pick.evCents.toFixed(1)}¢ edge)`;
+  if (error) throw new Error(`Paper fill could not be saved: ${error.message}`);
+  return `${pair}: PAPER ${dir} @ ${askCents}¢ (${filled} contracts)`;
 }
 
 /** One scheduled pass: watch prices ~48s, lock with the same rules, trade on lock. */
@@ -295,7 +301,7 @@ export async function runAutoTrade() {
   };
   const size = Number(s.auto_trade_size ?? 10);
   /** Paper mode defaults to true: no real order until the dashboard toggle is flipped. */
-  const paper = s?.auto_trade_paper ?? true;
+  const paper = true; // Paper-only runner, regardless of legacy live settings.
 
   const now0 = Date.now();
   const candleStart = Math.floor(now0 / CANDLE_MS) * CANDLE_MS;

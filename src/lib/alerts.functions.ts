@@ -1,22 +1,23 @@
 import { createServerFn } from "@tanstack/react-start";
 
-/** MANUAL mode alerts: qualified setups the bot found this candle. No orders are ever sent. */
+/** Recent paper decisions and the simulated bank. */
 export const getTradeAlerts = createServerFn({ method: "GET" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const since = Math.floor(Date.now() / 900_000) * 900_000 - 900_000;
   const { data } = await supabaseAdmin
     .from("trade_log")
-    .select("id,pair,dir,candle_id,strike,entry_price,requested_contracts,stake,msg,ts")
-    .eq("status", "alert")
-    .gte("candle_id", since)
+    .select("id,pair,dir,candle_id,strike,entry_price,requested_contracts,stake,msg,ts,status,contracts,outcome,pnl")
+    .eq("mode", "paper")
+    .eq("source", "lock")
     .order("ts", { ascending: false })
     .limit(20);
-  const { data: s } = await supabaseAdmin.from("bot_settings").select("auto_trade_last_msg").eq("id", true).maybeSingle();
+  const { data: s } = await supabaseAdmin.from("bot_settings").select("auto_trade_last_msg,paper_bankroll").eq("id", true).maybeSingle();
   return {
     alerts: (data ?? []) as {
       id: string; pair: string; dir: string; candle_id: number; strike: number | null;
       entry_price: number | null; requested_contracts: number | null; stake: number | null; msg: string | null; ts: string;
+      status: string; contracts: number | null; outcome: string | null; pnl: number | null;
     }[],
     lastMsg: (s as { auto_trade_last_msg?: string } | null)?.auto_trade_last_msg ?? "",
+    bankroll: Number(s?.paper_bankroll ?? 100),
   };
 });

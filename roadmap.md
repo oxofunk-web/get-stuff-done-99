@@ -1,5 +1,7 @@
 # Roadmap
 
+- [ ] Switch the current reader to paper fills on real quotes, show its ledger, and verify no real orders are sent.
+
 - [x] Reset all trade/signal/snapshot data and settings to a clean slate
 - [x] Remove paper mode — single LIVE TRADING on/off switch, live immediately
 - [x] Keep risk controls on the dashboard (bet size, max trades, EV margin, daily loss cap)

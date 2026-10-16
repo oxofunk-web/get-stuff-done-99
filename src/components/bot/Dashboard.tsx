@@ -4,6 +4,7 @@ import { CandleChart } from "./CandleChart";
 import { CallPanel } from "./CallPanel";
 import { LockPanel } from "./LockPanel";
 import { ExecutionBanner } from "./ExecutionBanner";
+import { TradeAlertsPanel } from "./TradeAlertsPanel";
 import { useDirection } from "@/hooks/useDirection";
 import { fmtPrice, mmss } from "@/lib/bot/candle";
 import { PAIRS, type PairId } from "@/lib/bot/constants";
@@ -69,6 +70,7 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-[1180px] p-3 sm:p-4">
+        <TradeAlertsPanel />
         <div className="grid gap-3 lg:grid-cols-12">
           <section className="panel lg:col-span-7">
             <div className="panel-head">
@@ -139,8 +141,8 @@ export function Dashboard() {
             with a Binance fallback and a server relay when your network blocks both. For each
             15-minute candle the reader compares the current price with the candle's open and how
             far the coin can still travel in the time left, then states whether the candle is
-            finishing up or down and the chance of it. The bot runs in MANUAL mode: it raises trade
-            alerts only and never places orders. Any trade you place yourself is your own decision.
+            finishing up or down and the chance of it. The bot runs in PAPER mode: trades are
+            simulated using real Kalshi quotes and results. No real-money orders are sent.
             Trading involves risk of loss. Not financial advice.
           </p>
         </footer>

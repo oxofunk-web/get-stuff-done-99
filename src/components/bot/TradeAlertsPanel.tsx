@@ -19,18 +19,18 @@ export function TradeAlertsPanel() {
 
   const cur = Math.floor(now / 900_000) * 900_000;
   const minsLeft = Math.max(0, (cur + 840_000 - now) / 60_000);
-  const live = (s?.alerts ?? []).filter((a) => a.candle_id === cur);
+  const live = s?.alerts ?? [];
 
   return (
     <section className="panel mb-3 border-gold/50">
       <div className="panel-head">
-        <span className="text-gold">Trade alerts</span>
+        <span className="text-gold">Paper trades</span>
         <span className="rounded border border-gold/50 bg-gold/15 px-2 py-px text-[9px] font-bold tracking-widest text-gold">
-          MANUAL · NO ORDERS
+          PAPER BANK ${(s?.bankroll ?? 100).toFixed(2)}
         </span>
       </div>
       {live.length === 0 ? (
-        <div className="px-3 py-3 text-[10px] text-muted-foreground">No qualified setup this candle yet.</div>
+        <div className="px-3 py-3 text-[10px] text-muted-foreground">Waiting for a qualified paper trade.</div>
       ) : (
         <div className="divide-y divide-wire">
           {live.map((a) => {
@@ -42,14 +42,15 @@ export function TradeAlertsPanel() {
                 <span>STRIKE <b className="text-foreground">{a.strike ?? "—"}</b></span>
                 <span>PRICE <b className="text-foreground">{a.entry_price != null ? `${Math.round(a.entry_price * 100)}¢` : "—"}</b></span>
                 <span>EDGE <b className="text-yes">+{edgeOf(a.msg) ?? "?"}¢</b></span>
-                <span>SIZE <b className="text-foreground">{a.requested_contracts ?? 0} (${(a.stake ?? 0).toFixed(2)})</b></span>
+                <span>{a.status === "skipped" ? "SKIPPED" : a.outcome?.toUpperCase() ?? "OPEN"} <b className="text-foreground">{a.contracts ?? 0} (${(a.stake ?? 0).toFixed(2)}){a.pnl != null ? ` · P&L $${a.pnl.toFixed(2)}` : ""}</b></span>
+                <span className="col-span-3 text-muted-foreground sm:col-span-6">{a.msg}</span>
               </div>
             );
           })}
         </div>
       )}
       <div className="border-t border-wire px-3 py-2 text-[8px] leading-relaxed text-dim">
-        {minsLeft.toFixed(1)} min left in the entry window. Alerts only — the bot never places orders.
+        {minsLeft.toFixed(1)} min left in the entry window. Simulated fills at real market prices.
         {s?.lastMsg ? ` Last check: ${s.lastMsg}` : ""}
       </div>
     </section>
